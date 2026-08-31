@@ -318,6 +318,72 @@ $t->test('base_path appears in exactly one committed file', function ($t) use ($
     $t->same(['config/app.php'], $hits, 'literal "/carl/" should only appear in config/app.php');
 });
 
+$t->group('The error page says what actually went wrong');
+
+/** A User row, filled enough for the error template. */
+$asUser = static function (string $role): Carl\Auth\User {
+    return Carl\Auth\User::fromRow([
+        'id' => 1, 'username' => 'someone', 'email' => 's@example.test', 'name' => 'Someone',
+        'role' => $role, 'must_reset_password' => 0, 'zip' => null, 'county_fips' => null,
+        'region_id' => null, 'latitude' => null, 'longitude' => null, 'timezone' => 'UTC',
+        'weather_location_id' => null, 'email_digest_enabled' => 1,
+        'onboarded_at' => '2026-01-01 00:00:00', 'onboarding_step' => 'done',
+    ]);
+};
+
+$t->test('a 404 with no message of its own says the address is wrong',
+    function ($t) use ($app, $asUser): void {
+    $html = $app->view()->partial('error', [
+        'status' => 404, 'message' => '', 'adminHint' => '', 'user' => $asUser('user'),
+    ]);
+    $t->contains('Not found', $html);
+    $t->contains('There is nothing at that address.', $html);
+});
+
+$t->test('a 500 does NOT say the address is wrong', function ($t) use ($app, $asUser): void {
+    // It used to. The headline said the server broke and the sentence under
+    // it said the URL was wrong, and the wrong one is the one people act on:
+    // four pending migrations on the Phase 3 deploy presented as "there is
+    // nothing at that address", which sends you hunting for a routing fault.
+    $html = $app->view()->partial('error', [
+        'status' => 500, 'message' => '', 'adminHint' => '', 'user' => $asUser('user'),
+    ]);
+    $t->contains('Something went wrong', $html);
+    $t->notContains('There is nothing at that address.', $html);
+    $t->contains('The server hit an error', $html);
+});
+
+$t->test('the operator hint reaches an admin and nobody else',
+    function ($t) use ($app, $asUser): void {
+    $hint = 'The database is missing a table this page needs.';
+
+    $forAdmin = $app->view()->partial('error', [
+        'status' => 500, 'message' => '', 'adminHint' => $hint, 'user' => $asUser('admin'),
+    ]);
+    $t->contains($hint, $forAdmin);
+
+    // A schema fault is not a user's business, and /status carries the detail.
+    $forUser = $app->view()->partial('error', [
+        'status' => 500, 'message' => '', 'adminHint' => $hint, 'user' => $asUser('user'),
+    ]);
+    $t->notContains($hint, $forUser);
+
+    $signedOut = $app->view()->partial('error', [
+        'status' => 500, 'message' => '', 'adminHint' => $hint, 'user' => null,
+    ]);
+    $t->notContains($hint, $signedOut);
+});
+
+$t->test('an explicit message still wins over the fallback',
+    function ($t) use ($app, $asUser): void {
+    $html = $app->view()->partial('error', [
+        'status' => 404, 'message' => 'That is not one of your plants.',
+        'adminHint' => '', 'user' => $asUser('user'),
+    ]);
+    $t->contains('That is not one of your plants.', $html);
+    $t->notContains('There is nothing at that address.', $html);
+});
+
 $t->group('Templates stay inside the Content Security Policy');
 
 $t->test('no template uses an inline style attribute', function ($t) use ($app): void {

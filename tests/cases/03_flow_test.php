@@ -581,6 +581,44 @@ $t->test('creating a user shows the temporary password once', function ($t) use 
     $t->notContains('Temporary password', $again->body);
 });
 
+$t->test('the mail test queues to the address in the field, not the admin\'s own',
+    function ($t) use ($client, $db, $suffix): void {
+    // Step 7 of handoff Section 12.1 is reading spf=pass and dkim=pass off the
+    // received headers, and only the RECEIVING server writes those. When the
+    // admin's own address is on the sending domain the message is delivered
+    // locally and never authenticated by anyone, so the recipient has to be
+    // steerable or the step cannot be performed at all.
+    $response = $client->post('/admin/mail-test', ['to' => 'outside' . $suffix . '@example.test']);
+    $t->same(303, $response->status);
+
+    $row = $db->one("SELECT * FROM `email_outbox` WHERE `kind` = 'test'"
+        . ' ORDER BY `id` DESC LIMIT 1');
+    $t->same('outside' . $suffix . '@example.test', $row['to_email']);
+    // The admin's name belongs on their own mail, not on a stranger's.
+    $t->same(null, $row['to_name']);
+});
+
+$t->test('an empty recipient falls back to the admin\'s own address',
+    function ($t) use ($client, $db): void {
+    $response = $client->post('/admin/mail-test', ['to' => '']);
+    $t->same(303, $response->status);
+
+    $row = $db->one("SELECT * FROM `email_outbox` WHERE `kind` = 'test'"
+        . ' ORDER BY `id` DESC LIMIT 1');
+    $t->contains('@', (string) $row['to_email']);
+});
+
+$t->test('a recipient that is not an address queues nothing',
+    function ($t) use ($client, $db): void {
+    $before = (int) $db->value("SELECT COUNT(*) FROM `email_outbox` WHERE `kind` = 'test'", [], 0);
+    $response = $client->post('/admin/mail-test', ['to' => 'not-an-address']);
+    $t->same(303, $response->status);
+
+    $after = (int) $db->value("SELECT COUNT(*) FROM `email_outbox` WHERE `kind` = 'test'", [], 0);
+    $t->same($before, $after, 'nothing was queued');
+    $t->contains('not an email address', $client->follow($response)->body);
+});
+
 $t->test('a duplicate username is refused', function ($t) use ($client, $suffix): void {
     $response = $client->post('/admin/users', [
         'username' => 'carol' . $suffix, 'email' => 'carol2@example.test',

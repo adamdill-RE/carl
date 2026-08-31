@@ -451,33 +451,119 @@ which is the path that has always worked. `/admin/mail-test` and `/status?key=`
 both say which state it is in.
 
 1. **cPanel → Email Accounts → Create.** `carl@reshiftmanager.com`, a strong
-   password, 250 MB quota. Open **Connect Devices** and note the outgoing
-   server, the port, and the username — it is the full address, not the local
-   part.
+   password, 250 MB quota. Open **Connect Devices** and read the outgoing
+   server, the port, and the username — the username is the full address, not
+   the local part.
+
+   **Confirmed 2026-08-31**, and it matches `config/app.php` exactly, so
+   nothing about the host needs configuring:
+
+   | | |
+   | --- | --- |
+   | Outgoing server | `mail.reshiftmanager.com` |
+   | SMTP port | `465` (Secure SSL/TLS — implicit TLS, which is `'tls'` here) |
+   | Username | `carl@reshiftmanager.com` |
+
 2. **cPanel → Email Deliverability → `reshiftmanager.com` → Manage.** Install
-   the suggested SPF record and the suggested DKIM record. If Brevo is adopted
-   later, merge SPF into one record —
-   `v=spf1 +mx +a include:spf.brevo.com ~all` — because a domain with two SPF
-   records has none.
-3. **Zone Editor.** Add TXT `_dmarc.reshiftmanager.com` =
-   `v=DMARC1; p=none; rua=mailto:carl@reshiftmanager.com`. `p=none` first:
-   it reports without rejecting, so a misconfiguration is visible rather than
-   silent.
-4. **File Manager → `carl-app/config/local.php`,** and add the `mail` block.
-   `config/local.php.example` carries it commented out, for both drivers. Set
-   `driver` to `smtp` **or** `api`, never both. Mode stays 0600.
+   the suggested **SPF** and **DKIM** records. If Brevo is adopted later, merge
+   SPF into one record — `v=spf1 +mx +a include:spf.brevo.com ~all` — because a
+   domain with two SPF records has none.
+
+3. **DMARC.** Email Deliverability creates one for you, as bare
+   `v=DMARC1; p=none;`, and reports it VALID. That is enough to satisfy the
+   bulk-sender rules, but on its own it does nothing at all: `p=none` asks
+   receivers not to enforce, and with no `rua=` there is nowhere for them to
+   report to. **Edit it in Zone Editor** — `_dmarc.reshiftmanager.com.` → Edit
+   — to:
+
+   ```
+   v=DMARC1; p=none; rua=mailto:carl@reshiftmanager.com
+   ```
+
+   Then the receivers that matter send a daily XML summary of how your mail
+   authenticated, which is the only way to find out you have a problem before
+   somebody tells you they never got their digest.
+
+4. **File Manager → `carl-app/config/local.php`,** mode 0600. Only the driver
+   choice and the credential go here; the host and port are not secret and
+   live in `config/app.php`, which is why the block is this short:
+
+   ```php
+   'mail' => [
+       'driver' => 'smtp',
+       'smtp' => [
+           'username' => 'carl@reshiftmanager.com',
+           'password' => 'THE-MAILBOX-PASSWORD',
+       ],
+   ],
+   ```
+
+   Keep the trailing comma. `config/local.php.example` carries the same block
+   commented out, and the Brevo one beside it. Set `driver` to `smtp` **or**
+   `api`, never both.
+
 5. **Sign in as an admin → Admin → Mail.** It should now say
    `smtp mail.reshiftmanager.com:465 (tls) as carl@reshiftmanager.com` rather
-   than "no driver". Press **Queue a test**.
+   than "no driver".
+
+   **Put an address outside `reshiftmanager.com` in the "Send the test to"
+   field** — a Gmail account — then **Queue a test**. This is not a detail.
+   The field defaults to the signed-in admin's own address, and on this
+   install that address is `carl@reshiftmanager.com`, on the sending domain.
+   A message from the domain to the domain is handed straight to the local
+   mailbox by the same Exim that accepted it. It never crosses the internet,
+   no receiver ever authenticates it, and step 7 has nothing to read.
 6. The drain sends it within ten minutes. To not wait:
    `/tasks/mail-send?key=<cron_key>`. Reload the Mail page: the message reads
    `sent`, or `failed` with the reason on the row.
+
+   **Confirmed 2026-08-31.** The first send returned:
+
+   ```
+   mail send: driver smtp
+   considered 1, sent 1, failed 0, outcome ok, 0.1 s
+   ```
+
+   That settles the certificate question below — `SmtpMailer` verifies peer
+   and peer name, and it connected to `mail.reshiftmanager.com:465` and sent.
+   AutoSSL covers the `mail.` subdomain; **no `'host'` override is needed.**
+   It settles nothing about deliverability: that send was to
+   `carl@reshiftmanager.com` and stayed on the box, which is what 0.1 s means.
 7. In the received message, **View original** (Gmail) and look for
    `spf=pass` and `dkim=pass`. If either says `fail` or `none`, step 2 or 3 has
-   not propagated yet — DNS takes up to an hour.
+   not propagated yet — DNS takes up to an hour. Note whether it arrived in
+   the inbox or in spam.
 8. **Spike 4** (handoff §6.2) is steps 4 to 7 done once with `driver = smtp`
    and once with `driver = api`, noting which lands in the inbox rather than
    in spam. Record the answer in this file.
+
+### Two things about this host that look like they need configuring, and do not
+
+**The alternate HELO.** Email Deliverability says *"The system uses an
+alternate HELO of `sh193.sameservers.com` when sending mail from the
+reshiftmanager.com domain."* That is Exim's HELO on the hop from this server
+out to Gmail, and it is what has to match the PTR record — which cPanel
+reports VALID. `SmtpMailer` sends `EHLO reshiftmanager.com` on a different
+hop: an authenticated submission to `mail.reshiftmanager.com:465` from the
+same box. Nothing on the internet sees that name, and no receiver checks it.
+Leave both alone.
+
+**`mail.reshiftmanager.com` is a CNAME to the domain.** That is normal cPanel,
+and the certificate is served by SNI for whatever name is asked for. It only
+matters because `SmtpMailer` verifies certificates properly — `verify_peer`
+and `verify_peer_name` are both on. **Measured 2026-08-31: it verifies.** The
+first real send connected and delivered, so AutoSSL does cover the subdomain
+and there is nothing to do here.
+
+Kept only because it is the failure that would be hard to place: if a future
+certificate renewal ever misses the `mail.` subdomain, the outbox row fails
+with `certificate verify failed` or a CN mismatch. The fix is **SSL/TLS Status
+→ tick `mail.reshiftmanager.com` → Run AutoSSL**, or failing that, set
+`'host' => '<the server's own hostname>'` in the `local.php` smtp block, whose
+certificate will match.
+
+**Never turn certificate verification off to get past it.** That connection
+carries the mailbox password on every single send.
 
 ### The key-guarded task routes
 
@@ -523,16 +609,51 @@ openssl rand -hex 24
 Push, then **Deploy HEAD Commit**. There is no build and no restart; the next
 request picks the files up, because there is no OPcache on this host.
 
-If a deploy adds a migration, `/status?key=` will say so and `/setup?key=`
-applies it — which means re-adding `setup_key` for the length of the migration
-and removing it again afterwards. Migrations are immutable once applied: the
-checksum is recorded and a changed file is refused rather than silently re-run.
+### If the deploy added a migration, the site is down until you run it
+
+**Check `/status?key=` immediately after every deploy.** The deploy copies code
+and never touches the database (hosting §6.3), so between the deploy finishing
+and `/setup?key=` running, the code is ahead of the schema and **every page that
+touches a new table returns a 500**. That is not a subtle degradation; the main
+menu is one of those pages.
+
+This bit on the Phase 3 deploy, which added four migrations.
+
+```
+  migrations applied 11
+  migrations pending 4
+    - 012_mail.sql (ddl)
+    ...
+    run them at /carl/setup?key=<setup_key>
+```
+
+To run them:
+
+1. **File Manager → `carl-app/config/local.php`** → add
+   `'setup_key' => '<paste a fresh random string>',`
+   Generate one with `openssl rand -hex 24` anywhere, or use any long random
+   string. Save.
+2. Open `https://www.reshiftmanager.com/carl/setup?key=<that string>`.
+3. Apply the pending migrations from that page.
+4. Reload `/status?key=` — pending should read 0.
+5. **Remove the `setup_key` line from `local.php`.** Whoever holds it can take
+   the master admin account. Paste a *fresh* value next time rather than
+   reusing this one: it has been in a URL, so it is in a browser bar and the
+   account's raw access log.
+
+Signed in as an admin, a 500 caused by this now says so on the page itself
+rather than leaving you guessing. A user gets the generic message; the schema
+is not their business.
+
+Migrations are immutable once applied: the checksum is recorded and a changed
+file is refused rather than silently re-run.
 
 ## When something is wrong
 
 | Symptom | Look at |
 | --- | --- |
 | Every page 500s right after editing config | The bootstrap prints the file and line. A missing trailing comma is the usual cause. |
+| Every page 500s right after a **deploy** | Pending migrations. `/status?key=` names them; see "Redeploying" for how to apply them. Signed in as an admin, the error page says so itself. |
 | A file you can see in File Manager 404s | The directory's mode. 0700 inside the document root produces a 404, not a 403. |
 | `Plugin 'unix_socket' is not loaded` | `db.host` is pointing at `localhost`. It must be the Remote MySQL address. |
 | Weather stopped | `/status?key=` — newest observation, last successful run, last bad status. A 429 is the Open-Meteo per-IP quota, most likely another of your own projects, or another account on sh193 if outbound leaves by the server address (§0.5). Either way it heals on its own. |

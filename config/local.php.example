@@ -38,18 +38,25 @@ return [
     // Set driver to 'smtp' OR 'api', not both. Spike 4 is sending one of
     // each and noting which lands in a Gmail inbox.
     //
+    // Host, port and encryption are NOT secret and already sit in
+    // config/app.php, confirmed against cPanel's own Connect Devices page:
+    // mail.reshiftmanager.com, 465, implicit TLS. Only the driver choice and
+    // the credential belong here.
+    //
     // 'mail' => [
     //     'driver' => 'smtp',
     //     'smtp' => [
-    //         // cPanel: Email Accounts -> Connect Devices prints these.
-    //         // Port 465 is implicit TLS ('tls'); 587 is 'starttls'.
-    //         'host'       => 'mail.reshiftmanager.com',
-    //         'port'       => 465,
-    //         'encryption' => 'tls',
-    //         'username'   => 'carl@reshiftmanager.com',
-    //         'password'   => 'THE-MAILBOX-PASSWORD',
+    //         'username' => 'carl@reshiftmanager.com',
+    //         'password' => 'THE-MAILBOX-PASSWORD',
     //     ],
     // ],
+    //
+    // Not needed: measured 2026-08-31, mail.reshiftmanager.com:465 presents a
+    // certificate that verifies. Only if a future renewal misses the mail.
+    // subdomain and a send fails with a certificate error, add the server's
+    // own hostname, whose certificate will match:
+    //         'host' => 'sh193.sameservers.com',
+    // Never disable verify_peer. That connection carries the password.
     //
     // 'mail' => [
     //     'driver' => 'api',
