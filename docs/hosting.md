@@ -50,7 +50,8 @@ Every fact carries its provenance:
 | Application database | **MySQL 8.0.41** at **152.160.193.196** — a different machine | **Measured** 2026-08-24 (`SELECT VERSION()`) |
 | Document root | `/home/<account>/public_html` | **Measured** 2026-08-23 |
 | PHP error log | `/home/<account>/logs/php.error.log` (`display_errors` off, `log_errors` on) | **Measured** 2026-08-23 |
-| Server timezone | UTC | **Measured** 2026-08-23 |
+| PHP timezone | UTC (`date.timezone`) | **Measured** 2026-08-23, by a PHP script |
+| **OS timezone** | **US Eastern (EDT/EST)** — NOT UTC | **Measured** 2026-08-31, by a cron job running `/bin/date`. This is the one **cron schedules** run in |
 | TLS | `HTTPS=on`, port 443, valid cert on the domain | **Measured** 2026-08-23 |
 | Shared IP | 152.160.208.75 | Reported 2026-08-23 |
 | Account IP | Dedicated to this account, shared only with the owner's own projects | Owner, 2026-08-31. Note the row above is cPanel's *server* shared IP, which it reports regardless; and an account's dedicated IP is inbound — outbound curl may still leave by the server's primary address |
@@ -201,11 +202,13 @@ public directory, removed afterwards.
 
 Server timezone is UTC. **Store and compare in UTC; convert for display only.**
 
-Note that `date.timezone` above is PHP's setting, read by a PHP script, and is
+Note that `date.timezone` is PHP's setting, read by a PHP script, and is
 independent of the operating system's timezone — which is the one **cron**
-schedules run in. The two agree on this host, but nothing in a PHP reading
-establishes that; Carl's `/status` reports the OS setting separately, from
-`/etc/localtime`, for exactly this reason.
+schedules run in. **They do not agree on this host.** PHP is UTC; the OS is US
+Eastern, measured 2026-08-31 by a cron job running `/bin/date`, which printed
+`EDT`. A schedule written as though the box were UTC fires four or five hours
+off. Carl's `/status` reports the OS setting separately, from `/etc/localtime`,
+for exactly this reason.
 Houston observes DST, so anything crossing 02:00 in March must be converted
 with a real timezone (`America/Chicago`), never a fixed offset. Pin the
 *database connection's* time zone too, or `NOW()` defaults record whatever the

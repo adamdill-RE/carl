@@ -15,7 +15,7 @@ which existed only while `diag_key` was configured and has since been closed.
 | --- | --- | --- |
 | 1 | Outbound HTTPS to the five hosts the app talks to | **Pass.** All five HTTP 200. Egress is open; no rescope needed |
 | 2 | PHP CLI binary path for cron | **Pass.** All five candidates exist and are executable |
-| 3 | A real cron execution writing a `weather_sync_run` row | Pending — confirm the morning after §7 |
+| 3 | A real cron execution writing a `weather_sync_run` row | **Pass.** Ran 2026-08-31, 28 rows in 1.0 s. Also revealed the OS timezone — see §0.6 |
 | 4 | SMTP-AUTH send, and one Brevo API send | Phase 3; needs the §12.1 mailbox first |
 | 5 | Upsert timing and RTT to the database host | **Pass.** RTT 0.81 ms; 200 rows 1.9 ms, 2,000 rows 19.9 ms |
 
@@ -77,6 +77,32 @@ to spare rather than by luck.
 Note that 2,000 rows cost 10× the time of 200 rather than being free — the
 cost here is real work, not round trips. Raising the research chunk size would
 buy nothing.
+
+### 0.6 The server clock is US Eastern, not UTC
+
+Measured 2026-08-31 by a cron job running `/bin/date`:
+
+```
+Mon Aug 31 09:27:01 EDT 2026
+```
+
+`hosting.md` recorded "Server timezone UTC" and `date.timezone UTC`. The
+second is right and the first was a PHP reading — PHP cannot see the OS
+setting. **Cron runs in US Eastern.** That is corrected in `hosting.md` §1
+and §4.
+
+The consequence is entirely in the schedule, and it is why §7 says `15 5`
+rather than `15 9`:
+
+| Schedule | Server (Eastern) | Garden (Central) | UTC |
+| --- | --- | --- | --- |
+| `15 9 * * *` | 09:15 | **08:15 — mid-morning** | 13:15 / 14:15 |
+| `15 5 * * *` | 05:15 | **04:15 — before anyone is up** | 09:15 / 10:15 |
+
+Eastern and Central observe DST on the same dates, so the gap between them is
+always exactly one hour. A fixed server-local hour therefore holds its
+gardener-local time all year, and only drifts against UTC — which nothing
+cares about.
 
 ### 0.5 The Open-Meteo quota — whose traffic shares it
 
@@ -244,28 +270,27 @@ plant catalog and the plant forms have nothing to offer.
 
 | Minute | Hour | Day | Month | Weekday |
 | --- | --- | --- | --- | --- |
-| `15` | `9` | `*` | `*` | `*` |
+| `15` | `5` | `*` | `*` | `*` |
 
-Cron runs in the **operating system's** timezone. That is a different setting
-from PHP's `date.timezone`, and hosting §1 and §4 both record UTC without
-distinguishing them — §4's reading came from a PHP script, which cannot see
-the OS setting at all.
+**Hour 5, not 9.** Cron runs in the operating system's timezone, and this
+server is **US Eastern** — measured, not assumed (§0.6). PHP's `date.timezone`
+is UTC and says nothing about it.
 
-`/status?key=` reports both, so check it rather than assuming:
+So `15 5 * * *` fires at 05:15 Eastern = **04:15 Central**, before anyone is
+up. Written as `15 9` it would fire at 08:15 Central, mid-morning, and a
+gardener checking at six would find yesterday missing with nothing reporting a
+fault.
+
+Eastern and Central shift on the same DST dates, so that holds all year; only
+the UTC time drifts, and nothing cares about that.
+
+`/status?key=` reports the setting so you never have to remember it:
 
 ```
   php timezone       UTC (date.timezone; app pins UTC in code regardless)
-  system timezone    Etc/UTC (from /etc/localtime)
-  cron clock now     2026-08-31 13:16:55 UTC  <- cron schedules run in THIS
+  system timezone    America/New_York (from /etc/localtime)
+  cron clock now     2026-08-31 09:27:01 EDT  <- cron schedules run in THIS
 ```
-
-**If `system timezone` is UTC**, `15 9 * * *` fires at 09:15 UTC — 4:15 am
-Central in summer, 3:15 am in winter. Late enough that yesterday has settled
-at the provider, early enough to be waiting before anyone opens the app.
-
-**If it is `America/Chicago`**, that same line fires at 9:15 in the morning
-local, which is five hours later than intended: a gardener checking at six
-would find yesterday missing. Use `15 4 * * *` instead.
 
 ### Settling it before that build is deployed
 
@@ -285,14 +310,14 @@ Schedule it a few minutes out, then read `carl-app/var/cron-test.log` in File
 Manager:
 
 ```
-Mon Sep  1 09:20:01 UTC 2026
-weather_sync archive+forecast: 1 locations, 28 rows, 0 failures, 2.1 s
-  archive 2026-08-18..2026-08-31: 14 rows in 460 ms
-  forecast: 14 rows in 465 ms
+Mon Aug 31 09:27:01 EDT 2026
+weather_sync archive+forecast: 1 locations, 28 rows, 0 failures, 1.0 s
+  archive 2026-08-17..2026-08-30: 14 rows in 515 ms
+  forecast: 14 rows in 483 ms
 ```
 
-`UTC` on that first line settles the schedule; `CDT` or `CST` would mean use
-`15 4 * * *` instead. The rest closes spike 3 in the same run — it proves cron
+The abbreviation on that first line settles the schedule — it came back `EDT`
+(§0.6), which is why §7 uses hour 5. The rest closes spike 3 in the same run — it proves cron
 fired, `ea-php82` ran, the bootstrap loaded, `local.php` parsed, the database
 connected and rows landed.
 
@@ -401,8 +426,9 @@ checksum is recorded and a changed file is refused rather than silently re-run.
 
 ## Still open for the owner
 
-1. Confirm spike 3 — a real cron execution — the morning after §7. The other
-   four are done and recorded in §0.
+1. Settle spike 0.5 — which IP Open-Meteo sees — whenever convenient. One
+   line of curl; nothing depends on the answer. Spikes 1, 2, 3 and 5 are done
+   and recorded in §0.
 2. The §12.1 mailbox and DNS steps, before any Phase 3 email work. That is
    also spike 4.
 3. Ask Ahosting whether `ea-php82-php-opcache` can be enabled. If it is,
