@@ -12,6 +12,7 @@
  * @var list<array<string,mixed>> $recent
  * @var array<string,mixed>|null $lastRun
  * @var string $fromEmail @var string $toEmail
+ * @var string $localConfigPath
  */
 $e = $view->e(...);
 $pageTitle = 'Mail';
@@ -33,16 +34,23 @@ $pageTitle = 'Mail';
   <div class="notice notice-info gap-md">
     <p class="flush"><strong>No driver yet, and that is the expected state.</strong></p>
     <p class="small">
-      Messages are still queued and nothing is lost. The moment
-      <code>config/local.php</code> carries SMTP credentials or a Brevo key,
-      the backlog goes out on the next drain. Until then the temporary
-      password for a new account is shown on screen, which is the path that
-      has always worked.
+      Messages are still queued and nothing is lost. The moment the file below
+      carries SMTP credentials or a Brevo key, the backlog goes out on the next
+      drain. Until then the temporary password for a new account is shown on
+      screen, which is the path that has always worked.
     </p>
     <p class="small">
-      The steps are handoff &sect;12.1: create <code>carl@reshiftmanager.com</code>
-      in cPanel Email Accounts, install SPF and DKIM under Email Deliverability,
-      add the DMARC TXT record, then put the values in <code>config/local.php</code>.
+      This is the one file that decides it, and it is the only one &mdash; the
+      git checkout has a <code>config/</code> directory of its own that the
+      running application never reads:
+    </p>
+    <p class="small"><code><?= $e($localConfigPath) ?></code></p>
+    <p class="small">
+      The steps are handoff &sect;12.1, written out in <code>docs/deploy.md</code>
+      &sect;7.5: create <code>carl@reshiftmanager.com</code> in cPanel Email
+      Accounts, install SPF and DKIM under Email Deliverability, edit the DMARC
+      TXT record in Zone Editor, then add the <code>mail</code> block to that
+      file.
     </p>
   </div>
 <?php endif; ?>

@@ -243,6 +243,10 @@ final class AdminController extends Controller
             'lastRun'     => $outbox->lastRun(),
             'fromEmail'   => $this->app->config()->string('mail.from_email'),
             'toEmail'     => $this->user()->email,
+            // Named in full because there are two config/ directories on this
+            // account -- the git checkout's and the deployed application's --
+            // and only one of them is ever read (hosting Section 6.4).
+            'localConfigPath' => $this->app->root() . '/config/local.php',
         ];
     }
 
