@@ -43,6 +43,13 @@ $pageTitle = $pageTitle ?? null;
   <p class="notice notice-<?= $e($flash['kind']) ?>"><?= $e($flash['message']) ?></p>
 <?php endif; ?>
 
+<?php /* A running tagging session is visible on EVERY page, not just the tag
+       screens (docs/QR-TAGS-SPEC.md Section 6.5). The partial reads it off the
+       user row Auth has already loaded, so this costs no statement. */ ?>
+<?= $view->partial('partials/tagging_strip', [
+    'session' => $session ?? null, 'user' => $user, 'csrf' => $csrf ?? '',
+]) ?>
+
 <?= $content ?>
 
   <footer class="foot">

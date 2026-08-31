@@ -20,6 +20,7 @@ use Carl\Controller\ReportController;
 use Carl\Controller\CompanionController;
 use Carl\Controller\SuccessionController;
 use Carl\Controller\SystemController;
+use Carl\Controller\TagController;
 
 /**
  * The whole route table, in one file.
@@ -187,6 +188,49 @@ final class Routes
         $r->get('/advice', AdviceController::class, 'index');
         $r->post('/advice', AdviceController::class, 'ask');
         $r->post('/advice/{id:\d+}/retry', AdviceController::class, 'retry');
+
+        // -- QR plant tags (docs/QR-TAGS-SPEC.md) ---------------------------
+        //
+        // THE SCAN IS Route::USER_ACCESS, not PUBLIC and not TOKEN. A tag on a
+        // stake in a front garden is readable by anyone walking past and
+        // photographable from the pavement, so a bearer token there would let
+        // a stranger read the owner's whole garden history or log a harvest
+        // that never happened (Section 6.1). It costs the gardener nothing:
+        // the 30-day rotating CARLAUTH cookie means their own phone is signed
+        // in essentially always, and a signed-out scan is not lost either --
+        // App::guard() stores the path and AuthController returns to it, which
+        // is the `?next=` the spec asked for, already built and with no
+        // open-redirect surface because the value never leaves the session.
+        //
+        // BOTH CASES OF THE `t` SEGMENT are registered. The code itself is
+        // matched [0-9A-Za-z]+ and upper-cased in the controller, so only the
+        // literal needs two entries. A brace quantifier cannot be used for the
+        // length -- the router reads a constraint as everything up to the
+        // first '}' -- which is the same trap the unsubscribe route documents;
+        // TagRepository::isWellFormed() enforces the six characters.
+        $r->get('/t/{code:[0-9A-Za-z]+}', TagController::class, 'scan');
+        $r->get('/T/{code:[0-9A-Za-z]+}', TagController::class, 'scan');
+        $r->post('/t/{code:[0-9A-Za-z]+}/log', TagController::class, 'log');
+        $r->post('/t/{code:[0-9A-Za-z]+}/bind', TagController::class, 'bind');
+        $r->post('/t/{code:[0-9A-Za-z]+}/undo', TagController::class, 'undo');
+        $r->post('/t/{code:[0-9A-Za-z]+}/release', TagController::class, 'release');
+
+        // The pool and the printing. Literal paths before the {id} ones: the
+        // router returns the FIRST route whose regex matches, so a pattern
+        // that could swallow a literal has to come after it.
+        $r->get('/tags', TagController::class, 'index');
+        $r->get('/tags/print', TagController::class, 'printForm');
+        $r->get('/tags/labels.pdf', TagController::class, 'labelsPdf');
+        $r->post('/tags/find', TagController::class, 'find');
+        $r->post('/tags/session', TagController::class, 'session');
+        // The mint is a POST because it writes; the render is a GET because a
+        // paper jam must not cost you thirty codes (Section 5.4).
+        $r->post('/tags/batches', TagController::class, 'mint');
+        $r->get('/tags/batches/{id:\d+}.pdf', TagController::class, 'batchPdf');
+        $r->get('/tags/batches/{id:\d+}/registration.pdf',
+            TagController::class, 'registrationPdf');
+        $r->post('/tags/batches/{id:\d+}/retire', TagController::class, 'retire');
+        $r->get('/tags/batches/{id:\d+}', TagController::class, 'batch');
 
         // -- Photos (never a direct URL -- handoff Section 5.3) -------------
         $r->post('/photos', PhotoController::class, 'upload');

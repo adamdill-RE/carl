@@ -26,6 +26,16 @@ final class User
         public readonly ?string $timezone,
         public readonly ?int $weatherLocationId,
         public readonly bool $emailDigestEnabled,
+        /** Which label stock this user prints tags on (QR-TAGS-SPEC 5.3). */
+        public readonly string $labelStock,
+        /**
+         * When the current tagging session started, or null (QR-TAGS-SPEC 6.5).
+         *
+         * It rides along on the user row that Auth::user() already selects on
+         * every request, which is the whole reason a tagging session costs no
+         * statement and the three-statement scan budget survives it.
+         */
+        public readonly ?string $taggingStartedAt,
         public readonly ?string $onboardedAt,
         public readonly string $onboardingStep,
     ) {
@@ -49,6 +59,8 @@ final class User
             $row['timezone'] === null ? null : (string) $row['timezone'],
             $row['weather_location_id'] === null ? null : (int) $row['weather_location_id'],
             (bool) $row['email_digest_enabled'],
+            (string) ($row['label_stock'] ?? \Carl\Domain\LabelStock::FALLBACK),
+            ($row['tagging_started_at'] ?? null) === null ? null : (string) $row['tagging_started_at'],
             $row['onboarded_at'] === null ? null : (string) $row['onboarded_at'],
             (string) ($row['onboarding_step'] ?? 'profile'),
         );

@@ -14,7 +14,7 @@
  * @var array<int,list<array{family:string,last_date:string,plantings:int}>> $rotation
  * @var int $rotationYears
  * @var array<string,list<array<string,mixed>>> $lists
- * @var string $today @var int|null $indoorGardenId
+ * @var string $today @var int|null $indoorGardenId @var string $tag
  * @var list<string> $errors @var array<string,mixed> $old
  */
 $e = $view->e(...);
@@ -40,9 +40,18 @@ foreach ($plantTypes as $type) {
   </div>
 <?php endif; ?>
 
+<?php if (($tag ?? '') !== ''): ?>
+<div class="notice notice-info">
+  Tag <strong class="mono"><?= $e($tag) ?></strong> goes on this plant when you save it.
+</div>
+<?php endif; ?>
+
 <form method="post" action="<?= $e($app->url('plants')) ?>" class="card"
       data-research-url="<?= $e($app->url('research/')) ?>">
   <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+<?php if (($tag ?? '') !== ''): ?>
+  <input type="hidden" name="tag" value="<?= $e($tag) ?>">
+<?php endif; ?>
   <input type="hidden" name="start_method" value="<?= $e($kind) ?>">
 
   <div class="field">

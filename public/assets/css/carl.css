@@ -67,7 +67,7 @@ body {
 .menu { display: grid; gap: 10px; grid-template-columns: 1fr; }
 @media (min-width: 520px) { .menu { grid-template-columns: 1fr 1fr; } }
 
-.menu a {
+.menu a, .menu .menu-action {
   display: flex; align-items: center; gap: 10px;
   min-height: var(--carl-touch);
   padding: 14px;
@@ -77,8 +77,14 @@ body {
   color: var(--carl-text); text-decoration: none; font-weight: 600;
   box-shadow: var(--carl-shadow);
 }
-.menu a:active { background: var(--carl-surface-sunk); }
-.menu a .hint { display: block; font-weight: 400; font-size: 12px; color: var(--carl-text-muted); }
+.menu a:active, .menu .menu-action:active { background: var(--carl-surface-sunk); }
+.menu a .hint, .menu .menu-action .hint {
+  display: block; font-weight: 400; font-size: 12px; color: var(--carl-text-muted);
+}
+.menu .menu-action {
+  width: 100%; text-align: left; font: inherit; font-weight: 600; cursor: pointer;
+  flex-direction: column; align-items: flex-start; gap: 2px;
+}
 
 /* ---------- Forms ---------- */
 
@@ -369,3 +375,32 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
   body { background: #fff; }
   .card { border: none; box-shadow: none; padding: 0; }
 }
+
+/* ---------- QR plant tags (docs/QR-TAGS-SPEC.md) ---------- */
+
+/*
+ * The symbol's own colours are NOT here and must not be: they are
+ * --carl-qr-ink and --carl-qr-paper in tokens.css, marked contrast-critical
+ * and un-themeable, because a QR code has to be near-black on near-white to
+ * scan. Everything below is layout.
+ */
+
+.qr { display: block; height: auto; max-width: 100%; }
+
+.qr-panel { display: flex; gap: var(--carl-gap); align-items: flex-start; flex-wrap: wrap; }
+.qr-holder { flex: 0 0 auto; line-height: 0; }
+.qr-code { font-family: var(--carl-font-mono); font-size: 22px; letter-spacing: .12em; margin: 0 0 4px; }
+
+.mono { font-family: var(--carl-font-mono); }
+.break { overflow-wrap: anywhere; }
+
+/*
+ * The field screen's action row. One hand, sunlight, mud: the targets are
+ * deliberately larger than --carl-touch, they wrap rather than scroll, and
+ * they are all the same size so none is the accidental default.
+ */
+.tag-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (min-width: 520px) { .tag-actions { grid-template-columns: repeat(3, 1fr); } }
+.tag-action { min-height: 56px; font-size: 16px; }
+
+.tagging-strip { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }

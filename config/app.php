@@ -71,6 +71,39 @@ return [
         'jpeg_quality'   => 85,
     ],
 
+    // --- QR plant tags (docs/QR-TAGS-SPEC.md) ---------------------------
+    'tags' => [
+        // The absolute origin a printed tag points at. It has to be absolute:
+        // a QR code is read by a camera app that has no page to be relative
+        // to. The path is still built from base_path through $app->url(), so
+        // hosting Section 5.2 is untouched -- this is the scheme and host and
+        // nothing else.
+        //
+        // Three other places still spell this out inline (AdminController's
+        // invitation link and two in Reminders\Digest). They predate this key
+        // and are left alone deliberately -- changing what a live mail path
+        // builds is not a change to make alongside a new feature -- but they
+        // should move here.
+        'origin' => 'https://www.reshiftmanager.com',
+
+        // Upper-case the whole tag URL, which buys alphanumeric encoding: a
+        // version 3 symbol instead of version 4, and 0.649 mm modules instead
+        // of 0.585 on the same tag (docs/QR-TAGS-SPEC.md Section 2.2).
+        //
+        // NULL MEANS "ONLY IF IT IS SAFE", and it is the right setting. The
+        // mount point is a real directory -- public_html/carl -- and Apache
+        // maps URL paths onto filesystem paths case-sensitively, so
+        // /CARL/T/AB7K4M is a web-server 404 that never reaches PHP. Carl
+        // therefore upper-cases only when base_path is the domain root, where
+        // there is no directory segment to get wrong.
+        //
+        // Set it to true ONLY after opening the upper-case URL in a browser
+        // and seeing a page (deploy.md has the check). The print screen shows
+        // which encoding is in force either way, so this is never silent, and
+        // Carl\Qr\TagUrl's docblock is the whole argument.
+        'uppercase_url' => null,
+    ],
+
     // --- Research import (handoff Section 9.3) --------------------------
     'research' => [
         'template_version'    => 1,
