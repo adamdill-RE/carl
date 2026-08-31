@@ -12,16 +12,21 @@ use Carl\Support\Clock;
 use Carl\Weather\AlertPoller;
 
 /**
- * The eleven reminder kinds of handoff Section 12, computed for a batch of
+ * The thirteen reminder kinds of handoff Section 12, computed for a batch of
  * users at once.
  *
  * **Set-based, not per user.** This is the first job that loops over users,
  * and hosting Section 9's arithmetic is real: the database is on separate
  * hardware and every statement costs a 0.81 ms round trip, so a hundred users
  * at eight statements each is most of a second spent on nothing but latency
- * (Phase 3 handoff Sections 1.4 and 4.4). Seven statements fetch everything
- * for the whole batch; the rules themselves are then arithmetic in PHP, which
- * costs nothing.
+ * (Phase 3 handoff Sections 1.4 and 4.4). Ten statements fetch everything for
+ * the whole batch -- nine always, and a tenth only where the research carries
+ * a GDD threshold to accumulate towards. The rules themselves are then
+ * arithmetic in PHP, which costs nothing.
+ *
+ * The count is per RUN, not per user, and that is the property worth
+ * guarding: every one of these reads the whole batch at once, so the
+ * hundredth user costs no statement at all.
  *
  * **Silence is the default.** A kind that has nothing to say says nothing. An
  * empty digest trains people to ignore a full one.
@@ -33,6 +38,12 @@ final class ReminderBuilder
 
     /** Forecast Tmax at or above this is a heat day (handoff Section 11). */
     private const HEAT_C = 35.0;
+
+    /** How stale a GDD crossing may be and still be worth saying. */
+    private const GDD_LOOKBACK_DAYS = 14;
+
+    /** The biofix a pest row falls back to when the dataset leaves it empty. */
+    private const GDD_DEFAULT_BIOFIX = '01-01';
 
     public function __construct(private Database $db)
     {
@@ -72,6 +83,7 @@ final class ReminderBuilder
                 $this->frostWatch($userId, $today, $user, $data),
                 $this->heatWatch($userId, $today, $user, $data),
                 $this->pestScouting($userId, $today, $user, $data),
+                $this->pestGdd($userId, $today, $user, $data),
                 $this->watering($userId, $today, $data),
                 $this->inactivity($userId, $today, $data),
                 $this->researchDiff($userId, $today, $user, $data),
@@ -94,7 +106,7 @@ final class ReminderBuilder
     }
 
     /**
-     * Everything every rule needs, in seven statements for the whole batch.
+     * Everything every rule needs, in ten statements for the whole batch.
      *
      * The region ids and weather location ids are read off the user rows the
      * caller already has rather than asked for again: two more statements
@@ -196,7 +208,8 @@ final class ReminderBuilder
         }
 
         $forecast = $this->db->all(
-            'SELECT `location_id`, `forecast_date`, `temp_max_c`, `precip_prob_pct`, `precip_mm`'
+            'SELECT `location_id`, `forecast_date`, `temp_max_c`, `temp_min_c`,'
+            . ' `precip_prob_pct`, `precip_mm`'
             . ' FROM `weather_forecast` WHERE `location_id` ' . $locationIn,
             $locationParams
         );
@@ -236,14 +249,76 @@ final class ReminderBuilder
         $existingParams = $params;
         $existing = $this->db->all(
             'SELECT `user_id`, `subject_key`, `kind`, MAX(`created_at`) AS last_created'
-            . ' FROM `reminder` WHERE `user_id` ' . $in . ' AND `kind` IN (:diff, :idle)'
+            . ' FROM `reminder` WHERE `user_id` ' . $in
+            . ' AND `kind` IN (:diff, :idle, :gdd, :succ)'
             . ' GROUP BY `user_id`, `subject_key`, `kind`',
-            $existingParams + ['diff' => ReminderKind::RESEARCH_DIFF, 'idle' => ReminderKind::INACTIVITY]
+            $existingParams + [
+                'diff' => ReminderKind::RESEARCH_DIFF,
+                'idle' => ReminderKind::INACTIVITY,
+                // Both of Phase 6's kinds are said once per season, and the
+                // unique index carries due_date -- so the same subject_key
+                // would insert again tomorrow without this.
+                'gdd'  => ReminderKind::PEST_GDD,
+                'succ' => ReminderKind::SUCCESSION,
+            ]
         );
         $alreadySaid = [];
         foreach ($existing as $row) {
             $alreadySaid[(int) $row['user_id']][(string) $row['kind']][(string) $row['subject_key']]
                 = (string) $row['last_created'];
+        }
+
+        // 10. Daily temperatures, for the GDD pest thresholds -- and ONLY
+        //     when a pest row in one of these regions actually carries one.
+        //     An install whose research has no GDD data pays nothing for
+        //     this feature, which is the same bargain every other rule
+        //     makes: a kind with nothing to say costs nothing to ask.
+        //
+        //     weather.md Section 7.1 gives this as a SQL window function and
+        //     is right that GDD must not be stored -- but it assumes ONE base
+        //     temperature. Here the base comes from the dataset and differs
+        //     per pest, so the window-function form would be one statement
+        //     per distinct base. Reading the raw daily pair once and
+        //     accumulating in PHP serves every base from the same rows, which
+        //     is the same trade the rest of this class makes: statements are
+        //     0.81 ms each (hosting Section 9), arithmetic is free.
+        $dailyByLocation = [];
+        $hasGddPest = false;
+        foreach ($pests as $pest) {
+            if ($pest['gdd_threshold'] !== null && $pest['gdd_base_f'] !== null) {
+                $hasGddPest = true;
+                break;
+            }
+        }
+
+        if ($hasGddPest && $locationIds !== [] && $todayByUser !== []) {
+            $minToday = \min($todayByUser);
+            $maxToday = \max($todayByUser);
+
+            $from = null;
+            foreach ($pests as $pest) {
+                if ($pest['gdd_threshold'] === null || $pest['gdd_base_f'] === null) {
+                    continue;
+                }
+                $start = self::previousOccurrence($minToday, self::biofixOf($pest));
+                if ($start !== null && ($from === null || $start < $from)) {
+                    $from = $start;
+                }
+            }
+
+            if ($from !== null) {
+                $dailyParams = $locationParams;
+                $daily = $this->db->all(
+                    'SELECT `location_id`, `obs_date`, `temp_max_c`, `temp_min_c`'
+                    . ' FROM `weather_daily` WHERE `location_id` ' . $locationIn
+                    . ' AND `obs_date` BETWEEN :from AND :to'
+                    . ' ORDER BY `location_id`, `obs_date`',
+                    $dailyParams + ['from' => $from, 'to' => $maxToday]
+                );
+                foreach ($daily as $day) {
+                    $dailyByLocation[(int) $day['location_id']][(string) $day['obs_date']] = $day;
+                }
+            }
         }
 
         return [
@@ -258,10 +333,11 @@ final class ReminderBuilder
             'lastActivity' => $lastActivity,
             'alreadySaid'  => $alreadySaid,
             'todayByUser'  => $todayByUser,
+            'daily'        => $dailyByLocation,
         ];
     }
 
-    // -- The eleven kinds ---------------------------------------------------
+    // -- The thirteen kinds -------------------------------------------------
 
     /**
      * hardening_countdown: started + duration - today, daily while > 0, and
@@ -598,17 +674,7 @@ final class ReminderBuilder
                 continue;
             }
 
-            // Semicolon, not comma: the research template's multi-valued
-            // cells are semicolon-separated so a category can contain a
-            // comma (research-template/README.md), and ReferenceRepository
-            // already splits them that way. Splitting on a comma here would
-            // match nothing and the pest reminder would never fire.
-            $affects = \array_filter(\array_map(
-                static fn (string $c): string => \strtolower(\trim($c)),
-                \explode(';', (string) ($pest['affects_categories'] ?? ''))
-            ));
-
-            if ($affects !== [] && \array_intersect($affects, \array_keys($grown)) === []) {
+            if (!self::affects($pest, $grown)) {
                 continue;
             }
 
@@ -625,6 +691,110 @@ final class ReminderBuilder
                     . ($pest['active_end'] !== null ? ' to ' . $pest['active_end'] : '') . '.',
             ];
         }
+        return $out;
+    }
+
+    /**
+     * pest_gdd: a pest whose accumulated heat has reached, or is forecast to
+     * reach, the threshold the research gives for it.
+     *
+     * The calendar rule above says "spider mites turn up in July". This one
+     * says "the heat your garden actually had says the moths are flying this
+     * week", which is a different and much better question -- a cool spring
+     * moves emergence by a fortnight and the calendar never notices.
+     *
+     * Said once per pest per season, and only to somebody growing something
+     * it eats.
+     *
+     * @param array<string,mixed> $user
+     * @param array<string,mixed> $data
+     * @return list<array<string,mixed>>
+     */
+    private function pestGdd(int $userId, string $today, array $user, array $data): array
+    {
+        $regionId = (int) ($user['region_id'] ?? 0);
+        $locationId = (int) ($user['weather_location_id'] ?? 0);
+        if ($regionId === 0 || $locationId === 0) {
+            return [];
+        }
+
+        $observed = $data['daily'][$locationId] ?? [];
+        if ($observed === []) {
+            return [];
+        }
+        $forecast = $data['forecast'][$locationId] ?? [];
+
+        $grown = [];
+        foreach ($data['plantings'][$userId] ?? [] as $planting) {
+            $grown[\strtolower((string) $planting['category'])] = true;
+        }
+        if ($grown === []) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($data['pests'][$regionId] ?? [] as $pest) {
+            if ($pest['gdd_threshold'] === null || $pest['gdd_base_f'] === null) {
+                continue;   // this pest is on the calendar rule, not this one
+            }
+            if (!self::affects($pest, $grown)) {
+                continue;
+            }
+
+            $biofix = self::biofixOf($pest);
+            $seasonStart = self::previousOccurrence($today, $biofix);
+            if ($seasonStart === null) {
+                continue;
+            }
+
+            $subject = 'gdd:' . (int) $pest['pest_id'] . ':' . \substr($seasonStart, 0, 4);
+            if (isset($data['alreadySaid'][$userId][ReminderKind::PEST_GDD][$subject])) {
+                continue;
+            }
+
+            $crossing = self::gddCrossing(
+                $observed, $forecast, $seasonStart, $today,
+                (float) $pest['gdd_base_f'], (float) $pest['gdd_threshold']
+            );
+            if ($crossing === null) {
+                continue;
+            }
+
+            // Timely, or not at all. Without the lower bound, an account
+            // created in July would be told about every threshold the spring
+            // already passed, all on the same morning.
+            $away = Clock::daysBetween($today, $crossing['date']);
+            if ($away === null || $away < -self::GDD_LOOKBACK_DAYS) {
+                continue;
+            }
+
+            $when = $away > 0
+                ? 'The forecast reaches it in about ' . $away
+                    . ' day' . ($away === 1 ? '' : 's') . '.'
+                : ($away === 0
+                    ? 'It reached that today.'
+                    : 'It passed that ' . (-$away) . ' day' . ($away === -1 ? '' : 's') . ' ago.');
+
+            $out[] = [
+                'planting_id' => null,
+                'subject_key' => $subject,
+                'kind'        => ReminderKind::PEST_GDD,
+                'due_date'    => $today,
+                'title'       => $away > 0
+                    ? $pest['name'] . ' is about due, by the heat so far'
+                    : $pest['name'] . ' is due now, by the heat so far',
+                'body'        => ((string) ($pest['signs'] ?? '') !== ''
+                        ? 'What to look for: ' . $pest['signs'] . ' '
+                        : '')
+                    . 'Your area has had ' . \number_format($crossing['accumulated'])
+                    . ' growing degree days above ' . \rtrim(\rtrim(
+                        \number_format((float) $pest['gdd_base_f'], 1), '0'), '.')
+                    . ' F since ' . $seasonStart . ', and this pest is reckoned to appear at '
+                    . \number_format((float) $pest['gdd_threshold']) . '. ' . $when
+                    . ' Said once this season.',
+            ];
+        }
+
         return $out;
     }
 
@@ -818,6 +988,131 @@ final class ReminderBuilder
             return $thisYear;
         }
         return Clock::recurringOn((string) $monthDay, $year + 1);
+    }
+
+    /**
+     * Does this pest row touch anything the user grows?
+     *
+     * Semicolon, not comma: the research template's multi-valued cells are
+     * semicolon-separated so a category can contain a comma
+     * (research-template/README.md), and ReferenceRepository already splits
+     * them that way. Splitting on a comma here would match nothing and the
+     * pest reminders would never fire. An empty cell means "all".
+     *
+     * @param array<string,mixed> $pest
+     * @param array<string,bool> $grown lower-cased category names as keys
+     */
+    private static function affects(array $pest, array $grown): bool
+    {
+        $affects = \array_filter(\array_map(
+            static fn (string $c): string => \strtolower(\trim($c)),
+            \explode(';', (string) ($pest['affects_categories'] ?? ''))
+        ));
+        return $affects === [] || \array_intersect($affects, \array_keys($grown)) !== [];
+    }
+
+    /** @param array<string,mixed> $pest */
+    private static function biofixOf(array $pest): string
+    {
+        $biofix = $pest['gdd_biofix'] ?? null;
+        return Clock::isMonthDay(\is_string($biofix) ? $biofix : null)
+            ? (string) $biofix
+            : self::GDD_DEFAULT_BIOFIX;
+    }
+
+    /**
+     * The most recent occurrence of a recurring MM-DD on or before today.
+     *
+     * The mirror of nextOccurrence(), and needed for the same reason: a
+     * biofix of "03-01" read in February belongs to LAST year's accumulation,
+     * not this one, and subtracting would silently start the count nine
+     * months early.
+     */
+    public static function previousOccurrence(string $today, ?string $monthDay): ?string
+    {
+        if (!Clock::isMonthDay($monthDay)) {
+            return null;
+        }
+        $year = (int) \substr($today, 0, 4);
+        $thisYear = Clock::recurringOn((string) $monthDay, $year);
+        if ($thisYear !== null && $thisYear <= $today) {
+            return $thisYear;
+        }
+        return Clock::recurringOn((string) $monthDay, $year - 1);
+    }
+
+    /**
+     * The first date a degree-day accumulation reaches a threshold, walking
+     * the observed record and then the forecast.
+     *
+     * **The arithmetic is in Fahrenheit, and that is not a style choice.**
+     * `weather_daily` stores Celsius, because weather.md Section 6.3 says
+     * weather is stored SI. `gdd_base_f` and `gdd_threshold` come from the
+     * research dataset, which is in Fahrenheit because that is what the
+     * extension publications print (research-template README, "Units").
+     * Accumulating Celsius degree-days against a Fahrenheit threshold gives a
+     * number 1.8 times too small, which is not obviously wrong on the page --
+     * it just fires the reminder six weeks late, every year, and nothing ever
+     * says why.
+     *
+     * A day missing either half of the pair is skipped rather than guessed.
+     *
+     * @param array<string,array<string,mixed>> $observed by obs_date
+     * @param array<string,array<string,mixed>> $forecast by forecast_date
+     * @return array{date:string,accumulated:float}|null
+     */
+    private static function gddCrossing(
+        array $observed,
+        array $forecast,
+        string $from,
+        string $today,
+        float $baseF,
+        float $threshold,
+    ): ?array {
+        if ($threshold <= 0) {
+            return null;
+        }
+
+        $days = [];
+        foreach ($observed as $date => $row) {
+            if ($date >= $from && $date <= $today) {
+                $days[$date] = [$row['temp_max_c'], $row['temp_min_c']];
+            }
+        }
+        // The forecast extends the walk past today so the reminder can arrive
+        // before the moths do. Observed wins on any date they share: a
+        // forecast for a day that has already happened is a stale guess about
+        // a fact the archive has.
+        foreach ($forecast as $date => $row) {
+            if ($date > $today && !isset($days[$date])) {
+                $days[$date] = [$row['temp_max_c'], $row['temp_min_c']];
+            }
+        }
+        if ($days === []) {
+            return null;
+        }
+        \ksort($days);
+
+        $accumulated = 0.0;
+        $throughToday = 0.0;
+        $crossed = null;
+        foreach ($days as $date => [$maxC, $minC]) {
+            if ($maxC !== null && $minC !== null) {
+                $meanF = ((float) $maxC + (float) $minC) / 2 * 9 / 5 + 32;
+                $accumulated += \max(0.0, $meanF - $baseF);
+            }
+            if ($date <= $today) {
+                $throughToday = $accumulated;
+            }
+            if ($crossed === null && $accumulated >= $threshold) {
+                $crossed = (string) $date;
+            }
+        }
+
+        // The number reported is what the garden has actually had, not what
+        // the forecast hopes for: "you have had 1,040" is a fact, and a
+        // projection dressed as one is how a reader stops trusting the rest.
+        return $crossed === null ? null : ['date' => $crossed, 'accumulated' => $throughToday];
     }
 
     /**
