@@ -25,6 +25,15 @@ final class ImportResult
     /** @var list<string> */
     public array $regionKeys = [];
 
+    /**
+     * Which template version the zip declared.
+     *
+     * Kept because more than one is readable from Phase 6 on, and the
+     * preview should be able to say which one it read rather than leaving an
+     * admin to guess why a file they expected was skipped.
+     */
+    public int $templateVersion = 0;
+
     public string $datasetVersion = '';
     public string $sha256 = '';
     public string $filename = '';

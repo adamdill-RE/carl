@@ -731,6 +731,7 @@ $t->test('every GET route a user can reach returns 200',
         '/research/{id:\d+}'              => (string) $plantTypeId,
         '/api/plant/{id:\d+}/series'      => (string) $plantIds['sow'],
         '/api/garden/{id:\d+}/series'     => (string) $garden['id'],
+        '/reports/garden/{id:\d+}/field-sheet.pdf' => (string) $garden['id'],
     ];
 
     $listTypes = \array_merge(ListType::all(), ['containers', 'hardening']);

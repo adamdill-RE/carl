@@ -1,0 +1,66 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 794,
+      "h": 1056,
+      "title": "Field sheet — blank",
+      "print": "fixed"
+    },
+    {
+      "file": "GardenActions.dc.html",
+      "x": 894,
+      "y": 0,
+      "w": 794,
+      "h": 1056,
+      "title": "Garden actions — blank",
+      "print": "fixed"
+    },
+    {
+      "file": "Prefilled.dc.html",
+      "x": 1788,
+      "y": 0,
+      "w": 794,
+      "h": 1056,
+      "title": "Field sheet — prefilled per garden",
+      "print": "fixed"
+    },
+    {
+      "file": "AltLedger.dc.html",
+      "x": 2682,
+      "y": 0,
+      "w": 794,
+      "h": 1056,
+      "title": "Alternate — ledger",
+      "print": "fixed"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": 0,
+      "y": -190,
+      "w": 500,
+      "text": "Field-recording sheet — handoff §13.4.\n\nSized 794×1056: the A4/Letter intersection at 96 px/in, so one sheet prints correctly on either without shrink-to-fit.\n\nHelvetica throughout, because the prefilled version is built by FPDF and FPDF has no other face — designing in a webfont would make the design and the shipped PDF disagree.\n\nPure black on white, and no grey: a dotted or 60%-grey rule is a sub-pixel mark that a 600 dpi mono engine halftones into a broken line or drops. The row heading band is a solid black bar with knocked-out text for the same reason.\n\nThe row-count sliders max out at what FITS. A slider that can silently cut the footer off the sheet is worse than no slider."
+    },
+    {
+      "id": "deliverable",
+      "x": 560,
+      "y": -190,
+      "w": 300,
+      "text": "The three on the left are the deliverable: blank plant sheet, blank garden sheet, and the per-garden prefilled one FPDF generates.\n\nThe tick vocabulary is Carl\\Domain\\EventType's own labels, minus the ones set on the plant form or recorded automatically.\n\nEvery row is a flex row, not a CSS grid cell: a grid whose cells come out of a repeat needs every wrapper between it and them to be display:contents, and one that isn't turns nine columns into one."
+    },
+    {
+      "id": "alt",
+      "x": 2682,
+      "y": -190,
+      "w": 400,
+      "text": "Alternate direction, not the deliverable.\n\nOne row per observation, action written as a word instead of ticked: more lines per page, but it loses the tick-and-move-on speed of a watering round. Worth keeping on the canvas because the tradeoff is real — say if you'd rather have this one."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

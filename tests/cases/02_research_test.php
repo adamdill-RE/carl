@@ -17,7 +17,10 @@ declare(strict_types=1);
 use Carl\Research\ResearchImporter;
 
 $db = $app->db();
-$zipPath = $app->root() . '/research-template/populated/research_US-48217_2026-08-30.1.zip';
+$zipPath = $app->root() . '/research-template/populated/research_US-48217_2026-08-31.1.zip';
+// The dataset Phase 5 shipped, kept so that "a version 1 zip still imports"
+// is a claim with a file behind it rather than a sentence in a README.
+$oldZipPath = $app->root() . '/research-template/populated/research_US-48217_2026-08-30.1.zip';
 $importer = new ResearchImporter($db);
 
 $t->group('Dataset version comparison');
@@ -40,11 +43,11 @@ $t->test('a later date wins regardless of counter', function ($t): void {
 $t->group('Importing the first dataset');
 
 $t->test('the shipped dataset zip exists', function ($t) use ($zipPath): void {
-    $t->ok(\is_file($zipPath), 'research-template/populated/research_US-48217_2026-08-30.1.zip');
+    $t->ok(\is_file($zipPath), 'research-template/populated/research_US-48217_2026-08-31.1.zip');
 });
 
 $t->test('it validates completely', function ($t) use ($importer, $zipPath, $db): void {
-    $result = $importer->validate($zipPath, 'research_US-48217_2026-08-30.1.zip');
+    $result = $importer->validate($zipPath, 'research_US-48217_2026-08-31.1.zip');
 
     $alreadyHeld = $db->value(
         "SELECT `dataset_version` FROM `region` WHERE `region_key` = 'US-48217'"
@@ -62,13 +65,15 @@ $t->test('it validates completely', function ($t) use ($importer, $zipPath, $db)
         throw new RuntimeException("validation failed:\n  " . \implode("\n  ", $result->firstErrors()));
     }
 
-    $t->same('2026-08-30.1', $result->datasetVersion);
+    $t->same('2026-08-31.1', $result->datasetVersion);
+    $t->same(2, $result->templateVersion);
     $t->same(['US-48217'], $result->regionKeys);
     $t->same(1, $result->files['regions.csv']['rows']);
-    $t->same(30, $result->files['plant_types.csv']['rows']);
-    $t->same(58, $result->files['plant_region.csv']['rows']);
+    $t->same(35, $result->files['plant_types.csv']['rows']);
+    $t->same(64, $result->files['plant_region.csv']['rows']);
     $t->same(16, $result->files['pests.csv']['rows']);
     $t->same(10, $result->files['region_guidance.csv']['rows']);
+    $t->same(20, $result->files['companions.csv']['rows']);
 });
 
 $t->test('applying it writes every file in dependency order', function ($t) use ($importer, $zipPath, $db): void {
@@ -78,21 +83,99 @@ $t->test('applying it writes every file in dependency order', function ($t) use 
         return;
     }
 
-    $result = $importer->validate($zipPath, 'research_US-48217_2026-08-30.1.zip');
+    $result = $importer->validate($zipPath, 'research_US-48217_2026-08-31.1.zip');
     $written = $importer->apply($result, 1);
 
     $t->same(1, $written['regions.csv']);
-    $t->same(30, $written['plant_types.csv']);
-    $t->same(58, $written['plant_region.csv']);
+    $t->same(35, $written['plant_types.csv']);
+    $t->same(64, $written['plant_region.csv']);
     $t->same(16, $written['pests.csv']);
     $t->same(10, $written['region_guidance.csv']);
+    $t->same(20, $written['companions.csv']);
+});
+
+$t->test('a template version 1 zip is still readable, which is the promise',
+    function ($t) use ($importer, $oldZipPath): void {
+    // Phase 6 took the template to 2 by adding companions.csv, which is
+    // OPTIONAL -- so every dataset produced before it stays valid. If that
+    // ever stops being true, an install with a v1 zip on disk and no way to
+    // regenerate it has lost its research, so the claim gets a file.
+    $t->ok(\is_file($oldZipPath), 'the Phase 5 dataset is still in the repository');
+    $t->ok(\in_array(1, ResearchImporter::READABLE_TEMPLATE_VERSIONS, true));
+    $t->ok(\in_array(2, ResearchImporter::READABLE_TEMPLATE_VERSIONS, true));
+
+    $result = $importer->validate($oldZipPath, 'research_US-48217_2026-08-30.1.zip');
+    $t->same(1, $result->templateVersion, 'it declared version 1 and was read');
+
+    // It is refused, but on the version ORDER -- the newer dataset is
+    // already applied -- and never on the template version. Those are
+    // different refusals and only one of them would be a regression.
+    $errors = \implode(' ', $result->errors);
+    $t->notContains('template bump', $errors);
+    $t->notContains('Carl reads version', $errors);
+});
+
+$t->group('Companion planting (Phase 6)');
+
+$t->test('the pairs are stored once, in lexical order, whichever way stated',
+    function ($t) use ($db): void {
+    $rows = $db->all('SELECT `category`, `other_category` FROM `plant_companion`');
+    $t->ok(\count($rows) >= 20, 'got ' . \count($rows) . ' pairs');
+    foreach ($rows as $row) {
+        $t->ok(\strtolower((string) $row['category']) < \strtolower((string) $row['other_category']),
+            $row['category'] . ' / ' . $row['other_category'] . ' is stored out of order');
+    }
+});
+
+$t->test('re-importing the same pairs writes no second row',
+    function ($t) use ($importer, $zipPath, $db): void {
+    // The pair is unordered and the unique key is not, so this is the exact
+    // shape of bug the importer normalises the direction to prevent.
+    $before = (int) $db->value('SELECT COUNT(*) FROM `plant_companion`', [], 0);
+    $result = $importer->validate($zipPath, 'again.zip');
+    if ($result->ok()) {
+        $importer->apply($result, 1);
+    } else {
+        // Refused on the version, which is the same guarantee by another
+        // route. Force the upsert through to prove the key holds.
+        $result->errors = [];
+        $importer->apply($result, 1);
+    }
+    $t->same($before, (int) $db->value('SELECT COUNT(*) FROM `plant_companion`', [], 0),
+        'a re-import converged instead of doubling the table');
+});
+
+$t->test('a pairing carries its reason and how well established it is',
+    function ($t) use ($db): void {
+    $row = $db->one(
+        "SELECT * FROM `plant_companion` WHERE `category` = 'Marigold' AND `other_category` = 'Tomato'"
+    );
+    $t->ok($row !== null, 'the marigold pairing was imported');
+    $t->same('good', $row['relationship']);
+    $t->same('verified', $row['confidence']);
+    $t->contains('thiophenes', (string) $row['reason']);
+    $t->ok((string) $row['source'] !== '', 'and its citation');
+
+    // The honesty the table exists for: the best-known pairing of all is
+    // the one with the least behind it, and it says so.
+    $basil = $db->one(
+        "SELECT * FROM `plant_companion` WHERE `category` = 'Basil' AND `other_category` = 'Tomato'"
+    );
+    $t->same('generic', $basil['confidence'], 'traditional, not tested');
+});
+
+$t->test('an antagonistic pair is stored as one', function ($t) use ($db): void {
+    $bad = (int) $db->value(
+        "SELECT COUNT(*) FROM `plant_companion` WHERE `relationship` = 'bad'", [], 0
+    );
+    $t->ok($bad > 0, 'the dataset carries pairings to keep apart, not only ones to make');
 });
 
 $t->test('the region is marked researched and carries its version', function ($t) use ($db): void {
     $region = $db->one("SELECT * FROM `region` WHERE `region_key` = 'US-48217'");
     $t->ok($region !== null, 'the Hill County region exists');
     $t->same('researched', $region['research_status']);
-    $t->same('2026-08-30.1', $region['dataset_version']);
+    $t->same('2026-08-31.1', $region['dataset_version']);
     $t->same('03-18', $region['last_frost_avg']);
     $t->same('11-20', $region['first_frost_avg']);
 });
@@ -157,7 +240,9 @@ $t->test('a zip with an unexpected file is refused', function ($t) use ($importe
 });
 
 $t->test('a wrong template_version is refused with a clear reason', function ($t) use ($importer, $makeZip): void {
-    $manifest = "key,value\ntemplate_version,2\ndataset_version,2099-01-01.1\nregion_keys,US-48217\n";
+    // 3, not 2: Phase 6 made 2 the current template and 1 still readable, so
+    // the version that must be refused is one from the future.
+    $manifest = "key,value\ntemplate_version,3\ndataset_version,2099-01-01.1\nregion_keys,US-48217\n";
     $path = $makeZip(['manifest.csv' => $manifest]);
     $result = $importer->validate($path, 'bad.zip');
     \unlink($path);

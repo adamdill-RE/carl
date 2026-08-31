@@ -33,7 +33,7 @@ Design**, the artefact is produced there, not in Claude Code.
    hard-coded to Texas.
 3. **Research arrives as a versioned zip of CSVs** produced by Claude and
    uploaded by the admin. Format: `research-template/README.md`. First dataset:
-   `research-template/populated/research_US-48217_2026-08-30.1.zip`. New
+   `research-template/populated/research_US-48217_2026-08-31.1.zip`. New
    regions and new plant types use the same route.
 4. **One location per user.** The user's zip at onboarding is their weather
    location and their region. Gardens inherit it. A person with two zips makes
@@ -647,15 +647,28 @@ events, gardens, weather for the covered dates, and the research values in
 force, in a shape designed for pasting to Claude. This is the v2
 "Recommendations" bridge.
 
-### 13.4 Field-recording sheet — **Claude Design**
+### 13.4 Field-recording sheet — **Built, Phase 6**
 Printable A4/Letter sheet mirroring the Log Plant Activity and Garden Actions
 fields: plant/garden identifier, date, action tick boxes, quantity, duration,
-dropdown-name blanks, narrative lines, photo count. Delivered as a static PDF
-in `public/assets/field-sheet.pdf`; the app links to it. A per-garden
-prefilled version (rows and living plants listed) is Phase 4 via FPDF using
-the same layout.
+dropdown-name blanks, narrative lines, photo count. A per-garden prefilled
+version lists the rows and the living plants.
 
-### 13.5 Logo and colour scheme — **Claude Design**
+**Delivered as a generator, not a static file.** This section said "a static
+PDF in `public/assets/field-sheet.pdf`", which was written in Phase 1 before
+there was any PDF layer. Phase 4 built one, and this section also asks for a
+prefilled version "using the same layout" — so a checked-in binary would be a
+second artefact from one layout, and the one that goes stale silently because
+nothing tests it. `Carl\Reports\FieldSheet` is the layout; the blank sheet is
+that class with no garden and the prefilled one is that class with a garden.
+Three routes under `/reports/`.
+
+Sized 210 × 270 mm: A4 is the narrower and Letter the shorter, so one file
+prints on either without a shrink-to-fit that would take the writing lines
+under the ~7 mm a pen needs. Black on white with no grey — a dotted or
+60%-grey rule is a sub-pixel mark a 600 dpi mono engine halftones into a
+broken line or drops.
+
+### 13.5 Logo and colour scheme — **Claude Design, still outstanding**
 Garden palette, mobile-first; deliver CSS variables (`--carl-*`) and an SVG
 logo. Claude Code uses the variables as given.
 
@@ -724,10 +737,21 @@ set-password link Phase 3 deferred (§9.4 of that handoff).
 Three v2 items are not built and are described in `docs/PHASE-6-HANDOFF.md`:
 GDD pest reminders, succession planting, and the companion planting reference.
 
-### v2 (not scoped here)
+### Phase 6 — v2, the second half
+
+GDD pest reminders; succession planting, as both a planner and a digest
+reminder; the companion planting reference, with the template version that
+carries it. Plus the field-recording sheet of §13.4, which had blocked two
+phases, and the three things Recommendations was left wanting.
+
+**Built 2026-08-31.** Migration 018; `research-template` template_version 2;
+thirteen reminder kinds, not eleven. **v2 is complete.** See
+`docs/PHASE-7-HANDOFF.md`.
+
+### v2 — complete
 ~~Reports menu~~; ~~Recommendations (Claude analysis)~~; ~~End Growing
-Season~~; ~~crop rotation warnings by plant family~~; GDD pest reminders;
-succession planting; companion planting reference.
+Season~~; ~~crop rotation warnings by plant family~~; ~~GDD pest reminders~~;
+~~succession planting~~; ~~companion planting reference~~.
 
 ---
 
@@ -739,11 +763,13 @@ succession planting; companion planting reference.
 | Expense / cost tracking | Dropped v1 | Market-farm feature; revisit if testers ask |
 | QR / plant labels, multi-user sharing | Dropped | Scale mismatch; sharing contradicts data isolation |
 | Offline / PWA | Deferred | Paper field sheet is the answer for now; service worker only caches the shell |
-| Succession planting, task calendar UI | Deferred v2 | Planning features; the digest is the task list. Still deferred after Phase 5 — see `PHASE-6-HANDOFF.md` §3 |
+| Succession planting | **Built, Phase 6** | Both shapes, sharing one calculator: `/succession` lays the season out, and a digest reminder is the one line of it true today. No accepted-plan table — a plan in its own table is a second answer to "when should I sow" |
+| Task calendar UI | Deferred | Still the digest's job. The succession planner is the nearest thing and it proposes rather than schedules |
 | Crop rotation warnings | **Built, Phase 5** | It was free later, exactly as predicted: one grouped statement over `plant_family` and `garden_row_id` |
 | Drip emitter → depth conversion UI | Deferred | Log method + duration; per-method defaults until data shows people enter specs |
 | Runtime plant APIs (Trefle, Permapeople) | Dropped | Outage history; used only as sources when producing research zips |
-| GDD pest thresholds | Deferred v2 | Data is stored; Texas biofix needs validating first |
+| GDD pest thresholds | **Built, Phase 6** | The biofix was validated first, as the handoff asked: 1000 DD50 from 01-01 lands 18 Apr – 6 May over 2019–2025 at Hillsboro, which is the April/May emergence AgriLife reports. The threshold transfers; the calendar date is what moves |
+| Companion planting reference | **Built, Phase 6** | The one v2 item with no data behind it, so the one that touched the template contract. A reference only: nothing acts on it, because most of the evidence will not carry that weight |
 
 ---
 

@@ -28,6 +28,7 @@ final class AdminController extends Controller
             'queue'     => \count($this->reference()->regionsNeedingResearch()),
             'imports'   => $this->reference()->imports(5),
             'mail'      => $this->app->outbox()->health(),
+            'analysis'  => $this->app->analyst()->health(),
         ]);
     }
 
@@ -229,6 +230,34 @@ final class AdminController extends Controller
      * request path (Phase 3 handoff Section 5). This page queues, and shows
      * the outbox rows so the result can be read off it a few minutes later.
      */
+    /**
+     * `/admin/analysis` -- what Recommendations has cost.
+     *
+     * Phase 6 handoff Section 3.5: "input_tokens, output_tokens and
+     * document_bytes are all stored per row and nothing displays them. An
+     * admin page that says what the month cost is twenty lines."
+     *
+     * It is a little more than twenty, because the money is an ESTIMATE and
+     * the page has to say so. The rates live in `config/app.php` and nothing
+     * fetches them: a price list is not something to put on a request path,
+     * and a stale number shown as a fact is worse than one shown as an
+     * estimate.
+     */
+    public function analysisCost(Request $request): Response
+    {
+        $analyst = $this->app->analyst();
+
+        return $this->render('admin/analysis', [
+            'months'    => $analyst->costByMonth(12),
+            'prices'    => (array) $this->app->config()->get('analysis.prices', []),
+            'model'     => (string) $this->app->config()->get('analysis.model', ''),
+            'configured' => $analyst->driver() !== null,
+            'describe'  => $analyst->describeDriver(),
+            'health'    => $analyst->health(),
+            'lastRun'   => $analyst->lastRun(),
+        ]);
+    }
+
     public function mailTest(Request $request): Response
     {
         return $this->render('admin/mail', $this->mailData());

@@ -154,6 +154,21 @@ return [
 
         'model' => 'claude-opus-5',
 
+        // What a million tokens costs, per model, for the admin page that
+        // says what the month came to (Phase 6 handoff Section 3.5).
+        //
+        // A LOCAL ESTIMATE, and the page labels it as one. Nothing here is
+        // fetched -- a price list is not something to put on a request path,
+        // and a stale number shown as a fact is worse than one shown as an
+        // estimate. Checked 2026-08-31 against the published rates; when they
+        // move, this is the one place to edit.
+        'prices' => [
+            'claude-opus-5'      => ['input' => 5.00, 'output' => 25.00],
+            'claude-fable-5'     => ['input' => 10.00, 'output' => 50.00],
+            'claude-sonnet-5'    => ['input' => 2.00, 'output' => 10.00],
+            'claude-haiku-4-5'   => ['input' => 1.00, 'output' => 5.00],
+        ],
+
         // Effort is the first cost lever and it is left at the model's own
         // default ('high'). Set 'low' or 'medium' here if the bill matters
         // more than the depth of the answer.

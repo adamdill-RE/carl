@@ -3,7 +3,7 @@ US-48217,spider_mite,07-01,09-30,Tomato;Pepper;Bean;Cucumber;Squash (summer);Egg
 US-48217,aphid,03-01,05-31,Tomato;Pepper;Cabbage;Broccoli;Lettuce,,,,approx,AgriLife,Spring flush on new growth; also fall
 US-48217,leaf_footed_bug,07-15,10-31,Tomato;Southern pea,,,,approx,AgriLife,Late summer and fall
 US-48217,stink_bug,07-15,10-31,Tomato;Pepper;Southern pea,,,,approx,AgriLife,
-US-48217,squash_vine_borer,04-15,07-15,Squash (summer);Squash (winter),50,1000,01-01,approx,OSU ENT-0106; Illinois Extension (750-1000 DD50),Midwest threshold; central TX emergence is earlier. Validate against a Texas source before enabling the reminder
+US-48217,squash_vine_borer,04-15,07-15,Squash (summer);Squash (winter),50,1000,01-01,verified,"OSU ENT-0106; Illinois Extension (750-1000 DD50); emergence window cross-checked against Texas A&M AgriLife (Williamson County Extension; Insects in the City, citybugs.tamu.edu)","Validated 2026-08-31 (Phase 6). 1000 DD50 accumulated from 01-01 reaches the threshold 18 Apr - 6 May across 2019-2025 at Hillsboro (Open-Meteo archive, 32.0107/-97.1300), which is the April/May adult emergence AgriLife reports for central Texas. The Midwest THRESHOLD transfers unchanged; it is the calendar date that does not, which is what a degree-day model is for. The earlier note feared the opposite."
 US-48217,squash_bug,04-15,09-30,Squash (summer);Squash (winter);Cucumber,,,,approx,AgriLife,
 US-48217,cucumber_beetle,04-01,09-30,Cucumber;Squash (summer);Squash (winter),,,,approx,AgriLife,
 US-48217,hornworm,05-01,09-30,Tomato;Pepper;Eggplant,,,,approx,AgriLife,

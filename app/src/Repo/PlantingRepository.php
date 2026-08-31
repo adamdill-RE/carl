@@ -392,5 +392,36 @@ final class PlantingRepository extends Repository
             'first'     => $row['first_date'] ?? null,
             'last'      => $row['last_date'] ?? null,
         ];
+    }    /**
+     * The last time this account sowed each plant type, and how many rounds
+     * of it have gone in, for the succession planner (Phase 6).
+     *
+     * Sowings only, and ALL of them including ended ones: "you have sown
+     * three rounds of beans, the last on 12 June" is true whether or not the
+     * first two are still standing. The digest's own succession rule reads
+     * living plantings instead, because it is asking a different question --
+     * whether there is a round growing that the next one should follow.
+     *
+     * @return array<int,array{last_sown:string,rounds:int}> keyed by plant_type_id
+     */
+    public function lastSownByType(): array
+    {
+        $rows = $this->db->all(
+            'SELECT `plant_type_id`, MAX(`start_date`) AS last_sown, COUNT(*) AS rounds'
+            . ' FROM `planting` WHERE ' . $this->scoped("`start_method` = 'direct_sow'")
+            . ' GROUP BY `plant_type_id`',
+            $this->bind([])
+        );
+
+        $out = [];
+        foreach ($rows as $row) {
+            $out[(int) $row['plant_type_id']] = [
+                'last_sown' => (string) $row['last_sown'],
+                'rounds'    => (int) $row['rounds'],
+            ];
+        }
+        return $out;
     }
+
+
 }

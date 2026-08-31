@@ -5,7 +5,8 @@
  * reader can tell a measured number from a regional estimate.
  *
  * @var Carl\Core\View $view
- * @var array{plant:?array<string,mixed>,regions:list<array<string,mixed>>} $card
+ * @var array{plant:?array<string,mixed>,regions:list<array<string,mixed>>,
+ *             companions:list<array<string,mixed>>} $card
  * @var bool $hasRegion
  */
 $e = $view->e(...);
@@ -89,6 +90,33 @@ $U = Carl\Support\Units::class;
   <p class="small muted">
     Carl has no researched planting windows for your county yet, so these are the
     general values. Days to maturity still counts down normally.
+  </p>
+<?php endif; ?>
+
+<?php $companions = $card['companions'] ?? []; ?>
+<?php if ($companions !== []): ?>
+  <h3>Neighbours</h3>
+  <ul class="items small">
+<?php foreach ($companions as $companion): ?>
+    <li>
+      <div class="grow">
+        <span class="topic"><?= $companion['relationship'] === 'bad' ? 'Keep apart from' : 'Grows well with' ?>
+          <strong><?= $e($companion['other']) ?></strong></span>
+<?php if ($companion['reason'] !== null): ?>
+        <div class="muted"><?= $e($companion['reason']) ?></div>
+<?php endif; ?>
+      </div>
+<?php if ($companion['confidence'] !== null): ?>
+      <span class="confidence confidence-<?= $e($companion['confidence']) ?>"><?= $e($companion['confidence']) ?></span>
+<?php endif; ?>
+    </li>
+<?php endforeach; ?>
+  </ul>
+  <p class="tiny muted">
+    Companion planting is the corner of gardening advice with the widest gap
+    between what is repeated and what has been tested, so each line carries how
+    well established it is. &ldquo;generic&rdquo; here means traditional and
+    widely printed &mdash; not measured.
   </p>
 <?php endif; ?>
 

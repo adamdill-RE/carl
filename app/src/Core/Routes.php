@@ -17,6 +17,8 @@ use Carl\Controller\OnboardingController;
 use Carl\Controller\PhotoController;
 use Carl\Controller\PlantController;
 use Carl\Controller\ReportController;
+use Carl\Controller\CompanionController;
+use Carl\Controller\SuccessionController;
 use Carl\Controller\SystemController;
 
 /**
@@ -167,6 +169,17 @@ final class Routes
         // of them was from a plant or a garden. No new data access.
         $r->get('/reports', ReportController::class, 'menu');
 
+        // -- The field sheet (handoff Section 13.4, Phase 6) ----------------
+        $r->get('/reports/field-sheet.pdf', ReportController::class, 'fieldSheet');
+        $r->get('/reports/garden/{id:\d+}/field-sheet.pdf',
+            ReportController::class, 'gardenFieldSheet');
+
+        // -- Succession planting (handoff Section 15, Phase 6) --------------
+        $r->get('/succession', SuccessionController::class, 'index');
+
+        // -- Companion planting reference (handoff Section 14 v2, Phase 6) --
+        $r->get('/companions', CompanionController::class, 'index');
+
         // -- Recommendations (handoff Section 14 v2; Phase 5 Section 3.1) ---
         // The POST queues an `analysis` row and returns. It does NOT call the
         // API: that happens in the drain cron below, because no third-party
@@ -202,6 +215,7 @@ final class Routes
         // sees the key in a browser bar or an access log. Admin access is the
         // stronger guard, and the destination is fixed to the signed-in
         // admin's own address. Recorded in docs/PHASE-3-HANDOFF.md Section 9.
+        $r->get('/admin/analysis', AdminController::class, 'analysisCost', Route::ADMIN_ACCESS);
         $r->get('/admin/mail-test', AdminController::class, 'mailTest', Route::ADMIN_ACCESS);
         $r->post('/admin/mail-test', AdminController::class, 'sendMailTest', Route::ADMIN_ACCESS);
 

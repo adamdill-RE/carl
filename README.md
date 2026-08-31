@@ -13,7 +13,7 @@ weather that actually happened.
 | Document | Authority over |
 | --- | --- |
 | [`docs/CARL-HANDOFF.md`](docs/CARL-HANDOFF.md) | Scope. What Carl is, the screens, the data model, the phasing. |
-| [`docs/PHASE-6-HANDOFF.md`](docs/PHASE-6-HANDOFF.md) | What to build next, and the facts each phase measured that the original scope could only assume. The earlier phase handoffs are kept as they were written. |
+| [`docs/PHASE-7-HANDOFF.md`](docs/PHASE-7-HANDOFF.md) | What to build next, and the facts each phase measured that the original scope could only assume. The earlier phase handoffs are kept as they were written. |
 | [`docs/hosting.md`](docs/hosting.md) | Every platform constraint. Overrides the handoff where they conflict. |
 | [`docs/weather.md`](docs/weather.md) | Weather ingestion. Overrides the handoff where they conflict. |
 | [`docs/deploy.md`](docs/deploy.md) | The runbook, and §0 is every measurement taken on the live host. |
@@ -28,9 +28,9 @@ anything that looks unusual.
 
 ## What is built
 
-Phases 1 through 5 (handoff §14). Accounts log real data, the nightly jobs turn
-it into advice, the reports turn a season into something you can read, and
-Carl will read it back to you.
+Phases 1 through 6 (handoff §14) — **v2 is complete**. Accounts log real data,
+the nightly jobs turn it into advice, the reports turn a season into something
+you can read, and Carl will read it back to you.
 
 - Login, forced first reset, onboarding wizard, ZIP → county → region.
 - Start a New Plant (indoor seed start, direct sow, transplant), each with the
@@ -86,10 +86,34 @@ Carl will read it back to you.
   temporary password shown on screen is unchanged, because that is the path
   that works with no mailbox.
 
-Not built yet, by design: the per-garden prefilled field sheet (blocked on the
-static sheet, a Claude Design deliverable), the palette (also Claude Design),
-and the three v2 items Phase 5 did not reach — GDD pest reminders, succession
-planting and the companion planting reference.
+And, from Phase 6, the last of v2:
+
+- **GDD pest reminders.** The calendar rule says "spider mites turn up in
+  July"; this one says the heat your garden actually had puts the moths out
+  this week, which a cool spring moves by a fortnight and a calendar never
+  notices. The forecast extends the count past today, so the reminder can
+  arrive before the pest does.
+- **Succession planting**, as both halves of the same arithmetic:
+  `/succession` lays out every sowing your area's research still allows this
+  season, each date a link straight into Start a New Plant; and a fortnight
+  after each sowing the digest says another round is due. Nothing is stored —
+  sowing a round is what records it.
+- **A companion planting reference** at `/companions`, and on every research
+  card. Twenty pairings, each with the mechanism behind it and how well
+  established that is — four verified, seven approximate, nine simply
+  traditional. Carl does nothing with them, deliberately: this is the corner
+  of gardening advice with the widest gap between what is repeated and what
+  has been tested, and the page says so.
+- **The field-recording sheet** (§13.4), blank or prefilled per garden. A page
+  to take to the beds and write on, sized to print on A4 and Letter alike.
+- **Recommendations, narrower and cheaper.** Ask about one bed or one plant
+  rather than the year; the document it sends lost a third of its research
+  section without losing a single citation; and `/admin/analysis` says what
+  the month cost.
+
+Not built yet, by design: the logo and the palette, which are Claude Design
+deliverables. `public/assets/css/tokens.css` is a neutral placeholder naming
+exactly the variables to deliver, and it is the only file that names a colour.
 
 ## Layout
 
@@ -107,7 +131,8 @@ carl/
                             daily_digest.php, mail_send.php, analysis_run.php
   app/bootstrap.php         autoloader, config, the parse-error guard
   app/src/                  Core, Auth, Repo, Domain, Controller, Research,
-                            Weather, Mail, Reminders, Reports, Analysis, Support
+                            Weather, Mail, Reminders, Reports, Analysis,
+                            Planting, Support
   app/views/                plain PHP templates
   public/                   the ONLY directory the web reaches
   tests/                    run.php --strict, plus the CI lint scripts
@@ -138,7 +163,7 @@ php -S 127.0.0.1:8088 -t public dev-router.php -c dev/php.ini
 ```
 
 Then `http://127.0.0.1:8088/carl/` — sign in as `admin` / `1234`, which forces
-a reset. Import `research-template/populated/research_US-48217_2026-08-30.1.zip`
+a reset. Import `research-template/populated/research_US-48217_2026-08-31.1.zip`
 from Admin → Research import before starting plants; without it there is no
 plant catalog.
 

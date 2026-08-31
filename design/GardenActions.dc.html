@@ -1,0 +1,133 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: Helvetica, Arial, sans-serif; color: #000; background: #fff; }
+    a { color: #000; } a:hover { color: #000; }
+    .rule { border: 0; border-top: 1px solid #000; margin: 0; }
+    .box { width: 12px; height: 12px; border: 1px solid #000; flex: 0 0 auto; }
+    .write { border-bottom: 1px solid #000; }
+    .lbl { font-size: 11px; line-height: 13px; text-transform: uppercase; letter-spacing: .06em; }
+  </style>
+</helmet>
+
+<div style="width: 794px; height: 1056px; box-sizing: border-box; padding: 40px 44px 32px;
+            display: flex; flex-direction: column; gap: 14px; background: #fff;">
+
+  <div style="display: flex; align-items: flex-end; gap: 16px;">
+    <div style="flex: 0 0 auto;">
+      <div style="font-size: 21px; line-height: 22px; font-weight: 700; letter-spacing: -0.01em;">
+        Garden actions
+      </div>
+      <div style="font-size: 12px; line-height: 15px; margin-top: 2px;">Carl &middot; the garden helper</div>
+    </div>
+    <div style="flex: 1 1 0; display: flex; gap: 12px; align-items: flex-end;">
+      <div style="flex: 1 1 0;">
+        <div class="lbl">Garden</div>
+        <div class="write" style="height: 21px;"></div>
+      </div>
+      <div style="flex: 0 0 120px;">
+        <div class="lbl">Date</div>
+        <div class="write" style="height: 21px;"></div>
+      </div>
+      <div style="flex: 0 0 74px;">
+        <div class="lbl">Sheet</div>
+        <div class="write" style="height: 21px;"></div>
+      </div>
+    </div>
+  </div>
+  <hr class="rule">
+
+  <div style="font-size: 12px; line-height: 16px;">
+    An action against the whole garden, or one zone of it. Watering a zone fans
+    out to every living plant in its rows when you transcribe it.
+  </div>
+
+  <sc-for list="{{blocks}}" as="block" hint-placeholder-count="4">
+    <div style="border: 1px solid #000; padding: 8px 10px 10px;
+                display: flex; flex-direction: column; gap: 7px;">
+
+      <div style="display: flex; gap: 10px; align-items: flex-end;">
+        <div style="flex: 0 0 104px;">
+          <div class="lbl">Date</div>
+          <div class="write" style="height: 20px;"></div>
+        </div>
+        <div style="flex: 1 1 0;">
+          <div class="lbl">Zone</div>
+          <div class="write" style="height: 20px;"></div>
+        </div>
+        <div style="flex: 0 0 80px;">
+          <div class="lbl">Minutes</div>
+          <div class="write" style="height: 20px;"></div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 14px; flex-wrap: wrap;">
+        <sc-for list="{{actions}}" as="action" hint-placeholder-count="7">
+          <div style="display: flex; align-items: center; gap: 5px;
+                      font-size: 12px; line-height: 15px;">
+            <div class="box"></div><span>{{action}}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div>
+        <div class="lbl">Rows &mdash; tick or name the ones this covers</div>
+        <!-- Six slots, not eight: eight leaves 63 px of line for a
+             handwritten row name, which is under the 7 mm a pen needs. -->
+        <div style="display: flex; gap: 8px; margin-top: 3px;">
+          <sc-for list="{{rowSlots}}" as="slot" hint-placeholder-count="6">
+            <div style="flex: 1 1 0; display: flex; align-items: center; gap: 5px;">
+              <div class="box"></div>
+              <div class="write" style="flex: 1 1 0; height: 17px;"></div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div>
+        <div class="lbl">Which one, and anything worth remembering</div>
+        <div class="write" style="height: 22px;"></div>
+      </div>
+    </div>
+  </sc-for>
+
+  <div style="flex: 1 1 0;"></div>
+  <hr class="rule">
+  <div style="display: flex; justify-content: space-between; font-size: 12px; line-height: 15px;">
+    <span>Transcribe at <strong>/carl/gardens</strong> &rarr; Garden Actions.</span>
+    <span>Zone watering reaches every living plant in the zone&rsquo;s rows.</span>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":794,"height":1056},"blockCount":{"editor":"int","default":4,"min":2,"max":4,"section":"Layout"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    // Four is what fits, and so four is the maximum. A block is about 190 px
+    // and the page has roughly 830 px for them; five ran the footer off the
+    // bottom, which is where the line telling you to transcribe it lives.
+    const blocks = Math.max(2, Math.min(4, this.props.blockCount ?? 4));
+
+    // The garden_event vocabulary of migration 007, in the app's labels.
+    const actions = [
+      'Watered', 'Fertilised', 'Amended', 'Mulched', 'Pest seen',
+      'Pest treated', 'Note',
+    ];
+
+    return {
+      actions,
+      blocks: Array.from({ length: blocks }, (_, i) => ({ i })),
+      rowSlots: Array.from({ length: 6 }, (_, i) => ({ i })),
+    };
+  }
+}
+</script>
+</body>
+</html>

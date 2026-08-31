@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: Helvetica, Arial, sans-serif; color: #000; background: #fff; }
+    a { color: #000; } a:hover { color: #000; }
+    .rule { border: 0; border-top: 1px solid #000; margin: 0; }
+    .write { border-bottom: 1px solid #000; }
+    .lbl { font-size: 11px; line-height: 13px; text-transform: uppercase; letter-spacing: .06em; }
+  </style>
+</helmet>
+
+<!-- ALTERNATE DIRECTION. One row per observation, ledger style: the action
+     is written as a word rather than ticked, which buys twice as many lines
+     per page and costs the tick-and-move-on speed of a watering round.
+     Worth having on the canvas because the tradeoff is real, and a gardener
+     who logs many small varied things rather than one big round may prefer
+     it. It is NOT the deliverable -- Main is. -->
+<div style="width: 794px; height: 1056px; box-sizing: border-box; padding: 40px 44px 32px;
+            display: flex; flex-direction: column; gap: 12px; background: #fff;">
+
+  <div style="display: flex; align-items: flex-end; gap: 16px;">
+    <div style="flex: 0 0 auto;">
+      <div style="font-size: 21px; line-height: 22px; font-weight: 700; letter-spacing: -0.01em;">
+        Field ledger
+      </div>
+      <div style="font-size: 12px; line-height: 15px; margin-top: 2px;">Carl &middot; the garden helper</div>
+    </div>
+    <div style="flex: 1 1 0; display: flex; gap: 12px; align-items: flex-end;">
+      <div style="flex: 1 1 0;">
+        <div class="lbl">Garden</div>
+        <div class="write" style="height: 21px;"></div>
+      </div>
+      <div style="flex: 0 0 120px;">
+        <div class="lbl">Week of</div>
+        <div class="write" style="height: 21px;"></div>
+      </div>
+    </div>
+  </div>
+  <hr class="rule">
+
+  <div style="font-size: 12px; line-height: 16px;">
+    One line per thing you did. Write the action in words &mdash; watered,
+    fertilised, picked, pulled &mdash; and the rest only when it applies.
+  </div>
+
+  <!-- The vocabulary printed once, as a legend, rather than repeated as a
+       tick grid on every line. That is the whole trade this direction makes. -->
+  <div style="border: 1px solid #000; padding: 6px 9px; font-size: 12px; line-height: 16px;">
+    <strong>Actions Carl knows:</strong>
+    watered &middot; fertilised &middot; mulched &middot; amended &middot;
+    pest seen &middot; pest treated &middot; yield &middot; germinated &middot;
+    failed to germinate &middot; died &middot; culled &middot; up-potted &middot;
+    transplanted &middot; hardening started &middot; moved &middot; note
+  </div>
+
+  <div style="border: 1px solid #000; flex: 1 1 0;">
+    <div style="display: flex; font-weight: 700; font-size: 11px; line-height: 14px;
+                border-bottom: 1px solid #000;">
+      <div style="flex: 0 0 58px; padding: 4px 5px;">Date</div>
+      <div style="flex: 1 1 0; padding: 4px 5px; border-left: 1px solid #000;">Plant or garden</div>
+      <div style="flex: 0 0 118px; padding: 4px 5px; border-left: 1px solid #000;">Did what</div>
+      <div style="flex: 0 0 44px; padding: 4px 3px; text-align: center; border-left: 1px solid #000;">Qty</div>
+      <div style="flex: 0 0 40px; padding: 4px 3px; text-align: center; border-left: 1px solid #000;">Min</div>
+      <div style="flex: 1 1 0; padding: 4px 5px; border-left: 1px solid #000;">Which one, and notes</div>
+      <div style="flex: 0 0 34px; padding: 4px 3px; text-align: center; border-left: 1px solid #000;">Ph</div>
+    </div>
+
+    <sc-for list="{{lines}}" as="line" hint-placeholder-count="24">
+      <div style="display: flex; height: 27px; border-bottom: 1px solid #000;">
+        <div style="flex: 0 0 58px;"></div>
+        <div style="flex: 1 1 0; border-left: 1px solid #000;"></div>
+        <div style="flex: 0 0 118px; border-left: 1px solid #000;"></div>
+        <div style="flex: 0 0 44px; border-left: 1px solid #000;"></div>
+        <div style="flex: 0 0 40px; border-left: 1px solid #000;"></div>
+        <div style="flex: 1 1 0; border-left: 1px solid #000;"></div>
+        <div style="flex: 0 0 34px; border-left: 1px solid #000;"></div>
+      </div>
+    </sc-for>
+  </div>
+
+  <hr class="rule">
+  <div style="display: flex; justify-content: space-between; font-size: 12px; line-height: 15px;">
+    <span>Transcribe at <strong>/carl/log</strong>.</span>
+    <span>Backdating is normal: enter the date you wrote.</span>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":794,"height":1056},"lineCount":{"editor":"int","default":24,"min":10,"max":26,"section":"Layout"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    // NOT called `lines`: props and render values share one namespace, so a
+    // prop named for what it counts shadows the array and the loop renders
+    // nothing at all. 26 is what fits; 24 leaves room for the legend.
+    const count = Math.max(10, Math.min(26, this.props.lineCount ?? 24));
+    return { lines: Array.from({ length: count }, (_, i) => ({ i })) };
+  }
+}
+</script>
+</body>
+</html>

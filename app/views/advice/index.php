@@ -15,6 +15,8 @@
  * @var bool $configured @var string $describe
  * @var int $askedToday @var int $perDay @var bool $canAsk @var int $days
  * @var array<string,mixed>|null $lastRun
+ * @var list<array<string,mixed>> $gardens
+ * @var list<array<string,mixed>> $plantings
  */
 $e = $view->e(...);
 $U = Carl\Support\Units::class;
@@ -102,6 +104,35 @@ $pageTitle = 'Recommendations';
   <form method="post" action="<?= $e($app->url('advice')) ?>">
     <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
     <div class="field">
+      <label for="scope">What about?</label>
+      <select id="scope" name="scope">
+        <option value="season">The whole season</option>
+<?php if ($gardens !== []): ?>
+        <optgroup label="One garden">
+<?php foreach ($gardens as $garden): ?>
+          <option value="garden:<?= $e($garden['id']) ?>"><?= $e($garden['name']) ?></option>
+<?php endforeach; ?>
+        </optgroup>
+<?php endif; ?>
+<?php if ($plantings !== []): ?>
+        <optgroup label="One plant">
+<?php foreach ($plantings as $planting): ?>
+          <option value="plant:<?= $e($planting['id']) ?>">
+            <?= $e($planting['label'] !== null && $planting['label'] !== ''
+                    ? $planting['label'] : $planting['type']) ?>
+            &mdash; <?= $e($planting['category']) ?>
+          </option>
+<?php endforeach; ?>
+        </optgroup>
+<?php endif; ?>
+      </select>
+      <p class="help">
+        A narrower question gets a narrower answer. Carl is told plainly that
+        it is looking at one bed and not the garden, so it will not draw
+        conclusions about the rest.
+      </p>
+    </div>
+    <div class="field">
       <label for="question">Your question (optional)</label>
       <textarea id="question" name="question" maxlength="500"
                 placeholder="Why did the second sowing of beans do so much worse than the first?"></textarea>
@@ -136,6 +167,9 @@ $pageTitle = 'Recommendations';
           <?= $e($U::shortDate((string) $row['requested_on'])) ?>
           &mdash; <?= $e($P::excerpt((string) $row['answer'], 90)) ?>
         </a>
+<?php if ((string) ($row['scope'] ?? 'season') !== 'season'): ?>
+        <span class="badge badge-muted">one <?= $e(\explode(':', (string) $row['scope'])[0]) ?></span>
+<?php endif; ?>
 <?php else: ?>
         <span class="badge badge-muted"><?= $e($row['status']) ?></span>
         <?= $e($U::shortDate((string) $row['requested_on'])) ?>

@@ -287,7 +287,85 @@ Two things worth keeping:
   thirty plant types.** It is the section with the worst ratio of bytes to
   signal and the obvious next thing to trim if the bill matters. It is left
   whole because the citations and confidences in it are what stop the answer
-  presenting a catalogue default as a local measurement.
+  presenting a catalogue default as a local measurement. **Phase 6 trimmed
+  it — see §0.10.**
+
+---
+
+### 0.10 Where the research section's bytes actually were — Phase 6
+
+Phase 5 handoff §3.5 said `research` was the worst ratio of bytes to signal
+and that a trimmed version "would have to keep the citations and
+confidences". So it was measured before anything was cut, on an account
+holding a planting of **every** plant type in the catalogue — 35 of them,
+which is what makes the research section the whole of it.
+
+**Measured 2026-08-31** on MariaDB 10.11.14. Document total 74,893 bytes, of
+which `research` was **51,288 — 68%**. Inside it:
+
+| Where the bytes were | Bytes | Share of `research` |
+| --- | --- | --- |
+| `source` strings, repeated per row | 8,886 | 17% |
+| explicit nulls | 5,518 | 11% |
+| `dataset_version`, identical on all 99 rows | 3,168 | 6% |
+| `region_id` and `plant_type_id` | 1,966 | 4% |
+| the actual agronomic values | 31,750 | 62% |
+
+**Twelve distinct citations were cited ninety-nine times.** That single fact
+is the whole finding: the section was not big because it carried a lot, it
+was big because it carried the same twelve strings again and again.
+
+Four cuts, and **not one of them removes information**:
+
+1. The citations move into a `sources` map and each row carries a
+   `source_id`. Every citation is still in the document.
+2. Nulls are dropped. An absent key and a null key say the same thing, and
+   one of them is free.
+3. `dataset_version` is stated once for the section instead of on every row.
+4. Each plant's region windows are nested underneath it, so the two opaque
+   ids that existed only to join them disappear.
+
+| | Before | After |
+| --- | --- | --- |
+| `research` | 51,288 | **34,379** (−33%) |
+| Whole document | 74,893 | **58,172** (−22%) |
+
+`read_me` gained a line explaining the map, because a reader handed
+`source_id: "s3"` with no explanation has been given a worse document rather
+than a smaller one. `Document::VERSION` went to 2. `19_advice_scope_test.php`
+asserts that every citation the database holds is still reachable, that no
+`source_id` dangles, and that all 99 confidences survived — which is what
+turns "we kept the citations" from a claim into a check.
+
+### 0.11 The squash vine borer biofix, validated — Phase 6
+
+Phase 6 handoff §3.1 said the GDD data was stored but "Texas biofix needs
+validating first", and that firing on the wrong week teaches people to
+dismiss the whole digest. The one `pest_region` row carrying GDD data warned
+that the Midwest threshold of 1000 DD50 would be wrong for central Texas
+"because emergence is earlier" there.
+
+**Measured 2026-08-31** against seven years of Open-Meteo archive for
+Hillsboro (32.0107, −97.1300), accumulating DD50 from 01-01 by the simple
+average method:
+
+| Year | 750 DD | 900 DD | 1000 DD |
+| --- | --- | --- | --- |
+| 2019 | 24 Apr | 1 May | 6 May |
+| 2020 | 7 Apr | 19 Apr | 24 Apr |
+| 2021 | 14 Apr | 27 Apr | 2 May |
+| 2022 | 18 Apr | 24 Apr | 30 Apr |
+| 2023 | 3 Apr | 14 Apr | 20 Apr |
+| 2024 | 6 Apr | 15 Apr | 19 Apr |
+| 2025 | 4 Apr | 14 Apr | 18 Apr |
+
+AgriLife reports central Texas adult emergence as "as early as April/May".
+The model agrees with the observation, so **the Midwest threshold transfers
+unchanged** — and the note feared the wrong thing. Emergence in Texas *is*
+earlier in calendar terms, and that is exactly what a degree-day model
+produces on its own: the threshold is the constant and the date is what
+moves. The row is now `confidence=verified` and carries both sources and the
+measurement.
 
 ---
 
@@ -853,6 +931,19 @@ openssl rand -hex 24
 Push, then **Deploy HEAD Commit**. There is no build and no restart; the next
 request picks the files up, because there is no OPcache on this host.
 
+### The Phase 6 deploy adds ONE migration — the same trap as Phase 5
+
+Migration **018** (`plant_companion`), pure DDL, one new table. Between the
+deploy and `/setup?key=`, anything reading that table is a 500 — which is
+`/companions` and the research card on every plant page. Run the migration
+immediately, in the order the Phase 5 section below gives.
+
+Nothing else in Phase 6 needs a deploy step. The thirteen reminder kinds, the
+succession planner, the field sheet and the trimmed analysis document are all
+code. Two things are worth doing after it, and neither is urgent: import the
+Phase 6 dataset (owner action 9) so the companion reference has content, and
+look at `/admin/analysis` to see what Recommendations has cost.
+
 ### The Phase 5 deploy DOES add migrations — read the next section first
 
 Phase 5 adds **two**, `016_analysis.sql` and `017_invite.sql`, both pure DDL
@@ -960,10 +1051,12 @@ file is refused rather than silently re-run.
 5. Email Open-Meteo describing Carl (internal, unsold, no ads) and keep the
    reply in `docs/`. Attribution is already in the footer and is generated
    from `source_model`, so it stays honest if NCEI rows are ever mixed in.
-6. Claude Design: the logo, the palette, and the field-recording sheet.
-   `public/assets/css/tokens.css` is a neutral placeholder defining exactly
-   the `--carl-*` names to deliver; it is the only file that names a colour,
-   so the palette is a one-file swap.
+6. Claude Design: the logo and the palette. `public/assets/css/tokens.css` is
+   a neutral placeholder defining exactly the `--carl-*` names to deliver; it
+   is the only file that names a colour, so the palette is a one-file swap.
+   ~~The field-recording sheet.~~ **Built, Phase 6** — designed and
+   implemented as `Carl\Reports\FieldSheet`, and deliberately generated
+   rather than checked in as a static PDF (handoff §13.4 explains why).
 7. **An Anthropic API key**, if Recommendations is wanted (§7.6). One line in
    `config/local.php`. Nothing breaks without it — requests queue and wait —
    and it is the only owner action Phase 5 added.
@@ -972,3 +1065,14 @@ file is refused rather than silently re-run.
    list and both are still outstanding; Phase 5 added a sixth route behind
    `cron_key`, which does not change the argument but does add one more thing
    a leaked key can start.
+9. **Import the Phase 6 dataset**,
+   `research-template/populated/research_US-48217_2026-08-31.1.zip`, at
+   `/admin/research-import`. It is template_version 2 and carries the
+   companion pairings, the five companion crops, and the validated squash
+   vine borer GDD row. Without it the companion reference is an empty page
+   that explains itself, and the GDD reminder stays on the unvalidated
+   `approx` row. Nothing else changes.
+10. **Check the analysis rates** in `config/app.php` before trusting the
+   figure on `/admin/analysis`. They were read from the published prices on
+   2026-08-31 and nothing fetches them; the page labels the money an estimate
+   for that reason.
