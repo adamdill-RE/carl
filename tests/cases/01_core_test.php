@@ -386,3 +386,45 @@ $t->test('the front controller tells the app where the public directory is',
     $contents = (string) \file_get_contents($app->root() . '/public/index.php');
     $t->contains('setPublicPath(__DIR__)', $contents);
 });
+
+$t->group('The timezone cron actually uses');
+
+$t->test('an /etc/localtime symlink resolves to a usable IANA name', function ($t): void {
+    // This is NOT date.timezone. PHP's setting is whatever php.ini says and
+    // the bootstrap overrides it to UTC on every request, so it says nothing
+    // about what cron will do -- and a schedule written against the wrong one
+    // fires hours off, silently.
+    $cases = [
+        '/usr/share/zoneinfo/Etc/UTC'               => 'Etc/UTC',
+        '/usr/share/zoneinfo/America/Chicago'       => 'America/Chicago',
+        // Relative links are common.
+        '../usr/share/zoneinfo/America/Chicago'     => 'America/Chicago',
+        // posix/ and right/ are part of the path, not the zone name, and
+        // leaving them on makes DateTimeZone throw.
+        '/usr/share/zoneinfo/posix/America/Chicago' => 'America/Chicago',
+        '/usr/share/zoneinfo/right/UTC'             => 'UTC',
+    ];
+
+    foreach ($cases as $link => $expected) {
+        $name = Carl\Controller\SystemController::zoneFromLinkPath($link);
+        $t->same($expected, $name, $link);
+        // Every name it returns must be one DateTimeZone accepts, or the
+        // status page throws instead of reporting.
+        new DateTimeZone((string) $name);
+    }
+});
+
+$t->test('a path that is not a zoneinfo link is rejected rather than guessed at',
+    function ($t): void {
+    $t->same(null, Carl\Controller\SystemController::zoneFromLinkPath('/nonsense/path'));
+    $t->same(null, Carl\Controller\SystemController::zoneFromLinkPath(''));
+    $t->same(null, Carl\Controller\SystemController::zoneFromLinkPath('/usr/share/zoneinfo/'));
+});
+
+$t->test('the system timezone is reported with where it was read from', function ($t): void {
+    $system = Carl\Controller\SystemController::systemTimezone();
+    $t->ok(isset($system['name'], $system['source']), 'both keys present');
+    if ($system['name'] !== 'unknown') {
+        new DateTimeZone($system['name']);   // throws if unusable
+    }
+});

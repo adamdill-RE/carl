@@ -39,8 +39,18 @@ final class SystemController extends Controller
         $lines[] = 'RUNTIME';
         $lines[] = \sprintf('  php                %s (%s)', \PHP_VERSION, \PHP_SAPI);
         $lines[] = \sprintf('  server             %s', $request->server['SERVER_SOFTWARE'] ?? 'unknown');
-        $lines[] = \sprintf('  timezone           %s', \date_default_timezone_get());
+        $lines[] = \sprintf('  php timezone       %s (date.timezone; app pins UTC in code regardless)',
+            \date_default_timezone_get());
         $lines[] = \sprintf('  utc now            %s', \gmdate('Y-m-d H:i:s'));
+
+        // The timezone CRON reads is the operating system's, which is a
+        // different setting from PHP's date.timezone and can disagree with
+        // it. A schedule written against the wrong one fires hours off, and
+        // nothing anywhere else in the system reveals the difference.
+        $system = self::systemTimezone();
+        $lines[] = \sprintf('  system timezone    %s (from %s)', $system['name'], $system['source']);
+        $lines[] = \sprintf('  cron clock now     %s  <- cron schedules run in THIS, not the PHP setting',
+            self::clockIn($system['name']));
         $lines[] = \sprintf('  base_path          %s', $this->app->basePath());
         $lines[] = \sprintf('  app root           %s', $this->app->root());
         $lines[] = \sprintf('  memory_limit       %s', \ini_get('memory_limit'));
@@ -225,6 +235,62 @@ final class SystemController extends Controller
      * Set the master admin's credential. Needed because before the migrations
      * run there is no user table to log in against (hosting Section 6.3).
      */
+    /**
+     * The operating system's timezone, read the two ways it is exposed. This
+     * is deliberately NOT date_default_timezone_get(): PHP's setting is
+     * whatever php.ini says and the app overrides it to UTC on every request,
+     * so it tells you nothing about what cron will do.
+     *
+     * @return array{name:string,source:string}
+     */
+    public static function systemTimezone(): array
+    {
+        $link = @\readlink('/etc/localtime');
+        if (\is_string($link)) {
+            $name = self::zoneFromLinkPath($link);
+            if ($name !== null) {
+                return ['name' => $name, 'source' => '/etc/localtime'];
+            }
+        }
+
+        $file = @\file_get_contents('/etc/timezone');
+        if (\is_string($file) && \trim($file) !== '') {
+            return ['name' => \trim($file), 'source' => '/etc/timezone'];
+        }
+
+        return [
+            'name'   => 'unknown',
+            'source' => 'neither /etc/localtime nor /etc/timezone readable -- schedule a one-off'
+                . ' cron running /bin/date to settle it',
+        ];
+    }
+
+    /**
+     * Pull an IANA name out of an /etc/localtime symlink target.
+     *
+     * The link may be absolute or relative, and some distributions point it
+     * into zoneinfo/posix/ or zoneinfo/right/ -- prefixes that are part of
+     * the path, not of the zone name, and that make DateTimeZone throw if
+     * they are left on.
+     */
+    public static function zoneFromLinkPath(string $link): ?string
+    {
+        if (\preg_match('#zoneinfo/(?:posix/|right/)?(.+)$#', $link, $m) !== 1) {
+            return null;
+        }
+        return $m[1] === '' ? null : $m[1];
+    }
+
+    private static function clockIn(string $timezone): string
+    {
+        try {
+            return (new \DateTimeImmutable('now', new \DateTimeZone($timezone)))
+                ->format('Y-m-d H:i:s T');
+        } catch (Throwable) {
+            return 'unknown';
+        }
+    }
+
     private function setAdminCredential(Request $request, string $key): Response
     {
         $username = \strtolower(\trim((string) $request->input('username', 'admin')));

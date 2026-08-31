@@ -213,10 +213,31 @@ plant catalog and the plant forms have nothing to offer.
 | --- | --- | --- | --- | --- |
 | `15` | `9` | `*` | `*` | `*` |
 
-Cron runs in the server's timezone, which is UTC (hosting §1), so this fires
-at **09:15 UTC — 4:15 am Central in summer, 3:15 am in winter.** Late enough
-that yesterday has settled at the provider, early enough to be waiting before
-anyone opens the app.
+Cron runs in the **operating system's** timezone. That is a different setting
+from PHP's `date.timezone`, and hosting §1 and §4 both record UTC without
+distinguishing them — §4's reading came from a PHP script, which cannot see
+the OS setting at all.
+
+`/status?key=` now reports both, so check it rather than assuming:
+
+```
+  php timezone       UTC (date.timezone; app pins UTC in code regardless)
+  system timezone    Etc/UTC (from /etc/localtime)
+  cron clock now     2026-08-31 13:16:55 UTC  <- cron schedules run in THIS
+```
+
+**If `system timezone` is UTC**, `15 9 * * *` fires at 09:15 UTC — 4:15 am
+Central in summer, 3:15 am in winter. Late enough that yesterday has settled
+at the provider, early enough to be waiting before anyone opens the app.
+
+**If it is `America/Chicago`**, that same line fires at 9:15 in the morning
+local, which is five hours later than intended: a gardener checking at six
+would find yesterday missing. Use `15 4 * * *` instead.
+
+Nothing about the application depends on this. PHP is pinned to UTC in the
+bootstrap, the database session is pinned to `+00:00`, and each user's "today"
+is computed through their own IANA zone. The only thing the OS setting decides
+is what wall-clock time the job fires.
 
 Command:
 

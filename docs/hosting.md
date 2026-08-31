@@ -199,6 +199,12 @@ public directory, removed afterwards.
 ### Time
 
 Server timezone is UTC. **Store and compare in UTC; convert for display only.**
+
+Note that `date.timezone` above is PHP's setting, read by a PHP script, and is
+independent of the operating system's timezone — which is the one **cron**
+schedules run in. The two agree on this host, but nothing in a PHP reading
+establishes that; Carl's `/status` reports the OS setting separately, from
+`/etc/localtime`, for exactly this reason.
 Houston observes DST, so anything crossing 02:00 in March must be converted
 with a real timezone (`America/Chicago`), never a fixed offset. Pin the
 *database connection's* time zone too, or `NOW()` defaults record whatever the
