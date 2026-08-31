@@ -130,11 +130,15 @@ Every configuration value can be overridden by an environment variable with a
 ## Tests
 
 ```bash
-php tests/run.php --strict          # 238 cases; needs a database
+php tests/run.php --strict          # 240 cases; needs a database
 php tests/lint_cpanel_yml.php       # the host's parser rules
 php tests/check_collation.php       # utf8mb4_unicode_ci on every table
 php tests/check_asset_budget.php    # the client shell against 150 KB gzipped
 ```
+
+CI runs the suite on MySQL 8.0 (production) and MariaDB 10.11 (insurance on a
+database host that is not ours to control). Both were run locally from empty
+databases for the Phase 3 build, and both were green.
 
 The suite drives the real kernel through the §14 alpha acceptance run end to
 end — sign-in, forced reset, onboarding at ZIP 76692, three kinds of backdated

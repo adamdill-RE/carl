@@ -4,8 +4,9 @@
 data.** This document was the scope for what came next: the Phase 2 remnants,
 then Phase 3 in full — reminders, email, the watering model and NWS alerts.
 
-> **Status, 2026-08-31: §3 and §4 are built.** 238 tests, 942 assertions,
-> `--strict`. §9 below records what was built differently from what this
+> **Status, 2026-08-31: §3 and §4 are built.** 240 tests, 947 assertions,
+> `--strict`, green from an empty database on both MySQL 8.0 and MariaDB
+> 10.11. §9 below records what was built differently from what this
 > document specified, and why, as §8 requires. The owner actions in §6 are
 > still outstanding — §4.1 was built to work correctly while its mailbox does
 > not exist, and to start sending the day it does.
