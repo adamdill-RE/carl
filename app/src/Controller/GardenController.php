@@ -1,0 +1,408 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Carl\Controller;
+
+use Carl\Core\HttpException;
+use Carl\Core\Request;
+use Carl\Core\Response;
+use Carl\Domain\EventType;
+use Carl\Domain\ListType;
+use Carl\Domain\SoilType;
+
+/**
+ * Build Garden, Garden Actions and View Garden
+ * (handoff Sections 4.6, 4.7, 4.8).
+ */
+final class GardenController extends Controller
+{
+    public function index(Request $request): Response
+    {
+        $gardens = $this->gardens()->activeGardens();
+        $ids = \array_map(static fn (array $g): int => (int) $g['id'], $gardens);
+
+        return $this->render('gardens/index', [
+            'gardens'    => $gardens,
+            'rowsByGarden' => $this->gardens()->rowsForGardens($ids),
+            'containers' => $this->gardens()->containers(),
+        ]);
+    }
+
+    public function newForm(Request $request): Response
+    {
+        return $this->render('gardens/form', [
+            'garden'    => null,
+            'values'    => ['name' => '', 'ns_ft' => '', 'ew_ft' => '', 'row_count' => '3',
+                            'row_orientation' => 'ns', 'soil_type' => '', 'notes' => ''],
+            'soilTypes' => SoilType::options(),
+            'errors'    => [],
+        ]);
+    }
+
+    public function create(Request $request): Response
+    {
+        $values = $this->gardenValues($request);
+        $errors = $this->validateGarden($values);
+
+        if ($errors !== []) {
+            return $this->render('gardens/form', [
+                'garden' => null, 'values' => $values,
+                'soilTypes' => SoilType::options(), 'errors' => $errors,
+            ]);
+        }
+
+        $gardenId = $this->gardens()->insert($this->gardenData($values));
+        $this->gardens()->syncRows($gardenId, (int) $values['row_count']);
+
+        $this->flash('Garden created.');
+        return $this->redirect('gardens/' . $gardenId);
+    }
+
+    public function edit(Request $request, array $params): Response
+    {
+        $garden = $this->gardens()->findOrFail((int) $params['id']);
+
+        return $this->render('gardens/form', [
+            'garden' => $garden,
+            'values' => [
+                'name'            => (string) $garden['name'],
+                'ns_ft'           => (string) ($garden['ns_ft'] ?? ''),
+                'ew_ft'           => (string) ($garden['ew_ft'] ?? ''),
+                'row_count'       => (string) $garden['row_count'],
+                'row_orientation' => (string) $garden['row_orientation'],
+                'soil_type'       => (string) ($garden['soil_type'] ?? ''),
+                'notes'           => (string) ($garden['notes'] ?? ''),
+            ],
+            'soilTypes' => SoilType::options(),
+            'errors'    => [],
+        ]);
+    }
+
+    public function update(Request $request, array $params): Response
+    {
+        $gardenId = (int) $params['id'];
+        $garden = $this->gardens()->findOrFail($gardenId);
+
+        $values = $this->gardenValues($request);
+        $errors = $this->validateGarden($values);
+
+        if ($errors !== []) {
+            return $this->render('gardens/form', [
+                'garden' => $garden, 'values' => $values,
+                'soilTypes' => SoilType::options(), 'errors' => $errors,
+            ]);
+        }
+
+        $this->gardens()->update($gardenId, $this->gardenData($values));
+        $this->gardens()->syncRows($gardenId, (int) $values['row_count']);
+
+        $this->flash('Garden saved.');
+        return $this->redirect('gardens/' . $gardenId);
+    }
+
+    /**
+     * Rows are posted one screen at a time. Hosting Section 4: PHP truncates
+     * silently past max_input_vars (1000), so a garden with many rows must
+     * never post every row's every field in one form -- this posts four
+     * fields per row and refuses politely if the count would exceed the cap.
+     */
+    public function updateRows(Request $request, array $params): Response
+    {
+        $gardenId = (int) $params['id'];
+        $this->gardens()->findOrFail($gardenId);
+
+        $rowIds = $request->intList('row_id');
+        $names = $request->inputList('row_name');
+        $sun = $request->inputList('row_sun');
+        $notes = $request->inputList('row_notes');
+        $shade = $request->inputList('row_shade');
+
+        foreach ($rowIds as $index => $rowId) {
+            if ($this->gardens()->findRow($rowId) === null) {
+                continue;
+            }
+            $shadeId = $this->lists()->resolveChoice(
+                ListType::SHADE_CLOTH,
+                $shade[$index] ?? null,
+                null
+            );
+            $this->gardens()->updateRow($rowId, [
+                'name'           => \substr(\trim($names[$index] ?? ''), 0, 60) ?: 'Row ' . ($index + 1),
+                'sun_exposure'   => \in_array($sun[$index] ?? '', ['high', 'medium', 'low'], true)
+                    ? $sun[$index] : 'high',
+                'shade_cloth_id' => $shadeId,
+                'notes'          => ($notes[$index] ?? '') === '' ? null : $notes[$index],
+            ]);
+        }
+
+        $this->flash(\count($rowIds) . ' rows saved.');
+        return $this->redirect('gardens/' . $gardenId);
+    }
+
+    public function saveZone(Request $request, array $params): Response
+    {
+        $gardenId = (int) $params['id'];
+        $this->gardens()->findOrFail($gardenId);
+
+        if ($request->input('delete_zone_id') !== null) {
+            $this->gardens()->deleteZone((int) $request->input('delete_zone_id'));
+            $this->flash('Water zone removed.');
+            return $this->redirect('gardens/' . $gardenId);
+        }
+
+        $name = \trim((string) $request->input('zone_name', ''));
+        if ($name === '') {
+            $this->flash('Give the water zone a name.', 'error');
+            return $this->redirect('gardens/' . $gardenId);
+        }
+
+        $methodId = $this->lists()->resolveChoice(
+            ListType::WATER_METHOD,
+            $request->input('water_method_id'),
+            $request->input('water_method_new')
+        );
+
+        $zoneId = $this->gardens()->createZone($gardenId, $name, $methodId);
+
+        // Only rows that belong to this garden may join the zone.
+        $wanted = $request->intList('zone_rows');
+        $valid = [];
+        foreach ($this->gardens()->rows($gardenId) as $row) {
+            if (\in_array((int) $row['id'], $wanted, true)) {
+                $valid[] = (int) $row['id'];
+            }
+        }
+        $this->gardens()->setZoneRows($zoneId, $valid);
+
+        $this->flash('Water zone saved.');
+        return $this->redirect('gardens/' . $gardenId);
+    }
+
+    /** View Garden: the garden report in list form (handoff Section 4.8). */
+    public function show(Request $request, array $params): Response
+    {
+        $gardenId = (int) $params['id'];
+        $garden = $this->gardens()->findOrFail($gardenId);
+
+        $plantings = $this->plantings()->listWithDetail(['garden_id' => $gardenId]);
+        $rows = $this->gardens()->rows($gardenId);
+
+        // Per-row yield totals (handoff Section 4.8), one statement.
+        $yields = $this->app->db()->all(
+            'SELECT p.garden_row_id, COALESCE(SUM(e.weight_g), 0) AS weight_g,'
+            . ' COALESCE(SUM(e.count_qty), 0) AS count_qty'
+            . ' FROM `plant_event` e JOIN `planting` p ON p.id = e.planting_id'
+            . ' WHERE e.user_id = :user_id AND p.garden_id = :garden_id AND e.event_type = :yielded'
+            . ' GROUP BY p.garden_row_id',
+            ['user_id' => $this->userId(), 'garden_id' => $gardenId, 'yielded' => EventType::YIELDED]
+        );
+        $yieldByRow = [];
+        foreach ($yields as $row) {
+            $yieldByRow[(int) ($row['garden_row_id'] ?? 0)] = $row;
+        }
+
+        return $this->render('gardens/show', [
+            'garden'     => $garden,
+            'rows'       => $rows,
+            'zones'      => $this->gardens()->zones($gardenId),
+            'plantings'  => $plantings,
+            'events'     => $this->events()->gardenTimeline($gardenId),
+            'photos'     => $this->photos()->forGarden($gardenId),
+            'yieldByRow' => $yieldByRow,
+            'occupancy'  => $this->gardens()->livingCountByRow($gardenId),
+            'lists'      => $this->lists()->manyTypes([ListType::WATER_METHOD, ListType::SHADE_CLOTH]),
+        ]);
+    }
+
+    public function actions(Request $request, array $params): Response
+    {
+        $gardenId = (int) $params['id'];
+        $garden = $this->gardens()->findOrFail($gardenId);
+
+        return $this->render('gardens/actions', [
+            'garden' => $garden,
+            'rows'   => $this->gardens()->rows($gardenId),
+            'zones'  => $this->gardens()->zones($gardenId),
+            'lists'  => $this->lists()->manyTypes([
+                ListType::WATER_METHOD, ListType::FERTILIZER_GARDEN, ListType::SOIL_AMENDMENT,
+                ListType::MULCH_TYPE, ListType::PEST_DISEASE, ListType::PEST_TREATMENT,
+            ]),
+            'actions' => EventType::gardenTypes(),
+        ]);
+    }
+
+    public function recordAction(Request $request, array $params): Response
+    {
+        $gardenId = (int) $params['id'];
+        $this->gardens()->findOrFail($gardenId);
+
+        $eventType = (string) $request->input('event_type', '');
+        if (!\in_array($eventType, EventType::gardenTypes(), true)) {
+            throw HttpException::badRequest('That is not a garden action.');
+        }
+
+        $eventDate = $this->eventDate($request);
+        $zoneId = null;
+        $rowIds = [];
+        $data = [
+            'narrative'    => $request->nullable('narrative'),
+            'duration_min' => $request->intInput('duration_min'),
+        ];
+
+        switch ($eventType) {
+            case EventType::WATERED:
+                $zoneIdRaw = $request->intInput('water_zone_id');
+                if ($zoneIdRaw !== null && $zoneIdRaw > 0) {
+                    $zoneId = $zoneIdRaw;
+                    $rowIds = $this->gardens()->zoneRowIds($zoneId);
+                }
+                $data['ref_list_item_id'] = $this->lists()->resolveChoice(
+                    ListType::WATER_METHOD,
+                    $request->input('water_method_id'),
+                    $request->input('water_method_new')
+                );
+                break;
+
+            case EventType::FERTILIZED:
+                $data['ref_list_item_id'] = $this->lists()->resolveChoice(
+                    ListType::FERTILIZER_GARDEN,
+                    $request->input('fertilizer_id'),
+                    $request->input('fertilizer_new')
+                );
+                break;
+
+            case EventType::AMENDED:
+                $data['ref_list_item_id'] = $this->lists()->resolveChoice(
+                    ListType::SOIL_AMENDMENT,
+                    $request->input('amendment_id'),
+                    $request->input('amendment_new')
+                );
+                break;
+
+            case EventType::MULCHED:
+                $data['ref_list_item_id'] = $this->lists()->resolveChoice(
+                    ListType::MULCH_TYPE,
+                    $request->input('mulch_id'),
+                    $request->input('mulch_new')
+                );
+                $rowIds = $this->validRows($gardenId, $request->intList('rows'));
+                break;
+
+            case EventType::PEST_OBSERVED:
+                $data['ref_list_item_id'] = $this->lists()->resolveChoice(
+                    ListType::PEST_DISEASE,
+                    $request->input('pest_id'),
+                    $request->input('pest_new')
+                );
+                break;
+
+            case EventType::PEST_TREATED:
+                $data['ref_list_item_id'] = $this->lists()->resolveChoice(
+                    ListType::PEST_DISEASE,
+                    $request->input('pest_id'),
+                    $request->input('pest_new')
+                );
+                $data['ref_list_item_id_2'] = $this->lists()->resolveChoice(
+                    ListType::PEST_TREATMENT,
+                    $request->input('treatment_id'),
+                    $request->input('treatment_new')
+                );
+                break;
+        }
+
+        // Watering a zone fans out a derived water record to every living
+        // plant in the zone's rows, carrying source_garden_event_id so it is
+        // not double-counted (handoff Section 4.7).
+        $fanOut = $eventType === EventType::WATERED && $zoneId !== null;
+
+        $result = $this->events()->recordGardenEvent(
+            $gardenId, $eventType, $eventDate, $data, $rowIds, $zoneId, $fanOut
+        );
+
+        $photoIds = $request->intList('photo_ids');
+        if ($photoIds !== []) {
+            $this->photos()->attachToGardenEvent($photoIds, $result['event_id']);
+        }
+
+        $message = EventType::label($eventType) . ' recorded';
+        if ($result['fanout'] > 0) {
+            $message .= ', and logged against ' . $result['fanout'] . ' living plant'
+                . ($result['fanout'] === 1 ? '' : 's') . ' in that zone';
+        }
+        $this->flash($message . '.');
+
+        return $this->redirect('gardens/' . $gardenId . '/actions');
+    }
+
+    /** @param list<int> $wanted @return list<int> */
+    private function validRows(int $gardenId, array $wanted): array
+    {
+        if ($wanted === []) {
+            return [];
+        }
+        $valid = [];
+        foreach ($this->gardens()->rows($gardenId) as $row) {
+            if (\in_array((int) $row['id'], $wanted, true)) {
+                $valid[] = (int) $row['id'];
+            }
+        }
+        return $valid;
+    }
+
+    /** @return array<string,string> */
+    private function gardenValues(Request $request): array
+    {
+        return [
+            'name'            => \trim((string) $request->input('name', '')),
+            'ns_ft'           => (string) $request->input('ns_ft', ''),
+            'ew_ft'           => (string) $request->input('ew_ft', ''),
+            'row_count'       => (string) $request->input('row_count', '0'),
+            'row_orientation' => $this->choice($request, 'row_orientation', ['ns', 'ew'], 'ns'),
+            'soil_type'       => (string) $request->input('soil_type', ''),
+            'notes'           => (string) $request->input('notes', ''),
+        ];
+    }
+
+    /** @param array<string,string> $values @return list<string> */
+    private function validateGarden(array $values): array
+    {
+        $errors = [];
+        if ($values['name'] === '') {
+            $errors[] = 'Give the garden a name.';
+        }
+        $rowCount = (int) $values['row_count'];
+        if ($rowCount < 0 || $rowCount > 200) {
+            $errors[] = 'Rows must be between 0 and 200.';
+        }
+        // Hosting Section 4: max_input_vars is 1000 and PHP truncates past it
+        // silently. The row editor posts five fields per row.
+        if ($rowCount > 150) {
+            $errors[] = 'More than 150 rows cannot be edited in one form on this server. '
+                . 'Split the plot into two gardens.';
+        }
+        if ($values['soil_type'] !== '' && !SoilType::isValid($values['soil_type'])) {
+            $errors[] = 'Pick a soil type from the list.';
+        }
+        foreach (['ns_ft' => 'North-south', 'ew_ft' => 'East-west'] as $key => $label) {
+            if ($values[$key] !== '' && (!\is_numeric($values[$key]) || (float) $values[$key] < 0)) {
+                $errors[] = $label . ' size must be a number of feet.';
+            }
+        }
+        return $errors;
+    }
+
+    /** @param array<string,string> $values @return array<string,mixed> */
+    private function gardenData(array $values): array
+    {
+        return [
+            'name'            => $values['name'],
+            'ns_ft'           => $values['ns_ft'] === '' ? null : (float) $values['ns_ft'],
+            'ew_ft'           => $values['ew_ft'] === '' ? null : (float) $values['ew_ft'],
+            'row_count'       => (int) $values['row_count'],
+            'row_orientation' => $values['row_orientation'],
+            'soil_type'       => $values['soil_type'] === '' ? null : $values['soil_type'],
+            'notes'           => $values['notes'] === '' ? null : $values['notes'],
+        ];
+    }
+}

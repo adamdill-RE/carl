@@ -1,0 +1,11 @@
+region_key,topic,applies_to_categories,show_from,show_to,guidance,confidence,source
+US-48217,season,,01-01,12-31,"Central Texas has two growing seasons, spring and fall, separated by a summer heat gap in July-August when most fruiting crops stall. If spring goes wrong, try again in the fall.",verified,AgriLife
+US-48217,soil,,01-01,12-31,"Hill County soils are heavy Blackland/Grand Prairie clay, alkaline, with caliche in places. Drainage is slow: raise or amend beds and water deeply but infrequently.",approx,AgriLife; NRCS
+US-48217,water,,05-01,09-30,"Water deeply so moisture reaches 3 inches or more. A brief shower rarely reaches the roots. Above 95F expect blossom drop on tomatoes, peppers and beans regardless of watering.",verified,AgriLife
+US-48217,shade,Tomato;Pepper;Eggplant;Lettuce,06-15,09-01,"Use 30-50% shade cloth, or afternoon shade after 3 pm, through July and August.",verified,AgriLife
+US-48217,mulch,,04-01,10-31,Mulch 2-3 inches to hold moisture and moderate soil temperature; keep it off stems.,verified,AgriLife
+US-48217,seed_start,Tomato;Pepper;Eggplant,01-01,02-15,"Start warm-season transplants indoors 6-8 weeks before the mid-March transplant window, i.e. late January.",verified,AgriLife
+US-48217,seed_start,Cabbage;Broccoli;Cauliflower,07-25,08-20,Seed cole crops indoors Aug 1-15 for transplanting Aug 20 - Sep 15.,verified,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8)
+US-48217,hardening,,01-01,12-31,"Harden off transplants over 7-14 days, increasing outdoor hours each day and starting in shade.",verified,AgriLife
+US-48217,frost,,10-15,12-15,Average first fall frost is around Nov 15-25. Cover or harvest tender crops when a freeze warning is issued.,approx,NOAA normals
+US-48217,frost,,02-15,04-15,Average last spring frost is around Mar 9-31. Hold warm-season transplants until the risk passes.,approx,NOAA normals

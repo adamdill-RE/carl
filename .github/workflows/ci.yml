@@ -1,0 +1,161 @@
+name: CI
+
+# There is no staging copy of this application: a bad migration is discovered
+# on the live site (hosting Section 10). CI is the only safety net, so it
+# reproduces the host rather than a convenient approximation.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: Static checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          # Production is 8.2.33. A newer PHP hides a deprecation until it
+          # reaches the server (hosting Section 10).
+          php-version: '8.2'
+          extensions: pdo, pdo_mysql, mbstring, json, openssl, curl, fileinfo, zip, gd
+          coverage: none
+          tools: none
+
+      - name: No Composer dependencies
+        run: |
+          if [ -f composer.json ]; then
+            echo "composer.json present: nothing installs packages on the host (hosting Section 3)."
+            exit 1
+          fi
+
+      - name: php -l over every PHP file
+        run: |
+          fail=0
+          while IFS= read -r -d '' file; do
+            php -l "$file" > /dev/null || { php -l "$file"; fail=1; }
+          done < <(find . -path ./.git -prune -o -name '*.php' -print0)
+          exit $fail
+
+      - name: Every tracked file is git mode 100644
+        run: |
+          # Hosting Section 6.2 step 5: the deploy fixes modes in one pass with
+          # chmod -R u=rwX,go=rX, which is only correct because nothing tracked
+          # is executable. A file that lands executable is deployed executable
+          # and the 0755/0644 rule silently stops holding.
+          bad=$(git ls-files -s | awk '$1 != "100644" { print $1, $4 }')
+          if [ -n "$bad" ]; then
+            echo "Tracked files that are not mode 100644:"
+            echo "$bad"
+            exit 1
+          fi
+
+      - name: .cpanel.yml matches the host parser rules
+        run: php tests/lint_cpanel_yml.php
+
+      - name: Assets stay within the client shell budget
+        run: php tests/check_asset_budget.php
+
+  database:
+    name: Migrations and suite (${{ matrix.db.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        db:
+          # MySQL 8.0 is production, measured (hosting Section 2.2).
+          - name: MySQL 8.0
+            image: mysql:8.0
+          # MariaDB 10.11 alongside is nearly free insurance on a plan whose
+          # database host is not ours to control.
+          - name: MariaDB 10.11
+            image: mariadb:10.11
+
+    services:
+      db:
+        image: ${{ matrix.db.image }}
+        env:
+          MYSQL_ROOT_PASSWORD: ci
+          MARIADB_ROOT_PASSWORD: ci
+          MYSQL_DATABASE: carl_ci
+          MARIADB_DATABASE: carl_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci || mariadb-admin ping -h 127.0.0.1 -uroot -pci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      CARL_DB_HOST: 127.0.0.1
+      CARL_DB_PORT: '3306'
+      CARL_DB_NAME: carl_ci
+      CARL_DB_USER: root
+      CARL_DB_PASS: ci
+      CARL_DB_ALLOW_LOCAL: 'true'
+      CARL_STATUS_KEY: ci-status-key
+      CARL_SETUP_KEY: ci-setup-key
+      CARL_CRON_KEY: ci-cron-key
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo, pdo_mysql, mbstring, json, openssl, curl, fileinfo, zip, gd
+          coverage: none
+          tools: none
+          # Reproduce the production limits so a constraint that will bite on
+          # the server bites here first (hosting Section 10).
+          ini-values: >-
+            memory_limit=128M,
+            max_execution_time=30,
+            post_max_size=8M,
+            upload_max_filesize=2M,
+            max_input_vars=1000,
+            opcache.enable=0,
+            opcache.enable_cli=0
+
+      - name: Wait for the database
+        run: |
+          for i in $(seq 1 40); do
+            if php -r 'new PDO("mysql:host=127.0.0.1;port=3306","root","ci");' 2>/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "database never came up"; exit 1
+
+      - name: Apply migrations
+        run: php bin/migrate.php
+
+      - name: Apply migrations again and assert up to date
+        run: |
+          # Idempotence is what makes a browser-run migration safe to retry
+          # (hosting Section 10).
+          out=$(php bin/migrate.php)
+          echo "$out"
+          if ! echo "$out" | grep -q '^up to date$'; then
+            echo "second run did not report up to date"; exit 1
+          fi
+          if echo "$out" | grep -q '^applied [0-9]'; then
+            echo "second run applied a migration; migrations are not idempotent"; exit 1
+          fi
+          php bin/migrate.php --status
+
+      - name: Every table is utf8mb4_unicode_ci
+        run: php tests/check_collation.php
+
+      - name: Test suite
+        run: php tests/run.php --strict

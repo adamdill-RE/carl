@@ -1,0 +1,59 @@
+region_key,category,type,season,window_start,window_end,method,recommended,dtm_days_min_override,dtm_days_max_override,confidence,source,regional_notes
+US-48217,Tomato,Roma,spring,03-15,04-10,transplant,N,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Tomato,Roma,fall,07-01,08-15,transplant,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),Use heat-set varieties; transplant early enough to fruit before mid-Nov frost
+US-48217,Tomato,Celebrity,spring,03-15,04-10,transplant,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Tomato,Celebrity,fall,07-01,08-15,transplant,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),Use heat-set varieties; transplant early enough to fruit before mid-Nov frost
+US-48217,Tomato,Tycoon,spring,03-15,04-10,transplant,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Tomato,Tycoon,fall,07-01,08-15,transplant,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),Use heat-set varieties; transplant early enough to fruit before mid-Nov frost
+US-48217,Tomato,Solar Fire,spring,03-15,04-10,transplant,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Tomato,Solar Fire,fall,07-01,08-15,transplant,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),Use heat-set varieties; transplant early enough to fruit before mid-Nov frost
+US-48217,Tomato,Heatmaster,spring,03-15,04-10,transplant,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Tomato,Heatmaster,fall,07-01,08-15,transplant,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),Use heat-set varieties; transplant early enough to fruit before mid-Nov frost
+US-48217,Tomato,Juliet,spring,03-15,04-10,transplant,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Tomato,Juliet,fall,07-01,08-15,transplant,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),Use heat-set varieties; transplant early enough to fruit before mid-Nov frost
+US-48217,Pepper,Jalapeno,spring,03-15,05-01,transplant,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Pepper,Jalapeno,fall,07-01,08-15,transplant,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Pepper,TAM Mild Jalapeno,spring,03-15,05-01,transplant,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Pepper,TAM Mild Jalapeno,fall,07-01,08-15,transplant,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Pepper,Serrano,spring,03-15,05-01,transplant,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Pepper,Serrano,fall,07-01,08-15,transplant,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Pepper,Bell (Big Bertha),spring,03-15,05-01,transplant,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Pepper,Bell (Big Bertha),fall,07-01,08-15,transplant,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Pepper,Cayenne,spring,03-15,05-01,transplant,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Pepper,Cayenne,fall,07-01,08-15,transplant,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Eggplant,Black Beauty,spring,03-15,05-01,transplant,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Eggplant,Black Beauty,fall,07-01,08-01,transplant,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Squash (summer),Zucchini,spring,03-05,05-01,seed,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Squash (summer),Zucchini,fall,08-01,09-01,seed,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Squash (summer),Yellow Crookneck,spring,03-05,05-01,seed,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Squash (summer),Yellow Crookneck,fall,08-01,09-01,seed,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Squash (winter),Butternut,spring,03-05,05-01,seed,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Squash (winter),Butternut,fall,07-15,08-15,seed,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Cucumber,Slicing,spring,03-05,05-01,seed,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Cucumber,Slicing,fall,08-01,09-01,seed,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Cucumber,Pickling,spring,03-05,05-01,seed,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Cucumber,Pickling,fall,08-01,09-01,seed,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Bean,Bush snap,spring,03-05,05-01,seed,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Bean,Bush snap,fall,08-01,09-01,seed,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Bean,Pole snap,spring,03-05,04-15,seed,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Bean,Pole snap,fall,08-01,08-20,seed,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Southern pea,Purple hull / black-eyed,spring,04-15,06-15,seed,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),Warm-soil crop
+US-48217,Southern pea,Purple hull / black-eyed,fall,07-15,08-15,seed,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Okra,Clemson Spineless,spring,04-15,05-31,seed,Y,,,approx,AgriLife guidance: plant after soil warms,Sow when soil >70F
+US-48217,Okra,Clemson Spineless,fall,07-01,08-01,seed,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Sweet corn,Silver Queen,spring,02-25,05-01,seed,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Sweet corn,Silver Queen,fall,08-01,08-20,seed,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Cabbage,Early Jersey Wakefield,spring,02-01,03-01,transplant,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Cabbage,Early Jersey Wakefield,fall,08-20,09-15,transplant,Y,,,verified,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),Seed indoors Aug 1-15
+US-48217,Broccoli,Packman,spring,02-01,03-01,transplant,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Broccoli,Packman,fall,08-20,09-15,transplant,Y,,,verified,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),Seed indoors Aug 1-15
+US-48217,Cauliflower,Snow Crown,spring,02-01,03-01,transplant,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Cauliflower,Snow Crown,fall,08-20,09-15,transplant,Y,,,verified,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),Seed indoors Aug 1-15
+US-48217,Lettuce,Leaf,spring,02-01,03-15,seed,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Lettuce,Leaf,fall,09-01,10-15,seed,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Lettuce,Head,spring,02-01,03-15,transplant,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Lettuce,Head,fall,09-01,10-15,transplant,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Spinach,Bloomsdale,spring,01-01,02-15,seed,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)",
+US-48217,Spinach,Bloomsdale,fall,09-15,11-01,seed,Y,,,approx,AgriLife Fall Vegetable Gardening Guide (Region III / Zone 8),
+US-48217,Onion,1015Y Texas SuperSweet,spring,02-01,03-01,transplant,Y,,,verified,"AgriLife Spring Planting Guide (Aggie Horticulture, Region III)","Plants/sets, not seed"
+US-48217,Garlic,Softneck,fall,10-01,11-15,seed,Y,,,approx,Zone 8 general guidance,Cloves; harvest late May-June

@@ -1,0 +1,15 @@
+region_key,pest_key,active_start,active_end,affects_categories,gdd_base_f,gdd_threshold,gdd_biofix,confidence,source,regional_notes
+US-48217,spider_mite,07-01,09-30,Tomato;Pepper;Bean;Cucumber;Squash (summer);Eggplant,,,,approx,AgriLife,Peaks in summer heat
+US-48217,aphid,03-01,05-31,Tomato;Pepper;Cabbage;Broccoli;Lettuce,,,,approx,AgriLife,Spring flush on new growth; also fall
+US-48217,leaf_footed_bug,07-15,10-31,Tomato;Southern pea,,,,approx,AgriLife,Late summer and fall
+US-48217,stink_bug,07-15,10-31,Tomato;Pepper;Southern pea,,,,approx,AgriLife,
+US-48217,squash_vine_borer,04-15,07-15,Squash (summer);Squash (winter),50,1000,01-01,approx,OSU ENT-0106; Illinois Extension (750-1000 DD50),Midwest threshold; central TX emergence is earlier. Validate against a Texas source before enabling the reminder
+US-48217,squash_bug,04-15,09-30,Squash (summer);Squash (winter);Cucumber,,,,approx,AgriLife,
+US-48217,cucumber_beetle,04-01,09-30,Cucumber;Squash (summer);Squash (winter),,,,approx,AgriLife,
+US-48217,hornworm,05-01,09-30,Tomato;Pepper;Eggplant,,,,approx,AgriLife,
+US-48217,fire_ant,01-01,12-31,,,,,approx,AgriLife,Year-round; scout in fall
+US-48217,early_blight,04-01,06-30,Tomato,,,,approx,AgriLife,Also fall crop in humid spells
+US-48217,powdery_mildew,05-01,10-31,Squash (summer);Squash (winter);Cucumber,,,,approx,AgriLife,
+US-48217,root_knot_nematode,01-01,12-31,Tomato;Pepper;Okra;Cucumber;Squash (summer),,,,approx,AgriLife,Worse in sandy pockets; rotate
+US-48217,blossom_drop_heat,06-15,09-15,Tomato;Pepper;Bean,,,,approx,AgriLife,Trigger on forecast Tmax >= 95F
+US-48217,blossom_end_rot,05-01,07-15,Tomato;Pepper;Squash (summer),,,,approx,AgriLife,Uneven watering during first fruit set

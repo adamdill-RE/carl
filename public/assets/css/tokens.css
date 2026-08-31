@@ -1,0 +1,60 @@
+/*
+ * Design tokens -- PLACEHOLDER.
+ *
+ * Handoff Section 13.5 makes the logo and colour scheme a Claude Design
+ * deliverable, and Section 17 says to request them rather than improvise. So
+ * this file is deliberately a neutral, accessible placeholder that defines
+ * exactly the --carl-* variable names Claude Design is to deliver.
+ *
+ * When the palette arrives, REPLACE THIS FILE ONLY. No other stylesheet and
+ * no template names a colour, so nothing else has to change.
+ */
+
+:root {
+  /* Surfaces */
+  --carl-bg:            #f6f6f3;
+  --carl-surface:       #ffffff;
+  --carl-surface-sunk:  #eeeeea;
+  --carl-border:        #d6d6cf;
+  --carl-border-strong: #b4b4aa;
+
+  /* Text */
+  --carl-text:          #1f2420;
+  --carl-text-muted:    #5c635d;
+  --carl-text-inverse:  #ffffff;
+
+  /* Brand and actions */
+  --carl-primary:       #2f6b3f;
+  --carl-primary-dark:  #24522f;
+  --carl-primary-soft:  #e6efe7;
+  --carl-accent:        #7a5a1f;
+
+  /* Status */
+  --carl-ok:            #2f6b3f;
+  --carl-ok-soft:       #e6efe7;
+  --carl-warn:          #8a6100;
+  --carl-warn-soft:     #fbf1d9;
+  --carl-error:         #a32020;
+  --carl-error-soft:    #fae7e7;
+  --carl-info:          #1f4f77;
+  --carl-info-soft:     #e4eef7;
+
+  /* Research confidence markers (handoff Section 9.1) */
+  --carl-verified:      #2f6b3f;
+  --carl-approx:        #8a6100;
+  --carl-generic:       #5c635d;
+
+  /* Type */
+  --carl-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --carl-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Space and shape */
+  --carl-gap:      12px;
+  --carl-gap-lg:   20px;
+  --carl-radius:   8px;
+  --carl-radius-lg: 12px;
+  --carl-shadow:   0 1px 2px rgba(0, 0, 0, .08);
+
+  /* Controls: 44px is the smallest comfortable touch target on a phone. */
+  --carl-touch: 44px;
+}

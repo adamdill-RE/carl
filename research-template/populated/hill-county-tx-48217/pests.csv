@@ -1,0 +1,17 @@
+pest_key,name,kind,description,signs,treatments,source
+spider_mite,Spider mites,pest,Tiny mites thriving in hot dry weather,"Stippled/bronzed leaves, fine webbing on undersides","Water spray, neem or horticultural oil, miticide; treat early",AgriLife Vegetable Garden Insects field guide
+aphid,Aphids,pest,Soft-bodied sap suckers on new growth,"Curled leaves, honeydew, sooty mold","Water spray, insecticidal soap, beneficial insects",AgriLife field guide
+leaf_footed_bug,Leaf-footed bugs,pest,Large true bugs feeding on fruit,Sunken discolored spots on tomatoes; clusters of nymphs,"Hand-pick, row cover, pyrethrin as last resort",AgriLife field guide
+stink_bug,Stink bugs,pest,Shield-shaped true bugs,Cloudy/deformed fruit spots,"Hand-pick, trap crops, row cover",AgriLife field guide
+squash_vine_borer,Squash vine borer,pest,Moth larvae bore into squash stems,"Sudden vine wilt, sawdust-like frass at stem base","Row cover until flowering, stem wrap, Bt injection, remove larvae, plant moschata types",OSU ENT-0106; Illinois Extension
+squash_bug,Squash bugs,pest,Sap-feeding true bugs on cucurbits,"Yellow then brown leaf patches, bronze egg clusters under leaves","Hand-pick eggs, boards as traps, insecticidal soap on nymphs",AgriLife field guide
+cucumber_beetle,Cucumber beetles,pest,Striped/spotted beetles; vector bacterial wilt,"Chewed leaves/flowers, wilting","Row cover, yellow sticky traps, kaolin clay",AgriLife field guide
+hornworm,Tomato/tobacco hornworm,pest,Large green caterpillars,"Defoliated stems, black droppings","Hand-pick (UV light at night), Bt",AgriLife field guide
+fire_ant,Fire ants,pest,Mound-building ants; sting; protect aphids,"Mounds in beds, aphid colonies",Bait products around (not in) beds,AgriLife field guide
+early_blight,Early blight,disease,Fungal disease of tomato/potato,Concentric target-spot lesions on lower leaves,"Remove lower leaves, mulch, rotate, copper/chlorothalonil",AgriLife
+powdery_mildew,Powdery mildew,disease,Fungal disease favored by warm days/cool nights,"White powder on leaves, esp. cucurbits","Resistant varieties, airflow, sulfur/potassium bicarbonate",AgriLife
+root_knot_nematode,Root-knot nematodes,disease,Soil nematodes causing root galls,"Stunting, wilting in heat, galled roots","Rotate away from Solanaceae/cucurbits, resistant (N) varieties, solarize",AgriLife
+curly_top,Curly top virus,disease,Leafhopper-vectored virus,"Twisted, yellowed, stiff leaves; stunting","Remove infected plants, shade/row cover to deter leafhoppers",AgriLife
+spotted_wilt,Tomato spotted wilt virus,disease,Thrips-vectored virus,"Bronzing, ringspots on fruit","Remove infected plants, control thrips, resistant varieties",AgriLife
+blossom_end_rot,Blossom end rot,disorder,Calcium uptake disorder from uneven watering,Sunken black patch on fruit bottom,"Consistent deep watering, mulch",AgriLife
+blossom_drop_heat,Heat blossom drop,disorder,Flowers abort above ~95F,Flowers fall without setting fruit,"Shade cloth 30-50%, heat-set varieties, wait for cooler nights",AgriLife

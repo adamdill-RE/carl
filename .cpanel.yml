@@ -1,0 +1,35 @@
+---
+deployment:
+  tasks:
+    - export APPDIR=/home/reshiftmanager/carl-app
+    - export WEBDIR=/home/reshiftmanager/public_html/carl
+    - /bin/mkdir -p $APPDIR
+    - /bin/mkdir -p $WEBDIR
+    - /bin/rm -rf $APPDIR/app
+    - /bin/rm -rf $APPDIR/db
+    - /bin/rm -rf $APPDIR/bin
+    - /bin/rm -rf $APPDIR/vendor
+    - /bin/rm -rf $WEBDIR/assets
+    - /bin/cp -R app $APPDIR/
+    - /bin/cp -R db $APPDIR/
+    - /bin/cp -R bin $APPDIR/
+    - /bin/cp -R vendor $APPDIR/
+    - /bin/cp -R public/. $WEBDIR/
+    - /bin/mkdir -p $APPDIR/config
+    - /bin/cp config/app.php $APPDIR/config/app.php
+    - /bin/chmod -R u=rwX,go=rX $APPDIR/app $APPDIR/db $APPDIR/bin $APPDIR/vendor
+    - /bin/chmod -R u=rwX,go=rX $WEBDIR
+    - /bin/chmod 0755 $APPDIR/config
+    - /bin/chmod 0644 $APPDIR/config/app.php
+    - /bin/test -f $APPDIR/config/local.php && /bin/chmod 0600 $APPDIR/config/local.php || /bin/true
+    - /bin/mkdir -p $APPDIR/var/sessions
+    - /bin/mkdir -p $APPDIR/var/photos
+    - /bin/mkdir -p $APPDIR/var/imports
+    - /bin/mkdir -p $APPDIR/var/reports
+    - /bin/mkdir -p $APPDIR/var/run
+    - /bin/chmod 0700 $APPDIR/var
+    - /bin/chmod 0700 $APPDIR/var/sessions
+    - /bin/chmod 0700 $APPDIR/var/photos
+    - /bin/chmod 0700 $APPDIR/var/imports
+    - /bin/chmod 0700 $APPDIR/var/reports
+    - /bin/chmod 0700 $APPDIR/var/run

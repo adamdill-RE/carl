@@ -1,0 +1,48 @@
+# LiteSpeed reads Apache-syntax rewrites (hosting Section 2.3).
+#
+# RewriteBase is omitted deliberately: in a per-directory .htaccess a relative
+# substitution resolves against the directory this file sits in, so the same
+# rules work at any mount point with no second copy of the path to keep in
+# sync (hosting Section 5.2).
+#
+# php_value / php_flag lines are IGNORED here -- PHP settings go through
+# MultiPHP INI Editor or ini_set() in code (hosting Section 2.3). Do not add
+# any.
+
+Options -Indexes
+DirectoryIndex index.php
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Real files and directories (assets) are served directly.
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+# Assets carry a ?v=<mtime> stamp, so a long Expires is safe and a changed
+# file busts itself (hosting Section 9).
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css              "access plus 1 year"
+    ExpiresByType application/javascript "access plus 1 year"
+    ExpiresByType image/svg+xml         "access plus 1 year"
+    ExpiresByType image/png             "access plus 1 year"
+</IfModule>
+
+# The service worker is served from the app root so its scope is the whole
+# app; a year-frozen worker would keep serving a shell nobody can replace
+# (hosting Section 9).
+<Files "sw.js">
+    <IfModule mod_headers.c>
+        Header set Cache-Control "no-cache, max-age=0"
+    </IfModule>
+</Files>
+
+# Nothing under here should ever be interpreted as PHP except index.php.
+<FilesMatch "\.(sql|md|yml|yaml|ini|log|csv|zip)$">
+    Require all denied
+</FilesMatch>

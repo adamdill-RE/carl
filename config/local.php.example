@@ -1,0 +1,31 @@
+<?php
+/**
+ * COPY THIS FILE to config/local.php on the server (cPanel File Manager),
+ * mode 0600, and fill in the values. It is gitignored and the deploy never
+ * overwrites it (hosting Section 6.4).
+ *
+ * It is PHP and it is edited by hand on a server with no shell to lint it.
+ * A missing trailing comma is a parse error and every page returns 500;
+ * the bootstrap catches that specific case and prints the file and line to
+ * fix, without ever echoing a value from this file.
+ */
+
+return [
+    'db' => [
+        'user' => 'reshiftmanager_carl',
+        'pass' => 'PUT-THE-DATABASE-PASSWORD-HERE',
+    ],
+
+    // Keep configured. Without it /status returns 404, not 403.
+    'status_key' => 'CHANGE-ME-long-random-string',
+
+    // Add ONLY for as long as a migration takes, then REMOVE THE LINE.
+    // Whoever holds this can take the master admin account.
+    // 'setup_key' => 'CHANGE-ME-long-random-string',
+
+    // Used by the browser fallback for the nightly weather job.
+    'cron_key' => 'CHANGE-ME-long-random-string',
+
+    // Phase 0 spikes only. Remove the line once the spikes are recorded.
+    // 'diag_key' => 'CHANGE-ME-long-random-string',
+];

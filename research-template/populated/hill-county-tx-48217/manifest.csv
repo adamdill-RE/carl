@@ -1,0 +1,7 @@
+key,value
+template_version,1
+dataset_version,2026-08-30.1
+region_keys,US-48217
+produced_on,2026-08-30
+produced_by,"Claude research session, from Scoping research report 2026-08-30"
+notes,First import for the Hill County TX test garden. confidence=verified means read from an extension source; approx means a reasonable regional estimate to be confirmed; generic means a non-regional reference value.

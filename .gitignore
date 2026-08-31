@@ -1,0 +1,8 @@
+config/local.php
+var/
+public/assets/vendor/*.map
+.idea/
+.vscode/
+*.log
+.DS_Store
+.env.dev
