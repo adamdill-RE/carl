@@ -222,4 +222,54 @@ final class WeatherRepository
         );
         return \array_map(\strval(...), $values);
     }
+
+    /**
+     * The same series, rolled up a week at a time (Phase 5 handoff Section
+     * 3.1: "summarise the weather into weekly rows before sending").
+     *
+     * Measured 2026-08-31: a five-year account's daily weather is 827 KB of
+     * `/export/claude.json`, roughly 230,000 tokens on its own, and almost
+     * none of it is signal -- what a season review needs from June is how hot
+     * and how dry June was, not 30 rows of it. Weekly rows are 1/35th of the
+     * bytes and carry the same answer. `deploy.md` Section 0.9 has the
+     * numbers.
+     *
+     * Weeks are anchored to `$from` rather than to a calendar week, by
+     * DATEDIFF and integer division. YEARWEEK would work on both engines but
+     * its mode argument is a footgun, and a week that starts on the day the
+     * window starts is easier to read back against the covered range than one
+     * that starts on an arbitrary Monday.
+     *
+     * One statement, whatever the range (hosting Section 9).
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function weeklySummary(int $locationId, string $from, string $to): array
+    {
+        return $this->db->all(
+            'SELECT MIN(`obs_date`) AS week_start, MAX(`obs_date`) AS week_end,'
+            . ' COUNT(*) AS days,'
+            . ' ROUND(AVG(`temp_max_c`), 1) AS temp_max_c_mean,'
+            . ' MAX(`temp_max_c`) AS temp_max_c_high,'
+            . ' ROUND(AVG(`temp_min_c`), 1) AS temp_min_c_mean,'
+            . ' MIN(`temp_min_c`) AS temp_min_c_low,'
+            . ' ROUND(SUM(`precip_mm`), 1) AS precip_mm,'
+            . ' ROUND(SUM(`et0_mm`), 1) AS et0_mm,'
+            . ' ROUND(SUM(`precip_mm`) - SUM(`et0_mm`), 1) AS water_balance_mm,'
+            . ' ROUND(AVG(`rh_mean_pct`), 0) AS rh_mean_pct,'
+            . ' SUM(`is_provisional`) AS provisional_days'
+            . ' FROM `weather_daily`'
+            . ' WHERE `location_id` = :location_id AND `obs_date` BETWEEN :from AND :to'
+            . ' GROUP BY FLOOR(DATEDIFF(`obs_date`, :from_group) / 7)'
+            . ' ORDER BY week_start',
+            [
+                'location_id' => $locationId,
+                'from'        => $from,
+                'to'          => $to,
+                // With emulation off a named placeholder cannot be reused
+                // (hosting Section 7), and this one is needed twice.
+                'from_group'  => $from,
+            ]
+        );
+    }
 }

@@ -714,10 +714,20 @@ field sheet; `/export/claude.json`.
 **Built 2026-08-31**, except the per-garden prefilled field sheet, which needs
 the static sheet of §13.4 first. See `docs/PHASE-5-HANDOFF.md`.
 
+### Phase 5 — v2, the first half
+
+Reports menu; Recommendations (Claude analysis) as a cron-driven queue; End
+Growing Season; crop rotation warnings by plant family. Plus the tokenised
+set-password link Phase 3 deferred (§9.4 of that handoff).
+
+**Built 2026-08-31.** Migrations 016 and 017; six cron jobs now, not five.
+Three v2 items are not built and are described in `docs/PHASE-6-HANDOFF.md`:
+GDD pest reminders, succession planting, and the companion planting reference.
+
 ### v2 (not scoped here)
-Reports menu; Recommendations (Claude analysis); End Growing Season; crop
-rotation warnings by plant family; GDD pest reminders; succession planting;
-companion planting reference.
+~~Reports menu~~; ~~Recommendations (Claude analysis)~~; ~~End Growing
+Season~~; ~~crop rotation warnings by plant family~~; GDD pest reminders;
+succession planting; companion planting reference.
 
 ---
 
@@ -729,8 +739,8 @@ companion planting reference.
 | Expense / cost tracking | Dropped v1 | Market-farm feature; revisit if testers ask |
 | QR / plant labels, multi-user sharing | Dropped | Scale mismatch; sharing contradicts data isolation |
 | Offline / PWA | Deferred | Paper field sheet is the answer for now; service worker only caches the shell |
-| Succession planting, task calendar UI | Deferred v2 | Planning features; the digest is the task list |
-| Crop rotation warnings | Deferred v2 | `plant_family` stored now so it is free later |
+| Succession planting, task calendar UI | Deferred v2 | Planning features; the digest is the task list. Still deferred after Phase 5 — see `PHASE-6-HANDOFF.md` §3 |
+| Crop rotation warnings | **Built, Phase 5** | It was free later, exactly as predicted: one grouped statement over `plant_family` and `garden_row_id` |
 | Drip emitter → depth conversion UI | Deferred | Log method + duration; per-method defaults until data shows people enter specs |
 | Runtime plant APIs (Trefle, Permapeople) | Dropped | Outage history; used only as sources when producing research zips |
 | GDD pest thresholds | Deferred v2 | Data is stored; Texas biofix needs validating first |
@@ -751,6 +761,9 @@ companion planting reference.
 6. Fill hosting §11 blanks: `/home/reshiftmanager/public_html/carl`,
    `/home/reshiftmanager/carl-app`, `base_path /carl/`, cookie `CARLSESS`,
    database `reshiftmanager_carl`, env prefix `CARL_`.
+7. **An Anthropic API key** in `config/local.php`, if Recommendations is
+   wanted (Phase 5; `deploy.md` §7.6). Nothing breaks without it — requests
+   queue and wait, exactly as mail did before the mailbox existed.
 
 ---
 

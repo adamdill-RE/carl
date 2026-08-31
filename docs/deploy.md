@@ -233,6 +233,62 @@ already collected and FPDF's buffer. Holding twenty open at once would be
 about 220 MB. `PdfBuilder::photoSection()` is the loop that keeps it to one,
 and the child-process measurement is what proves it still does.
 
+### 0.9 What a five-year account's export actually weighs — Phase 5
+
+Phase 5 handoff §3.1 says to decide how to bound the Recommendations document
+and to **measure a real one first**. The live account is a few weeks old, so
+this is a synthetic one built to the shape a five-year account has: 150
+plantings, 4,500 events with a sentence of narrative each, 1,826 days of
+weather, one garden of twelve rows.
+
+**Measured 2026-08-31** on MySQL 8.0.46, the production engine.
+`/export/claude.json` for that account:
+
+| Section | Bytes | Share |
+| --- | --- | --- |
+| `plant_events` | 2,257,261 | 68% |
+| `weather.days` | 820,079 | 25% |
+| `plantings` | 166,829 | 5% |
+| `research` | 51,452 | 2% |
+| everything else | 10,667 | <1% |
+| **Total** | **3,306,288** | **≈918,000 tokens** |
+
+That is the number that decided the design. It exceeds every model's context
+window, and at Claude Opus 5's input rate one analysis of it would cost about
+$4.60 — per run, per user, for a document three quarters of which is four
+thousand rows saying "watered".
+
+§3.1 offers two bounds: cap the date range, or summarise the weather into
+weekly rows. **Neither alone is enough**, and the table above is why — the
+range cap alone still leaves a heavy year at roughly 450 KB of event log, and
+the weekly rows alone leave 75% of the bytes untouched. `Carl\Analysis\Document`
+applies three, in the order the measurement puts them in: a 365-day window,
+weekly weather rows, and per-planting event roll-ups with the narratives kept
+verbatim and capped by count.
+
+The same account through that class, same run:
+
+| | |
+| --- | --- |
+| Bytes | **140,510** (≈39,000 tokens) |
+| Against the raw export | **a factor of 23.5** |
+| Build time | 16 ms |
+| Statements | **12, and 12 for a one-garden account too** |
+| Cost per analysis at Opus 5 input rates | ≈$0.20 |
+
+Two things worth keeping:
+
+- **The statement count is flat, not proportional.** It was 13 in the first
+  cut, because `gardenSection()` read the rows of each garden in a loop. One
+  garden hides that completely. `12_analysis_test.php` adds a second garden
+  and asserts the count did not move, which is the only thing that will
+  notice when the loop comes back.
+- **`research` is 44,606 bytes of the 140,510 — a third of the document — for
+  thirty plant types.** It is the section with the worst ratio of bytes to
+  signal and the obvious next thing to trim if the bill matters. It is left
+  whole because the citations and confidences in it are what stop the answer
+  presenting a catalogue default as a local measurement.
+
 ---
 
 ## 1. cPanel: database
@@ -347,7 +403,7 @@ plant catalog and the plant forms have nothing to offer.
 
 ## 7. Cron
 
-**cPanel → Cron Jobs.** Five jobs. The weather one is the one whose hour
+**cPanel → Cron Jobs.** Six jobs. The weather one is the one whose hour
 matters; the rest do their own clock arithmetic and can fire whenever.
 
 | What | Minute | Hour | Day | Month | Weekday | Command |
@@ -357,6 +413,7 @@ matters; the rest do their own clock arithmetic and can fire whenever.
 | NWS alerts | `20` | `*/3` | `*` | `*` | `*` | `bin/alerts_poll.php` |
 | Mail outbox | `*/10` | `*` | `*` | `*` | `*` | `bin/mail_send.php` |
 | Digest | `15` | `*` | `*` | `*` | `*` | `bin/daily_digest.php` |
+| Analyses | `40` | `*` | `*` | `*` | `*` | `bin/analysis_run.php` |
 
 Each command in full, with the pinned PHP binary and the output redirect —
 cPanel emails the account on every run otherwise, and a job that mails 365
@@ -368,6 +425,7 @@ times a year trains everyone to ignore it:
 20 */3 * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/alerts_poll.php >/dev/null 2>&1
 */10 * * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/mail_send.php >/dev/null 2>&1
 15 * * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/daily_digest.php >/dev/null 2>&1
+40 * * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/analysis_run.php >/dev/null 2>&1
 ```
 
 **The watering model runs after the weather, not with it.** It reads
@@ -384,6 +442,18 @@ the hour field is `*`: the job's job is to notice which users it is 06:00 for.
 inline in a request or inside another job; pages and jobs write `email_outbox`
 rows and this drains them with bounded retries. A mail server being down then
 delays mail, which is what should happen, instead of making a page hang.
+
+**The analysis job is hourly, and it is the wait a person is actually
+waiting on.** Somebody pressed a button on `/advice` and is waiting for a
+reply; nightly would be a day. It is the same discipline as the mail drain and
+for the same reason — the page writes an `analysis` row and returns, and this
+job is the only thing in Carl that calls the Anthropic API. Minute 40 puts it
+clear of the digest at :15 and the mail drain at :00, :10, :20… so a slow
+analysis is not competing with a send.
+
+With no key in `config/local.php` it costs one statement and writes one
+`analysis_run` row saying it skipped, which is the correct state until §7.6
+is done.
 
 ### The weather job's hour
 
@@ -685,7 +755,7 @@ carries the mailbox password on every single send.
 
 ### The key-guarded task routes
 
-Every cron job has a browser twin, because the account has no shell. All four
+Every cron job has a browser twin, because the account has no shell. All five
 take `?key=<cron_key>`, and a wrong or absent key is 404:
 
 | Route | What it runs |
@@ -694,9 +764,65 @@ take `?key=<cron_key>`, and a wrong or absent key is 404:
 | `/tasks/alerts-poll` | The NWS alerts poll. It stops after 20 s and says how far it got; it polls least-recently-polled first, so calling it again continues rather than repeating. |
 | `/tasks/daily-digest` | The digest. `&force=1` ignores the 06:00-local rule; the once-a-day key still holds, so forcing it cannot send two. |
 | `/tasks/mail-send` | The outbox drain. |
+| `/tasks/analysis-run` | The analysis drain (§7.6). It stops *starting* requests at 20 s; anything already in flight when the 30 s ceiling kills the process is picked up by its lease on the next run. |
 
 These run under the web SAPI and inherit the 30 s ceiling, so each chunks its
 work the same way the CLI form does and the two stay interchangeable.
+
+## 7.6 Recommendations (Phase 5 handoff §3.1)
+
+Nothing here is needed for the app to run, and it is the same shape as §7.5:
+until it is done, Carl **queues the requests and waits**. `/advice` works, the
+button works, the row goes in the queue, and the drain writes an
+`analysis_run` row saying `skipped`. Nothing is lost and nothing is charged.
+
+**One value, in one place.**
+
+1. Get an API key from the Anthropic Console.
+2. **File Manager → `/home/reshiftmanager/carl-app/config/local.php`**, and add:
+
+   ```php
+   'analysis' => [
+       'api' => ['key' => 'sk-ant-api03-...'],
+   ],
+   ```
+
+3. Save. Check the mode is still **0600**, and check `/status?key=` — the
+   `ANALYSIS` block should now name a model instead of saying "no API key".
+
+**Nothing in the repository may ever hold that key.** `config/app.php` carries
+the URL and the model, which are not secret; the key goes only in
+`config/local.php`, which is gitignored, lives outside `public_html`, and
+survives every deploy (hosting §6.4).
+
+### What it costs, and the three caps that bound it
+
+Measured in §0.9: a five-year account's analysis document is about 39,000
+tokens, roughly **$0.20 per analysis** at Claude Opus 5's input rate. Three
+caps stand between that and a surprise:
+
+| Cap | Default | In |
+| --- | --- | --- |
+| Analyses per user per local day | 3 | `analysis.max_per_day` |
+| Requests answered per drain | 3 | `analysis.batch` |
+| Attempts before a request is failed | 4 | `analysis.max_attempts` |
+
+Lower `analysis.max_per_day` in `config/local.php` if three is still too many.
+Setting `analysis.effort` to `low` or `medium` is the other lever, and it
+trades depth for cost rather than capping it.
+
+### The one thing here that has never been tested on this host
+
+**`api.anthropic.com` is not one of the five hosts Phase 0 spike 1 proved
+reachable from sh193** (§0.1). Egress was open to all five, so there is no
+reason to expect a block — but it has not been shown.
+
+The first drain is the test, and it is a safe one: a failure lands in
+`analysis_run.error_text` and on `/status`, never on anybody's page. To see it
+without waiting for the hour, open
+`/tasks/analysis-run?key=<cron_key>` with something queued. A "Could not
+resolve host" or a connection timeout there is the egress answer; anything
+else is a configuration one and the message says which.
 
 ## 8. Close the door
 
@@ -727,14 +853,30 @@ openssl rand -hex 24
 Push, then **Deploy HEAD Commit**. There is no build and no restart; the next
 request picks the files up, because there is no OPcache on this host.
 
-### The Phase 4 deploy adds no migration
+### The Phase 5 deploy DOES add migrations — read the next section first
 
-Phase 4 added five routes, two vendored libraries and no schema change at all,
-so the trap below does not apply to it. `/status?key=` should read `pending 0`
-straight afterwards; check it anyway, because that is the check that catches
-the deploy that *did* add one.
+Phase 5 adds **two**, `016_analysis.sql` and `017_invite.sql`, both pure DDL
+and both new tables. So the trap below applies in full: between the deploy
+finishing and `/setup?key=` running, `/advice` and the Reports menu return
+500, and so does creating a user.
 
-Two things about it are worth knowing before you press the button:
+The order that avoids that window is the one the next section describes —
+deploy, check `/status?key=`, add `setup_key`, run them, remove `setup_key`.
+Budget five minutes rather than pressing Deploy and walking away.
+
+Two more things about this deploy:
+
+- **A sixth cron job.** `bin/analysis_run.php`, hourly at minute 40 (§7). The
+  application works without it; the queue simply never drains, and `/advice`
+  says a request is on its way for ever.
+- **Nothing new to create by hand.** No new `var/` directory, no new vendored
+  file. The API key is optional and goes in `config/local.php` (§7.6); with no
+  key the feature queues and waits, which is a working state.
+
+### The Phase 4 deploy added no migration
+
+Kept for the record: Phase 4 added five routes, two vendored libraries and no
+schema change at all.
 
 - **`vendor/` grew.** `.cpanel.yml` already copies it, and it now carries FPDF
   (`fpdf.php`, `font/` and `license.txt`). `public/assets/vendor/chart.umd.js`
@@ -822,3 +964,11 @@ file is refused rather than silently re-run.
    `public/assets/css/tokens.css` is a neutral placeholder defining exactly
    the `--carl-*` names to deliver; it is the only file that names a colour,
    so the palette is a one-file swap.
+7. **An Anthropic API key**, if Recommendations is wanted (§7.6). One line in
+   `config/local.php`. Nothing breaks without it — requests queue and wait —
+   and it is the only owner action Phase 5 added.
+8. **Rotate `cron_key`** (visible in a Phase 3 screenshot, and it travels in
+   URLs) and **delete `diag_key`** so `/diag` shuts. Both were on the Phase 4
+   list and both are still outstanding; Phase 5 added a sixth route behind
+   `cron_key`, which does not change the argument but does add one more thing
+   a leaked key can start.

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Carl\Core;
 
 use Carl\Controller\AdminController;
+use Carl\Controller\AdviceController;
 use Carl\Controller\AuthController;
 use Carl\Controller\DigestController;
 use Carl\Controller\ExportController;
@@ -42,6 +43,26 @@ final class Routes
         // -- Forced reset (outranks everything but itself) -----------------
         $r->get('/password/reset', AuthController::class, 'showReset', Route::SETUP_ACCESS);
         $r->post('/password/reset', AuthController::class, 'reset', Route::SETUP_ACCESS);
+
+        // -- The set-password link (Phase 5 handoff Section 3.5) ------------
+        // Public because the person clicking it cannot sign in yet: that is
+        // the point -- the invitation email no longer carries a password for
+        // them to sign in WITH.
+        //
+        // PUBLIC_ACCESS and not TOKEN_ACCESS, so the POST gets the normal
+        // CSRF check. It can afford to: a person reached this in a browser,
+        // so there is a session and a rendered form to carry a token. The
+        // One-Click unsubscribe is exempt only because a mail client sends it
+        // with neither.
+        //
+        // [0-9a-f.]+ rather than a length: the router reads a constraint as
+        // everything up to the first '}', so a brace quantifier would cut the
+        // pattern in half (see the unsubscribe note below). The exact shape
+        // is enforced in InviteStore::resolve().
+        $r->get('/password/setup/{token:[0-9a-f.]+}',
+            AuthController::class, 'showSetup', Route::PUBLIC_ACCESS);
+        $r->post('/password/setup/{token:[0-9a-f.]+}',
+            AuthController::class, 'setup', Route::PUBLIC_ACCESS);
 
         // -- Onboarding ----------------------------------------------------
         $r->get('/onboarding', OnboardingController::class, 'index', Route::SETUP_ACCESS);
@@ -102,6 +123,12 @@ final class Routes
         $r->post('/gardens/{id:\d+}/zones', GardenController::class, 'saveZone');
         $r->get('/gardens/{id:\d+}/actions', GardenController::class, 'actions');
         $r->post('/gardens/{id:\d+}/actions', GardenController::class, 'recordAction');
+        // End Growing Season (Phase 5 handoff Section 3.3): the one
+        // destructive action in the application, so the GET is a
+        // confirmation screen that names every planting it will end and the
+        // POST wants the words typed.
+        $r->get('/gardens/{id:\d+}/end-season', GardenController::class, 'endSeasonForm');
+        $r->post('/gardens/{id:\d+}/end-season', GardenController::class, 'endSeason');
 
         // -- Lists ----------------------------------------------------------
         $r->get('/lists', ListController::class, 'index');
@@ -134,6 +161,20 @@ final class Routes
         $r->post('/report/plant/{id:\d+}/pdf', ReportController::class, 'plantPdf');
         $r->post('/report/garden/{id:\d+}/pdf', ReportController::class, 'gardenPdf');
 
+        // -- Reports menu (Phase 5 handoff Section 3.2) ---------------------
+        // Links and nothing else: there are now six things to download and
+        // two report pages, and until this existed the only way to reach any
+        // of them was from a plant or a garden. No new data access.
+        $r->get('/reports', ReportController::class, 'menu');
+
+        // -- Recommendations (handoff Section 14 v2; Phase 5 Section 3.1) ---
+        // The POST queues an `analysis` row and returns. It does NOT call the
+        // API: that happens in the drain cron below, because no third-party
+        // call may sit on a request path (Phase 3 handoff Section 5).
+        $r->get('/advice', AdviceController::class, 'index');
+        $r->post('/advice', AdviceController::class, 'ask');
+        $r->post('/advice/{id:\d+}/retry', AdviceController::class, 'retry');
+
         // -- Photos (never a direct URL -- handoff Section 5.3) -------------
         $r->post('/photos', PhotoController::class, 'upload');
         $r->get('/photos/{id:\d+}', PhotoController::class, 'show');
@@ -146,6 +187,11 @@ final class Routes
         $r->get('/admin', AdminController::class, 'index', Route::ADMIN_ACCESS);
         $r->get('/admin/users', AdminController::class, 'users', Route::ADMIN_ACCESS);
         $r->post('/admin/users', AdminController::class, 'createUser', Route::ADMIN_ACCESS);
+        // Send another set-password link (Phase 5 handoff Section 3.5). The
+        // links expire, and without this the only recovery from an expired
+        // one is setup_key -- which is the master admin credential (hosting
+        // Section 6.3), for a person who forgot to click a link.
+        $r->post('/admin/users/{id:\d+}/invite', AdminController::class, 'sendInvite', Route::ADMIN_ACCESS);
         $r->get('/admin/research-import', AdminController::class, 'researchImport', Route::ADMIN_ACCESS);
         $r->post('/admin/research-import', AdminController::class, 'researchPreview', Route::ADMIN_ACCESS);
         $r->post('/admin/research-import/confirm', AdminController::class, 'researchConfirm', Route::ADMIN_ACCESS);
@@ -168,6 +214,7 @@ final class Routes
         $r->get('/tasks/mail-send', SystemController::class, 'mailSend', Route::KEY_ACCESS, 'cron_key');
         $r->get('/tasks/alerts-poll', SystemController::class, 'alertsPoll', Route::KEY_ACCESS, 'cron_key');
         $r->get('/tasks/daily-digest', SystemController::class, 'dailyDigest', Route::KEY_ACCESS, 'cron_key');
+        $r->get('/tasks/analysis-run', SystemController::class, 'analysisRun', Route::KEY_ACCESS, 'cron_key');
         $r->get('/diag', SystemController::class, 'diag', Route::KEY_ACCESS, 'diag_key');
 
         return $r;

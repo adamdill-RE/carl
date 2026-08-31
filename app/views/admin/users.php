@@ -1,7 +1,15 @@
 <?php
 /**
- * Admin: create a user (handoff Section 4.10). Email delivery is Phase 3, so
- * the temporary password is shown once, here, and the admin passes it on.
+ * Admin: create a user (handoff Section 4.10).
+ *
+ * The temporary password is shown once, here, and the admin passes it on.
+ * That path is unchanged and deliberate: it works with no mailbox, it works
+ * when a message bounces, and it is the only one that works the first time an
+ * install is stood up (Phase 3 handoff Section 4.1).
+ *
+ * What changed in Phase 5 is the EMAIL. It no longer carries the password --
+ * it carries a one-shot link that expires (Phase 5 handoff Section 3.5), so
+ * an unread invitation in a mailbox is not a standing credential.
  *
  * @var Carl\Core\App $app @var Carl\Core\View $view
  * @var list<array<string,mixed>> $users
@@ -24,15 +32,17 @@ $pageTitle = 'Users';
   </p>
 <?php if (!empty($created['queued'])): ?>
   <p class="small">
-    It has also been queued to <?= $e($created['email']) ?>, and goes out on the next
-    mail drain. Passing it on yourself is still the surest route --
+    A set-password link has also been queued to <?= $e($created['email']) ?> and goes out
+    on the next mail drain. The password above is <em>not</em> in that message: it
+    carries a one-shot link that expires instead. Either route works &mdash;
     <a href="<?= $e($app->url('admin/mail-test')) ?>">mail health</a>.
   </p>
 <?php else: ?>
   <p class="small">
-    No mail driver is configured, so nothing was emailed. Set one up under
+    No mail driver is configured, so nothing was emailed and the password above is
+    the only way in. Set one up under
     <a href="<?= $e($app->url('admin/mail-test')) ?>">mail health</a> and new accounts
-    are emailed as well as shown here.
+    also get a set-password link.
   </p>
 <?php endif; ?>
 </div>
@@ -75,7 +85,7 @@ $pageTitle = 'Users';
 <section class="card">
   <h2>Accounts</h2>
   <table class="data">
-    <thead><tr><th>User</th><th>Where</th><th>Last seen</th></tr></thead>
+    <thead><tr><th>User</th><th>Where</th><th>Last seen</th><th></th></tr></thead>
     <tbody>
 <?php foreach ($users as $account): ?>
       <tr>
@@ -96,6 +106,18 @@ $pageTitle = 'Users';
 <?php endif; ?>
         </td>
         <td class="small muted"><?= $e($account['last_login_at'] ?? 'never') ?></td>
+        <td>
+<?php /* A set-password link expires in a week. Without a way to send another,
+       the only recovery is setup_key, which is the master admin credential
+       (hosting Section 6.3) -- for someone who forgot to click a link. */ ?>
+<?php if ((int) $account['must_reset_password'] === 1): ?>
+          <form method="post"
+                action="<?= $e($app->url('admin/users/' . $account['id'] . '/invite')) ?>" class="flush">
+            <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+            <button type="submit" class="btn btn-secondary btn-small">Send link</button>
+          </form>
+<?php endif; ?>
+        </td>
       </tr>
 <?php endforeach; ?>
     </tbody>

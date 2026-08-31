@@ -11,6 +11,8 @@
  * @var array<int,list<array<string,mixed>>> $rowsByGarden
  * @var list<array<string,mixed>> $containers
  * @var array<int,array{living:int,plantings:int}> $occupancy
+ * @var array<int,list<array{family:string,last_date:string,plantings:int}>> $rotation
+ * @var int $rotationYears
  * @var array<string,list<array<string,mixed>>> $lists
  * @var string $today @var int|null $indoorGardenId
  * @var list<string> $errors @var array<string,mixed> $old
@@ -58,8 +60,13 @@ foreach ($plantTypes as $type) {
     <select id="plant_type_id" name="plant_type_id" required>
       <option value="">-- choose a category first --</option>
 <?php foreach ($plantTypes as $type): ?>
+<?php /* data-family drives the crop rotation warning beside the row picker
+       (Phase 5 handoff Section 3.4). It is here rather than fetched because
+       the warning depends on BOTH selects, and a round trip on every change
+       of either is a request per keystroke for a fact the page already has. */ ?>
       <option value="<?= $e($type['id']) ?>" data-category="<?= $e($type['category']) ?>"
               data-in-region="<?= (int) ($type['in_region'] ?? 0) ?>"
+              data-family="<?= $e($type['plant_family'] ?? '') ?>"
               <?= $val('plant_type_id') === (string) $type['id'] ? 'selected' : '' ?>>
         <?= $e($type['type']) ?><?= ((int) ($type['recommended'] ?? 0) === 1) ? ' *' : '' ?>
       </option>
@@ -137,7 +144,8 @@ foreach ($plantTypes as $type) {
   </div>
   <?= $view->partial('plants/placement', [
         'gardens' => $gardens, 'rowsByGarden' => $rowsByGarden,
-        'containers' => $containers, 'occupancy' => $occupancy, 'old' => $old]) ?>
+        'containers' => $containers, 'occupancy' => $occupancy,
+        'rotation' => $rotation, 'rotationYears' => $rotationYears, 'old' => $old]) ?>
 
 <?php else: ?>
   <?= $view->partial('partials/select_add', [
@@ -170,7 +178,8 @@ foreach ($plantTypes as $type) {
   </div>
   <?= $view->partial('plants/placement', [
         'gardens' => $gardens, 'rowsByGarden' => $rowsByGarden,
-        'containers' => $containers, 'occupancy' => $occupancy, 'old' => $old]) ?>
+        'containers' => $containers, 'occupancy' => $occupancy,
+        'rotation' => $rotation, 'rotationYears' => $rotationYears, 'old' => $old]) ?>
 <?php endif; ?>
 
   <div class="field">

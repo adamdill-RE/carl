@@ -13,7 +13,7 @@ weather that actually happened.
 | Document | Authority over |
 | --- | --- |
 | [`docs/CARL-HANDOFF.md`](docs/CARL-HANDOFF.md) | Scope. What Carl is, the screens, the data model, the phasing. |
-| [`docs/PHASE-5-HANDOFF.md`](docs/PHASE-5-HANDOFF.md) | What to build next, and the facts each phase measured that the original scope could only assume. The earlier phase handoffs are kept as they were written. |
+| [`docs/PHASE-6-HANDOFF.md`](docs/PHASE-6-HANDOFF.md) | What to build next, and the facts each phase measured that the original scope could only assume. The earlier phase handoffs are kept as they were written. |
 | [`docs/hosting.md`](docs/hosting.md) | Every platform constraint. Overrides the handoff where they conflict. |
 | [`docs/weather.md`](docs/weather.md) | Weather ingestion. Overrides the handoff where they conflict. |
 | [`docs/deploy.md`](docs/deploy.md) | The runbook, and §0 is every measurement taken on the live host. |
@@ -28,8 +28,9 @@ anything that looks unusual.
 
 ## What is built
 
-Phases 1 through 4 (handoff §14). Accounts log real data, the nightly jobs turn
-it into advice, and the reports turn a season into something you can read.
+Phases 1 through 5 (handoff §14). Accounts log real data, the nightly jobs turn
+it into advice, the reports turn a season into something you can read, and
+Carl will read it back to you.
 
 - Login, forced first reset, onboarding wizard, ZIP → county → region.
 - Start a New Plant (indoor seed start, direct sow, transplant), each with the
@@ -65,11 +66,30 @@ it into advice, and the reports turn a season into something you can read.
   10 s / 64 MB budget (`deploy.md` §0.8).
 - **`/export/claude.json`** (§13.3): the same records as one document, with the
   research values in force for your region, shaped for pasting into a
-  conversation with Claude. The bridge to the v2 Recommendations feature.
+  conversation with Claude yourself.
+- **Recommendations**: ask Carl what your own records say, and it answers from
+  the log, the weather over those dates, and the research for your county. The
+  API call is made by a cron job and never by a page — the same rule weather
+  and mail follow — so the answer appears on the next page load rather than
+  while you wait. The document it sends is a bounded summary: a five-year
+  account's raw export is 3.3 MB and roughly 918,000 tokens, and the same
+  account summarised is 140 KB (`deploy.md` §0.9).
+- **A Reports menu**, because by the end of Phase 4 there were six downloads
+  and two report pages and no screen that named them.
+- **End Growing Season**: ends every living planting in a garden on one date.
+  The one destructive action in Carl, so the confirmation screen names every
+  planting first and asks for the words to be typed.
+- **Crop rotation warnings** beside the row picker: what that bed grew, and
+  when. A nudge, never a block.
+- **A tokenised set-password link.** The account-creation email no longer
+  carries a password — it carries a one-shot link that expires. The
+  temporary password shown on screen is unchanged, because that is the path
+  that works with no mailbox.
 
 Not built yet, by design: the per-garden prefilled field sheet (blocked on the
 static sheet, a Claude Design deliverable), the palette (also Claude Design),
-and everything in v2.
+and the three v2 items Phase 5 did not reach — GDD pest reminders, succession
+planting and the companion planting reference.
 
 ## Layout
 
@@ -84,10 +104,10 @@ carl/
   db/migrations/            numbered, immutable once applied
   db/seed/zcta.csv          33,791 ZIP rows, public-domain Census data
   bin/                      migrate.php, weather_sync.php, alerts_poll.php,
-                            daily_digest.php, mail_send.php
+                            daily_digest.php, mail_send.php, analysis_run.php
   app/bootstrap.php         autoloader, config, the parse-error guard
   app/src/                  Core, Auth, Repo, Domain, Controller, Research,
-                            Weather, Mail, Reminders, Support
+                            Weather, Mail, Reminders, Reports, Analysis, Support
   app/views/                plain PHP templates
   public/                   the ONLY directory the web reaches
   tests/                    run.php --strict, plus the CI lint scripts
@@ -132,6 +152,7 @@ php bin/weather_sync.php --recommend -v    # the watering model; calls no API
 php bin/alerts_poll.php --verbose          # NWS alerts
 php bin/daily_digest.php --force --verbose # ignore the 06:00-local rule
 php bin/mail_send.php --status             # what is queued, and with what driver
+php bin/analysis_run.php --status          # what is waiting, and for which model
 ```
 
 Each has a key-guarded browser twin under `/tasks/`, because the production
@@ -144,7 +165,7 @@ Every configuration value can be overridden by an environment variable with a
 ## Tests
 
 ```bash
-php tests/run.php --strict          # 240 cases; needs a database
+php tests/run.php --strict          # 335 cases; needs a database
 php tests/lint_cpanel_yml.php       # the host's parser rules
 php tests/check_collation.php       # utf8mb4_unicode_ci on every table
 php tests/check_asset_budget.php    # the client shell against 150 KB gzipped
@@ -152,7 +173,8 @@ php tests/check_asset_budget.php    # the client shell against 150 KB gzipped
 
 CI runs the suite on MySQL 8.0 (production) and MariaDB 10.11 (insurance on a
 database host that is not ours to control). Both were run locally from empty
-databases for the Phase 3 build, and both were green.
+databases for the Phase 5 build — MySQL 8.0.46 and MariaDB 10.11.14, migrated
+twice each for idempotence — and both were green.
 
 The suite drives the real kernel through the §14 alpha acceptance run end to
 end — sign-in, forced reset, onboarding at ZIP 76692, three kinds of backdated
@@ -174,6 +196,15 @@ The SMTP driver is the exception: it is exercised against a real socket, a
 forked listener that speaks enough SMTP to accept or refuse a message. A
 hand-rolled SMTP client that has only ever met a mock is a client whose
 multi-line reply handling has never actually been tried.
+
+The Anthropic API is stubbed for the same reason Open-Meteo is, with the
+quota denominated in dollars: a suite that called it would need a live key in
+CI and would spend real money on every run of every branch. What the stub
+leaves testable is all of the behaviour that is actually Carl's — the queue,
+the lease, the backoff, which failures are worth retrying, and the size of the
+document. The wire shape of a reply is covered by driving every documented
+response shape, success and failure, through the exact function the live path
+uses.
 
 The digest's two hardest cases are both about time and both silent — sending
 at the server's morning instead of the user's, and sending the same thing

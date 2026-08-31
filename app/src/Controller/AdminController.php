@@ -81,8 +81,7 @@ final class AdminController extends Controller
         // when a message bounces, and it is the only path that works the
         // first time an install is stood up -- so the password is shown here
         // whether or not an email was queued.
-        $queued = $this->queueWelcome($created['id'], $username, $email, $name,
-            $created['temporary_password']);
+        $queued = $this->queueWelcome($created['id'], $username, $email, $name);
 
         $this->app->session()->set('_created_user', [
             'username' => $username,
@@ -95,43 +94,105 @@ final class AdminController extends Controller
     }
 
     /**
+     * Send another set-password link (Phase 5 handoff Section 3.5).
+     *
+     * The links expire in a week, and without this the only recovery from an
+     * expired one is `setup_key` -- which is the master admin credential
+     * (hosting Section 6.3) -- for a person who did not get round to clicking
+     * a link. Issuing a new one cancels any earlier unused one, so "send
+     * another" leaves exactly one live link, which is what an administrator
+     * pressing that button believes it does.
+     */
+    public function sendInvite(Request $request, array $params): Response
+    {
+        $account = $this->accounts()->find((int) $params['id']);
+        if ($account === null) {
+            throw HttpException::notFound('There is no such account.');
+        }
+
+        $queued = $this->queueWelcome(
+            (int) $account['id'],
+            (string) $account['username'],
+            (string) $account['email'],
+            (string) $account['name'],
+            'invite:' . $account['id'] . ':' . \bin2hex(\random_bytes(4)),
+        );
+
+        $this->flash($queued
+            ? 'A new set-password link is on its way to ' . $account['email']
+              . '. Any earlier link for that account has stopped working.'
+            : 'No mail driver is configured, so nothing was sent. Set one up in '
+              . 'config/local.php first (handoff Section 12.1).',
+            $queued ? 'ok' : 'error');
+
+        return $this->redirect('admin/users');
+    }
+
+    /**
      * Queue the welcome message, if there is a driver to send it with.
      *
      * It goes in the outbox and returns immediately; a mail server being slow
      * cannot make creating a user slow (handoff Section 5.8).
      *
-     * A temporary password in an email is a real exposure -- it sits in an
-     * inbox until the account is used. It is bounded by must_reset_password,
-     * which forces a change on first sign-in, so the window is one login
-     * long. The alternative, a tokenised set-password link, is a bigger
-     * change to the auth flow than Section 4.10 asks for; noted in
-     * docs/PHASE-3-HANDOFF.md Section 9 as the Phase 4 improvement.
+     * **The password is not in it.** Phase 3 shipped the temporary password
+     * in this message and Phase 3 handoff Section 9.4 called that out: a
+     * password in an inbox sits there until the account is first used, and
+     * long after. It was bounded by must_reset_password, so the window was
+     * one login long -- but it was still a working credential in a mailbox
+     * that Carl does not control. Phase 5 handoff Section 3.5 is the fix:
+     * the mail carries a one-shot expiring link that can do one thing, and
+     * `InviteStore` is what backs it.
+     *
+     * The ON-SCREEN temporary password stays, unchanged. It is what works
+     * with no mailbox, what works when a message bounces, and the only path
+     * that works the first time an install is stood up.
+     *
+     * @param string|null $dedupeKey null to derive the once-per-account one
      */
     private function queueWelcome(
         int $userId,
         string $username,
         string $email,
         string $name,
-        string $temporaryPassword,
+        ?string $dedupeKey = null,
     ): bool {
         $outbox = $this->app->outbox();
         if ($outbox->driver() === null) {
             return false;
         }
 
-        $url = 'https://www.reshiftmanager.com' . $this->app->url('login');
+        $invites = new \Carl\Auth\InviteStore(
+            $this->app->db(),
+            $this->app->config()->int('invite.lifetime_days', 7)
+        );
+
+        try {
+            $token = $invites->issue($userId, $this->userId(), $this->app->request()?->ip() ?? '');
+        } catch (Throwable $e) {
+            \error_log('[carl] invite not issued: ' . $e->getMessage());
+            return false;
+        }
+
+        $days = $this->app->config()->int('invite.lifetime_days', 7);
+        // Absolute, because it is going in an email: $app->url() is
+        // site-root-relative by design (hosting Section 5.2) and a relative
+        // path in a mail client resolves against nothing.
+        $link = 'https://www.reshiftmanager.com' . $this->app->url('password/setup/' . $token);
+
         $text = \implode("\n", [
             'Hello ' . $name . ',',
             '',
             'An account has been created for you on Carl, a garden logging system.',
             '',
-            '  Sign in:   ' . $url,
-            '  Username:  ' . $username,
-            '  Password:  ' . $temporaryPassword,
+            'Choose your password here:',
             '',
-            'You will be asked to choose your own password the first time you sign in.',
-            'Until you do, the password above is the only one that works, so please',
-            'sign in soon and then delete this message.',
+            '  ' . $link,
+            '',
+            '  Your username: ' . $username,
+            '',
+            'That link works once and stops working after ' . $days . ' days. There is no',
+            'password in this message, so there is nothing here worth keeping -- if the',
+            'link has expired by the time you get to it, ask for another.',
             '',
             '-- Carl',
         ]);
@@ -146,10 +207,9 @@ final class AdminController extends Controller
                 $text,
                 null,
                 [],
-                // One welcome per account, ever. A second create with the
-                // same username cannot happen (the name is unique), so this
-                // only guards a double submit.
-                'welcome:' . $userId,
+                // One welcome per account by default; a resend passes its own
+                // key so it is not swallowed as a duplicate of that one.
+                $dedupeKey ?? 'welcome:' . $userId,
             ) > 0;
         } catch (Throwable $e) {
             // The password is on the screen either way; a queue failure must

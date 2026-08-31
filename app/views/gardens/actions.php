@@ -112,5 +112,19 @@ $pageTitle = 'Garden actions';
   <button type="submit" class="btn btn-block">Record it</button>
 </form>
 
+<?php /* End Growing Season (Phase 5 handoff Section 3.3). Below the form and
+       in its own card rather than as another option in the action select:
+       every other action here adds one row, and this one ends every living
+       plant in the garden. It should not be one scroll away from "Watered". */ ?>
+<section class="card">
+  <h2>End the growing season</h2>
+  <p class="small muted">
+    Ends every living planting in <?= $e($garden['name']) ?> on one date, in one go.
+    The next screen names each one before anything is written.
+  </p>
+  <p><a class="btn btn-secondary"
+        href="<?= $e($app->url('gardens/' . $garden['id'] . '/end-season')) ?>">End growing season&hellip;</a></p>
+</section>
+
 <script src="<?= $e($app->asset('assets/js/forms.js')) ?>" defer></script>
 <script src="<?= $e($app->asset('assets/js/photos.js')) ?>" defer></script>
