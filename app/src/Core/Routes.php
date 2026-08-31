@@ -129,6 +129,7 @@ final class Routes
         $r->post('/setup', SystemController::class, 'runSetup', Route::KEY_ACCESS, 'setup_key');
         $r->get('/tasks/weather-sync', SystemController::class, 'weatherSync', Route::KEY_ACCESS, 'cron_key');
         $r->get('/tasks/mail-send', SystemController::class, 'mailSend', Route::KEY_ACCESS, 'cron_key');
+        $r->get('/tasks/alerts-poll', SystemController::class, 'alertsPoll', Route::KEY_ACCESS, 'cron_key');
         $r->get('/diag', SystemController::class, 'diag', Route::KEY_ACCESS, 'diag_key');
 
         return $r;

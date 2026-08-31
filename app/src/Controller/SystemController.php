@@ -159,6 +159,8 @@ final class SystemController extends Controller
                 $lines[] = \sprintf('      missing in range    %d', $gaps);
                 $lines[] = \sprintf('      newest forecast     %s', $row['newest_forecast'] ?? 'none');
                 $lines[] = \sprintf('      last successful run %s', $row['last_ok'] ?? 'NEVER');
+                $lines[] = \sprintf('      active nws alerts   %d',
+                    \count($this->weather()->activeAlerts((int) $row['id'])));
                 if ($row['last_bad_status'] !== null) {
                     $lines[] = \sprintf('      last bad status     HTTP %s', $row['last_bad_status']);
                 }
@@ -414,6 +416,34 @@ final class SystemController extends Controller
             \sprintf('locations %d, rows %d, failures %d, %.1f s',
                 $summary['locations'], $summary['rows'], $summary['failures'],
                 \microtime(true) - $started),
+            '',
+        ];
+        foreach ($summary['log'] as $entry) {
+            $lines[] = '  ' . $entry;
+        }
+
+        return Response::text(\implode("\n", $lines) . "\n");
+    }
+
+    /**
+     * The browser fallback for the alerts poll (handoff Section 8.4), the
+     * same shape as the weather one and guarded by the same key.
+     */
+    public function alertsPoll(Request $request): Response
+    {
+        $locationId = $request->query('location');
+        $started = \microtime(true);
+
+        $poller = new \Carl\Weather\AlertPoller($this->app);
+        $summary = $poller->run(
+            $locationId !== null && \ctype_digit($locationId) ? (int) $locationId : null
+        );
+
+        $lines = [
+            'nws alerts',
+            \sprintf('locations %d, active %d, new %d, closed %d, failures %d, %.1f s',
+                $summary['locations'], $summary['stored'], $summary['new'],
+                $summary['closed'], $summary['failures'], \microtime(true) - $started),
             '',
         ];
         foreach ($summary['log'] as $entry) {
