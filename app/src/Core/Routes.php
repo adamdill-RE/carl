@@ -6,6 +6,7 @@ namespace Carl\Core;
 
 use Carl\Controller\AdminController;
 use Carl\Controller\AuthController;
+use Carl\Controller\ExportController;
 use Carl\Controller\GardenController;
 use Carl\Controller\ListController;
 use Carl\Controller\LogController;
@@ -87,6 +88,14 @@ final class Routes
         $r->post('/lists', ListController::class, 'save');
         $r->post('/lists/archive', ListController::class, 'archive');
         $r->post('/lists/inline', ListController::class, 'inlineAdd');
+
+        // -- CSV export (handoff Section 13.3) ------------------------------
+        // The user's own data only; the scope comes from the repository base
+        // class, and every cell is formula-injection guarded (hosting 8.5).
+        $r->get('/export', ExportController::class, 'index');
+        $r->get('/export/plants.csv', ExportController::class, 'plantsCsv');
+        $r->get('/export/events.csv', ExportController::class, 'eventsCsv');
+        $r->get('/export/weather.csv', ExportController::class, 'weatherCsv');
 
         // -- Photos (never a direct URL -- handoff Section 5.3) -------------
         $r->post('/photos', PhotoController::class, 'upload');

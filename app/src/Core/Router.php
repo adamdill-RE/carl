@@ -26,20 +26,12 @@ final class Router
         ?string $keyName = null,
         string $name = '',
     ): self {
-        $names = [];
-        $regex = \preg_replace_callback(
-            '/\{([a-z_]+)(?::([^}]+))?\}/',
-            static function (array $m) use (&$names): string {
-                $names[] = $m[1];
-                return '(' . ($m[2] ?? '[^/]+') . ')';
-            },
-            $pattern
-        );
+        [$regex, $names] = self::compile($pattern);
 
         $this->routes[] = new Route(
             \strtoupper($method),
             $pattern,
-            '#^' . $regex . '$#',
+            $regex,
             $names,
             $controller,
             $action,
@@ -49,6 +41,41 @@ final class Router
         );
 
         return $this;
+    }
+
+    /**
+     * Turn a pattern into a regex, escaping everything that is not a
+     * placeholder.
+     *
+     * The literal text has to be escaped, not interpolated: '/export/plants.csv'
+     * with a raw dot would also match '/export/plantsXcsv', and a route that
+     * answers to a URL nobody wrote down is exactly the kind of thing that is
+     * discovered years later. Placeholder constraints (\d+) are regex on
+     * purpose and are spliced in unescaped.
+     *
+     * @return array{0:string,1:list<string>} the anchored regex and the
+     *         placeholder names, in order
+     */
+    private static function compile(string $pattern): array
+    {
+        $names = [];
+        $regex = '';
+        $offset = 0;
+
+        while (\preg_match('/\{([a-z_]+)(?::([^}]+))?\}/', $pattern, $m, \PREG_OFFSET_CAPTURE, $offset) === 1) {
+            $start = (int) $m[0][1];
+            $regex .= \preg_quote(\substr($pattern, $offset, $start - $offset), '#');
+            $names[] = (string) $m[1][0];
+            // An absent optional group reports offset -1, not null, so the
+            // default cannot be reached with ?? alone.
+            $constraint = isset($m[2]) && (int) $m[2][1] !== -1 ? (string) $m[2][0] : '[^/]+';
+            $regex .= '(' . $constraint . ')';
+            $offset = $start + \strlen((string) $m[0][0]);
+        }
+
+        $regex .= \preg_quote(\substr($pattern, $offset), '#');
+
+        return ['#^' . $regex . '$#', $names];
     }
 
     /** @param class-string $controller */

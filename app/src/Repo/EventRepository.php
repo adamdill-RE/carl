@@ -138,6 +138,68 @@ final class EventRepository extends Repository
         ) !== null;
     }
 
+    /**
+     * One chunk of the CSV export (handoff Section 13.3), scoped by the base
+     * class like every other read.
+     *
+     * Keyset, not OFFSET: the caller walks forward by id, so the cost of the
+     * last chunk is the same as the first.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function exportChunk(int $afterId, int $limit): array
+    {
+        return $this->db->all(
+            'SELECT e.id, e.event_type, e.event_date, e.recorded_at, e.planting_id,'
+            . ' e.quantity_delta, e.duration_min, e.weight_g, e.count_qty, e.unit,'
+            . ' e.narrative, e.source_garden_event_id,'
+            . ' pt.category, pt.type, p.label AS plant_label,'
+            . ' g.name AS garden_name, gr.name AS row_name, c.name AS container_name,'
+            . ' l1.name AS ref_name, l2.name AS ref_name_2'
+            . ' FROM `plant_event` e'
+            . ' JOIN `planting` p ON p.id = e.planting_id'
+            . ' JOIN `plant_type` pt ON pt.id = p.plant_type_id'
+            . ' LEFT JOIN `garden` g ON g.id = e.garden_id'
+            . ' LEFT JOIN `garden_row` gr ON gr.id = e.garden_row_id'
+            . ' LEFT JOIN `container` c ON c.id = e.container_id'
+            . ' LEFT JOIN `user_list_item` l1 ON l1.id = e.ref_list_item_id'
+            . ' LEFT JOIN `user_list_item` l2 ON l2.id = e.ref_list_item_id_2'
+            . ' WHERE e.user_id = :' . self::SCOPE . ' AND e.id > :after_id'
+            . ' ORDER BY e.id LIMIT ' . (int) $limit,
+            $this->bind(['after_id' => $afterId])
+        );
+    }
+
+    /**
+     * The same, for garden_event. A garden action that is not a zone watering
+     * never fans out to a plant (only zone watering does -- handoff 4.7), so
+     * an export of plant events alone would silently lose every garden-level
+     * mulch, fertilise and pest record. They go in the same file under a
+     * scope column rather than a fourth endpoint.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function gardenExportChunk(int $afterId, int $limit): array
+    {
+        return $this->db->all(
+            'SELECT ge.id, ge.event_type, ge.event_date, ge.recorded_at,'
+            . ' ge.duration_min, ge.narrative, ge.fanout_count,'
+            . ' g.name AS garden_name, z.name AS zone_name,'
+            . ' l1.name AS ref_name, l2.name AS ref_name_2,'
+            . ' (SELECT GROUP_CONCAT(gr2.name ORDER BY gr2.ordinal SEPARATOR \' | \')'
+            . '    FROM `garden_event_row` ger JOIN `garden_row` gr2 ON gr2.id = ger.garden_row_id'
+            . '    WHERE ger.garden_event_id = ge.id) AS row_names'
+            . ' FROM `garden_event` ge'
+            . ' JOIN `garden` g ON g.id = ge.garden_id'
+            . ' LEFT JOIN `water_zone` z ON z.id = ge.water_zone_id'
+            . ' LEFT JOIN `user_list_item` l1 ON l1.id = ge.ref_list_item_id'
+            . ' LEFT JOIN `user_list_item` l2 ON l2.id = ge.ref_list_item_id_2'
+            . ' WHERE ge.user_id = :' . self::SCOPE . ' AND ge.id > :after_id'
+            . ' ORDER BY ge.id LIMIT ' . (int) $limit,
+            $this->bind(['after_id' => $afterId])
+        );
+    }
+
     // -- Garden events ---------------------------------------------------
 
     /**

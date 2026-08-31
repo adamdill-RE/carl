@@ -249,6 +249,43 @@ final class PlantingRepository extends Repository
     }
 
     /**
+     * One chunk of the CSV export (handoff Section 13.3), scoped by the base
+     * class like every other read.
+     *
+     * Keyset, not OFFSET: the caller walks forward by id, so the cost of the
+     * last chunk is the same as the first and a row inserted mid-export
+     * cannot make one slide past unread.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function exportChunk(int $afterId, int $limit): array
+    {
+        return $this->db->all(
+            'SELECT p.*, pt.category, pt.type, pt.plant_family, pt.latin_name,'
+            . ' pt.dtm_days_min, pt.dtm_days_max, pt.dtm_counted_from,'
+            . ' g.name AS garden_name, gr.name AS row_name, c.name AS container_name,'
+            . ' seed.name AS seed_source_name, nur.name AS nursery_name,'
+            . ' wm.name AS water_method_name, hs.name AS hardening_schedule_name,'
+            . ' (SELECT COALESCE(SUM(y.weight_g), 0) FROM `plant_event` y'
+            . "    WHERE y.planting_id = p.id AND y.event_type = 'yielded') AS yield_weight_g,"
+            . ' (SELECT COALESCE(SUM(y2.count_qty), 0) FROM `plant_event` y2'
+            . "    WHERE y2.planting_id = p.id AND y2.event_type = 'yielded') AS yield_count_qty"
+            . ' FROM `planting` p'
+            . ' JOIN `plant_type` pt ON pt.id = p.plant_type_id'
+            . ' LEFT JOIN `garden` g ON g.id = p.garden_id'
+            . ' LEFT JOIN `garden_row` gr ON gr.id = p.garden_row_id'
+            . ' LEFT JOIN `container` c ON c.id = p.container_id'
+            . ' LEFT JOIN `user_list_item` seed ON seed.id = p.seed_source_id'
+            . ' LEFT JOIN `user_list_item` nur ON nur.id = p.nursery_id'
+            . ' LEFT JOIN `user_list_item` wm ON wm.id = p.default_water_method_id'
+            . ' LEFT JOIN `hardening_schedule` hs ON hs.id = p.hardening_schedule_id'
+            . ' WHERE p.user_id = :' . self::SCOPE . ' AND p.id > :after_id'
+            . ' ORDER BY p.id LIMIT ' . (int) $limit,
+            $this->bind(['after_id' => $afterId])
+        );
+    }
+
+    /**
      * Yield totals for a planting. Weight and count are separate because a
      * gardener records tomatoes by weight and cucumbers by the piece.
      *

@@ -151,4 +151,6 @@ $hasWeather = $weather['recent'] !== [] || $weather['forecast'] !== [];
     <span class="hint">Water a zone, mulch, fertilise</span></a>
   <a href="<?= $e($app->url('lists')) ?>">Lists
     <span class="hint">Your seeds, soils, fertilisers</span></a>
+  <a href="<?= $e($app->url('export')) ?>">Export
+    <span class="hint">Your plants, events and weather as CSV</span></a>
 </nav>
