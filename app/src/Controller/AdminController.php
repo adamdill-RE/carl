@@ -174,13 +174,30 @@ final class AdminController extends Controller
         return $this->render('admin/mail', $this->mailData());
     }
 
+    /**
+     * Queue the test message (handoff Section 12.1 step 7).
+     *
+     * The recipient is a field rather than always the admin's own address.
+     * Step 7 is "check the received headers for spf=pass and dkim=pass", and
+     * those headers are written by the RECEIVING server: a message from
+     * carl@example.com to carl@example.com is delivered locally by the same
+     * Exim that accepted it, never crosses the internet and is never
+     * authenticated by anybody. On this install the master admin's address is
+     * on the sending domain, so the button could only ever prove that SMTP
+     * auth and TLS work -- which it did, in 0.1 s, without leaving the host.
+     * Spike 4 needs the other half: one send each from the smtp and api
+     * drivers to an external inbox, to see which one lands in it.
+     */
     public function sendMailTest(Request $request): Response
     {
         $user = $this->user();
-        $email = \trim((string) $user->email);
+        $email = \trim((string) $request->input('to', ''));
+        if ($email === '') {
+            $email = \trim((string) $user->email);
+        }
 
         if ($email === '' || \filter_var($email, \FILTER_VALIDATE_EMAIL) === false) {
-            $this->flash('Your own account has no valid email address to send to.', 'error');
+            $this->flash('That is not an email address Carl can send to.', 'error');
             return $this->redirect('admin/mail-test');
         }
 
@@ -198,6 +215,10 @@ final class AdminController extends Controller
             '(handoff Section 12.1 step 7). If either says fail or none, the',
             'DNS records in Email Deliverability are not in place yet.',
             '',
+            'Those headers only exist if this crossed the internet. Sent to an',
+            'address on the sending domain it is delivered locally and nobody',
+            'authenticates it, so test against an outside inbox.',
+            '',
             '-- Carl',
         ]);
 
@@ -206,7 +227,7 @@ final class AdminController extends Controller
                 $user->id,
                 \Carl\Mail\Outbox::KIND_TEST,
                 $email,
-                $user->name,
+                \strcasecmp($email, (string) $user->email) === 0 ? $user->name : null,
                 'Carl mail test (' . $driver . ')',
                 $text,
                 '<p>This is a test message from Carl, sent with the <strong>'
@@ -224,8 +245,8 @@ final class AdminController extends Controller
         }
 
         $this->flash(
-            'Queued as message #' . $id . '. It goes out on the next drain; reload this page '
-            . 'to see whether it was sent.'
+            'Queued as message #' . $id . ' to ' . $email . '. It goes out on the next drain; '
+            . 'reload this page to see whether it was sent.'
         );
         return $this->redirect('admin/mail-test');
     }
@@ -234,6 +255,9 @@ final class AdminController extends Controller
     private function mailData(): array
     {
         $outbox = $this->app->outbox();
+        $fromEmail = $this->app->config()->string('mail.from_email');
+        $at = \strrpos($fromEmail, '@');
+
         return [
             'driver'      => $this->app->config()->string('mail.driver', 'none'),
             'description' => $outbox->describeDriver(),
@@ -241,8 +265,11 @@ final class AdminController extends Controller
             'health'      => $outbox->health(),
             'recent'      => $outbox->recent(15),
             'lastRun'     => $outbox->lastRun(),
-            'fromEmail'   => $this->app->config()->string('mail.from_email'),
+            'fromEmail'   => $fromEmail,
             'toEmail'     => $this->user()->email,
+            // Named on the page so "send it somewhere else" is concrete
+            // advice rather than a principle the reader has to apply.
+            'fromDomain'  => $at === false ? 'this domain' : \substr($fromEmail, $at + 1),
             // Named in full because there are two config/ directories on this
             // account -- the git checkout's and the deployed application's --
             // and only one of them is ever read (hosting Section 6.4).

@@ -504,13 +504,35 @@ both say which state it is in.
 
 5. **Sign in as an admin → Admin → Mail.** It should now say
    `smtp mail.reshiftmanager.com:465 (tls) as carl@reshiftmanager.com` rather
-   than "no driver". Press **Queue a test**.
+   than "no driver".
+
+   **Put an address outside `reshiftmanager.com` in the "Send the test to"
+   field** — a Gmail account — then **Queue a test**. This is not a detail.
+   The field defaults to the signed-in admin's own address, and on this
+   install that address is `carl@reshiftmanager.com`, on the sending domain.
+   A message from the domain to the domain is handed straight to the local
+   mailbox by the same Exim that accepted it. It never crosses the internet,
+   no receiver ever authenticates it, and step 7 has nothing to read.
 6. The drain sends it within ten minutes. To not wait:
    `/tasks/mail-send?key=<cron_key>`. Reload the Mail page: the message reads
    `sent`, or `failed` with the reason on the row.
+
+   **Confirmed 2026-08-31.** The first send returned:
+
+   ```
+   mail send: driver smtp
+   considered 1, sent 1, failed 0, outcome ok, 0.1 s
+   ```
+
+   That settles the certificate question below — `SmtpMailer` verifies peer
+   and peer name, and it connected to `mail.reshiftmanager.com:465` and sent.
+   AutoSSL covers the `mail.` subdomain; **no `'host'` override is needed.**
+   It settles nothing about deliverability: that send was to
+   `carl@reshiftmanager.com` and stayed on the box, which is what 0.1 s means.
 7. In the received message, **View original** (Gmail) and look for
    `spf=pass` and `dkim=pass`. If either says `fail` or `none`, step 2 or 3 has
-   not propagated yet — DNS takes up to an hour.
+   not propagated yet — DNS takes up to an hour. Note whether it arrived in
+   the inbox or in spam.
 8. **Spike 4** (handoff §6.2) is steps 4 to 7 done once with `driver = smtp`
    and once with `driver = api`, noting which lands in the inbox rather than
    in spam. Record the answer in this file.
@@ -529,11 +551,16 @@ Leave both alone.
 **`mail.reshiftmanager.com` is a CNAME to the domain.** That is normal cPanel,
 and the certificate is served by SNI for whatever name is asked for. It only
 matters because `SmtpMailer` verifies certificates properly — `verify_peer`
-and `verify_peer_name` are both on. If AutoSSL has not covered the `mail.`
-subdomain, the outbox row will fail with `certificate verify failed` or a CN
-mismatch. The fix is **SSL/TLS Status → tick `mail.reshiftmanager.com` → Run
-AutoSSL**, or failing that, set `'host' => '<the server's own hostname>'` in
-the `local.php` smtp block, whose certificate will match.
+and `verify_peer_name` are both on. **Measured 2026-08-31: it verifies.** The
+first real send connected and delivered, so AutoSSL does cover the subdomain
+and there is nothing to do here.
+
+Kept only because it is the failure that would be hard to place: if a future
+certificate renewal ever misses the `mail.` subdomain, the outbox row fails
+with `certificate verify failed` or a CN mismatch. The fix is **SSL/TLS Status
+→ tick `mail.reshiftmanager.com` → Run AutoSSL**, or failing that, set
+`'host' => '<the server's own hostname>'` in the `local.php` smtp block, whose
+certificate will match.
 
 **Never turn certificate verification off to get past it.** That connection
 carries the mailbox password on every single send.

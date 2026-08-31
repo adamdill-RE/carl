@@ -51,9 +51,12 @@ return [
     //     ],
     // ],
     //
-    // Only if AutoSSL has not covered the mail. subdomain and the send fails
-    // with a certificate error, add the server's own hostname:
+    // Not needed: measured 2026-08-31, mail.reshiftmanager.com:465 presents a
+    // certificate that verifies. Only if a future renewal misses the mail.
+    // subdomain and a send fails with a certificate error, add the server's
+    // own hostname, whose certificate will match:
     //         'host' => 'sh193.sameservers.com',
+    // Never disable verify_peer. That connection carries the password.
     //
     // 'mail' => [
     //     'driver' => 'api',

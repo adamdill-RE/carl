@@ -11,7 +11,7 @@
  * @var array{queued:int,sent:int,failed:int,oldest_queued:?string} $health
  * @var list<array<string,mixed>> $recent
  * @var array<string,mixed>|null $lastRun
- * @var string $fromEmail @var string $toEmail
+ * @var string $fromEmail @var string $toEmail @var string $fromDomain
  * @var string $localConfigPath
  */
 $e = $view->e(...);
@@ -79,10 +79,21 @@ $pageTitle = 'Mail';
 
   <form method="post" action="<?= $e($app->url('admin/mail-test')) ?>" class="gap-md">
     <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
-    <button type="submit" class="btn">Queue a test to <?= $e($toEmail) ?></button>
+    <div class="field">
+      <label for="to">Send the test to</label>
+      <input type="email" id="to" name="to" maxlength="190" required
+             autocapitalize="none" value="<?= $e($toEmail) ?>">
+    </div>
+    <button type="submit" class="btn">Queue a test</button>
     <p class="help">
       It is sent by the next drain, not by this button. Reload to see the outcome, or
       run the drain now with <code>/tasks/mail-send?key=&lt;cron_key&gt;</code>.
+    </p>
+    <p class="help">
+      To read <code>spf=pass</code> and <code>dkim=pass</code> off the received
+      headers, send to an address <em>outside</em> <?= $e($fromDomain) ?>. A message
+      to this domain is delivered locally by the same server that accepted it: it
+      never crosses the internet, so nothing ever authenticates it.
     </p>
   </form>
 </section>
