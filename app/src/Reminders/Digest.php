@@ -118,11 +118,40 @@ final class Digest
             }
         }
 
+        $this->pruneCredentials();
+
         $this->recordRun($startedAt, \count($due), $stored, $queued, $silent,
             $failures === 0 ? 'ok' : ($queued > 0 ? 'partial' : 'failed'));
 
         return ['due' => \count($due), 'reminders' => $stored, 'queued' => $queued,
                 'silent' => $silent, 'failures' => $failures, 'log' => $this->log];
+    }
+
+    /**
+     * Sweep expired credentials.
+     *
+     * It sits here because this is the hourly job every install runs, and
+     * there is no shell on the production account to run anything else from
+     * (hosting Section 6.3). Both stores could prune themselves and neither
+     * did: `TokenStore::pruneExpired()` has existed since Phase 1 with no
+     * caller, so `auth_token` has been accumulating dead rows for three
+     * phases, and Phase 5's `password_invite` would have done the same.
+     *
+     * Deliberately after the sending, and swallowing its own failure: a
+     * housekeeping sweep must never be the reason a digest did not go out.
+     */
+    private function pruneCredentials(): void
+    {
+        try {
+            $tokens = (new \Carl\Auth\TokenStore($this->db))->pruneExpired();
+            $invites = (new \Carl\Auth\InviteStore($this->db))->pruneExpired();
+            if ($tokens > 0 || $invites > 0) {
+                $this->note('pruned ' . $tokens . ' expired login token(s) and '
+                    . $invites . ' unused invitation(s)');
+            }
+        } catch (Throwable $e) {
+            $this->note('credential prune failed: ' . $e->getMessage());
+        }
     }
 
     /**

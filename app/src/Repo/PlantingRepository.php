@@ -253,6 +253,73 @@ final class PlantingRepository extends Repository
         );
     }
 
+    /**
+     * Every planting whose life overlaps a date window, for the analysis
+     * document (Phase 5 handoff Section 3.1).
+     *
+     * "Overlaps" and not "started in": a tomato sown in March and pulled in
+     * October is the subject of an August review, and a window that only
+     * caught plantings by start_date would drop it. A planting with no
+     * ended_at is still running, so its end is open.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function overlappingWindow(string $from, string $to, int $limit = 400): array
+    {
+        return $this->db->all(
+            self::LIST_SELECT
+            . ' WHERE p.user_id = :' . self::SCOPE
+            . '   AND p.start_date <= :to'
+            . '   AND (p.ended_at IS NULL OR p.ended_at >= :from)'
+            . ' ORDER BY p.start_date DESC, p.id DESC LIMIT ' . (int) $limit,
+            $this->bind(['from' => $from, 'to' => $to])
+        );
+    }
+
+    /**
+     * What plant family last grew in each row, and when (Phase 5 handoff
+     * Section 3.4).
+     *
+     * `plant_family` is on every `plant_type` and `garden_row_id` is on every
+     * planting, so "this bed grew a Solanaceae last year" really is one
+     * statement -- and it is one statement for EVERY row at once, which is
+     * what lets the Start a New Plant form carry the warning for whichever
+     * row the gardener picks without a lookup per row (hosting Section 9).
+     *
+     * Only rows with a family recorded come back: a plant type with no family
+     * in the research set cannot say anything about rotation, and inventing a
+     * warning from a blank is worse than staying quiet.
+     *
+     * @param string $since the earliest start_date that still counts
+     * @return array<int,list<array{family:string,last_date:string,plantings:int}>>
+     *         keyed by garden_row_id, most recent family first
+     */
+    public function familyHistoryByRow(string $since): array
+    {
+        $rows = $this->db->all(
+            'SELECT p.garden_row_id, pt.plant_family,'
+            . ' MAX(p.start_date) AS last_date, COUNT(*) AS plantings'
+            . ' FROM `planting` p JOIN `plant_type` pt ON pt.id = p.plant_type_id'
+            . ' WHERE p.user_id = :' . self::SCOPE
+            . '   AND p.garden_row_id IS NOT NULL'
+            . "   AND pt.plant_family IS NOT NULL AND pt.plant_family <> ''"
+            . '   AND p.start_date >= :since'
+            . ' GROUP BY p.garden_row_id, pt.plant_family'
+            . ' ORDER BY p.garden_row_id, last_date DESC',
+            $this->bind(['since' => $since])
+        );
+
+        $out = [];
+        foreach ($rows as $row) {
+            $out[(int) $row['garden_row_id']][] = [
+                'family'    => (string) $row['plant_family'],
+                'last_date' => (string) $row['last_date'],
+                'plantings' => (int) $row['plantings'],
+            ];
+        }
+        return $out;
+    }
+
     /** @return list<array<string,mixed>> living plantings anywhere in a garden */
     public function livingInGarden(int $gardenId): array
     {

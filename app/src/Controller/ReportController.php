@@ -26,6 +26,34 @@ use Carl\Support\Tokens;
 final class ReportController extends Controller
 {
     /**
+     * `/reports` -- the Reports menu (Phase 5 handoff Section 3.2).
+     *
+     * "A screen with links and no new data access." It is the smallest thing
+     * in Phase 5 and the one that makes the rest of it findable: by the end
+     * of Phase 4 there were six downloads and two report pages, and the only
+     * way to reach any of them was to already be looking at a plant or a
+     * garden.
+     *
+     * Two counts and one list, all of which the repositories already answer.
+     * Nothing is computed here that a report page does not compute anyway.
+     */
+    public function menu(Request $request): Response
+    {
+        $gardens = $this->gardens()->activeGardens();
+
+        return $this->render('reports/index', [
+            'gardens'      => $gardens,
+            'plantCount'   => $this->plantings()->count(),
+            'livingCount'  => $this->events()->livingTotal(),
+            'hasWeather'   => $this->user()->weatherLocationId !== null,
+            // The Recommendations screen is reachable from here whether or
+            // not a key is configured: without one it still explains itself
+            // and still queues, which is the state the install starts in.
+            'analysisReady' => $this->app->analyst()->driver() !== null,
+        ]);
+    }
+
+    /**
      * `/api/plant/<id>/series` (handoff Section 13.1).
      *
      * Two statements of data -- one for weather, one for events -- plus the

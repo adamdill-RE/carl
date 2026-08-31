@@ -244,6 +244,125 @@ final class EventRepository extends Repository
         );
     }
 
+    // -- Summaries for the analysis document (Phase 5 handoff Section 3.1) --
+
+    /**
+     * Every planting's events in a window, rolled up per planting and type.
+     *
+     * Measured 2026-08-31: the raw event log is 2.26 MB of a five-year
+     * account's 3.31 MB `/export/claude.json`, and 4,500 rows of it are 150
+     * plantings watered thirty times each. A recommendation needs "watered 12
+     * times over 340 minutes, last on the 20th", not thirty rows saying the
+     * same thing (`deploy.md` Section 0.9).
+     *
+     * A derived event -- one fanned out from a garden-wide action -- is
+     * counted in `derived` as well as in `events`, so a reader can tell what
+     * the gardener did to that plant from what reached it through the zone
+     * (handoff Section 4.7). The rows are not excluded: a plant that only
+     * ever got water from a zone was still watered.
+     *
+     * ONE statement however many plantings and however long the season
+     * (hosting Section 9). Ordered so a caller can group it in one pass.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function summaryByPlanting(string $from, string $to): array
+    {
+        return $this->db->all(
+            'SELECT `planting_id`, `event_type`, COUNT(*) AS events,'
+            . ' MIN(`event_date`) AS first_date, MAX(`event_date`) AS last_date,'
+            . ' SUM(`source_garden_event_id` IS NOT NULL) AS derived,'
+            . ' SUM(`duration_min`) AS duration_min, SUM(`weight_g`) AS weight_g,'
+            . ' SUM(`count_qty`) AS count_qty, SUM(`quantity_delta`) AS quantity_delta'
+            . ' FROM `plant_event`'
+            . ' WHERE `user_id` = :' . self::SCOPE
+            . '   AND `event_date` BETWEEN :from AND :to'
+            . ' GROUP BY `planting_id`, `event_type`'
+            . ' ORDER BY `planting_id`, `event_type`',
+            $this->bind(['from' => $from, 'to' => $to])
+        );
+    }
+
+    /**
+     * What the gardener actually wrote, most recent first and bounded.
+     *
+     * The counts above are the shape of a season; the narratives are the only
+     * part of the log a person composed, and they are where "the squash went
+     * down overnight" lives. They are the one thing worth sending verbatim,
+     * so they are sent verbatim and capped by count rather than summarised.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function narrativesInWindow(string $from, string $to, int $limit): array
+    {
+        return $this->db->all(
+            'SELECT `planting_id`, `event_type`, `event_date`, `narrative`'
+            . ' FROM `plant_event`'
+            . ' WHERE `user_id` = :' . self::SCOPE
+            . "   AND `event_date` BETWEEN :from AND :to AND `narrative` <> ''"
+            . '   AND `narrative` IS NOT NULL'
+            . ' ORDER BY `event_date` DESC, `id` DESC LIMIT ' . (int) $limit,
+            $this->bind(['from' => $from, 'to' => $to])
+        );
+    }
+
+    /**
+     * Garden-level actions in a window, rolled up per garden and type.
+     *
+     * The same reason as `summaryByPlanting()`, and the same trap it avoids:
+     * a mulch or an amendment that never fanned out to a plant exists only
+     * here, so a document built from plant events alone would be missing the
+     * half of the season that happened to the beds.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function gardenSummaryInWindow(string $from, string $to): array
+    {
+        return $this->db->all(
+            'SELECT ge.garden_id, ge.event_type, COUNT(*) AS events,'
+            . ' MIN(ge.event_date) AS first_date, MAX(ge.event_date) AS last_date,'
+            . ' SUM(ge.duration_min) AS duration_min,'
+            . ' GROUP_CONCAT(DISTINCT l.name ORDER BY l.name SEPARATOR \', \') AS products'
+            . ' FROM `garden_event` ge'
+            . ' LEFT JOIN `user_list_item` l ON l.id = ge.ref_list_item_id'
+            . ' WHERE ge.user_id = :' . self::SCOPE
+            . '   AND ge.event_date BETWEEN :from AND :to'
+            . ' GROUP BY ge.garden_id, ge.event_type'
+            . ' ORDER BY ge.garden_id, ge.event_type',
+            $this->bind(['from' => $from, 'to' => $to])
+        );
+    }
+
+    /**
+     * The pests and the treatments actually named, per planting.
+     *
+     * `summaryByPlanting()` can say a plant was treated four times; only the
+     * list item says what for and with what, and "aphids, four times, neem"
+     * is the whole of what a recommendation needs.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function pestsInWindow(string $from, string $to): array
+    {
+        return $this->db->all(
+            'SELECT e.planting_id, e.event_type, l.name AS ref_name, COUNT(*) AS events,'
+            . ' MAX(e.event_date) AS last_date'
+            . ' FROM `plant_event` e'
+            . ' JOIN `user_list_item` l ON l.id = e.ref_list_item_id'
+            . ' WHERE e.user_id = :' . self::SCOPE
+            . '   AND e.event_date BETWEEN :from AND :to'
+            . '   AND e.event_type IN (:observed, :treated)'
+            . ' GROUP BY e.planting_id, e.event_type, l.name'
+            . ' ORDER BY e.planting_id',
+            $this->bind([
+                'from'     => $from,
+                'to'       => $to,
+                'observed' => EventType::PEST_OBSERVED,
+                'treated'  => EventType::PEST_TREATED,
+            ])
+        );
+    }
+
     // -- Garden events ---------------------------------------------------
 
     /**

@@ -190,4 +190,65 @@
     gardenSelect.addEventListener('change', filterRows);
     filterRows();
   }
+
+  /* ---- Crop rotation warning (Phase 5 handoff Section 3.4) ---------- */
+
+  /*
+   * A nudge, never a block, and an enhancement like everything else here:
+   * with this script off, each row option still reads "Row 3 -- grew
+   * Solanaceae in 2025", which is the fact. What the script adds is the
+   * meaning for the plant actually chosen, which needs both selects and so
+   * cannot live in either one's text.
+   *
+   * The data is already on the page -- data-family on each type, data-families
+   * on each row -- because the alternative is a fetch on every change of
+   * either select, for a fact the server already sent.
+   */
+  var typeSelect = document.getElementById('plant_type_id');
+  var rotationBox = document.getElementById('rotation-warning');
+
+  if (typeSelect && rowSelect && rotationBox) {
+    var years = rowSelect.getAttribute('data-rotation-years') || '3';
+
+    var chosenFamily = function () {
+      var option = typeSelect.options[typeSelect.selectedIndex];
+      return option ? (option.getAttribute('data-family') || '') : '';
+    };
+
+    var rowFamilies = function () {
+      var option = rowSelect.options[rowSelect.selectedIndex];
+      var raw = option ? (option.getAttribute('data-families') || '') : '';
+      return raw === '' ? [] : raw.split(',');
+    };
+
+    var updateRotation = function () {
+      var family = chosenFamily();
+      var clash = family !== '' && rowFamilies().indexOf(family) !== -1;
+
+      if (!clash) {
+        rotationBox.hidden = true;
+        rotationBox.textContent = '';
+        return;
+      }
+
+      var rowOption = rowSelect.options[rowSelect.selectedIndex];
+      /* textContent, not innerHTML: the row name and the family are the
+       * user's data and the research set's, and this file is not where
+       * either becomes markup. */
+      rotationBox.textContent =
+        'That bed has grown ' + family + ' within the last ' + years +
+        ' years (' + (rowOption ? rowOption.textContent.trim() : '') + '). ' +
+        'Rotating the family off it for a season or two reduces the soil-borne ' +
+        'disease and pest pressure that builds up under a repeat. This is a ' +
+        'hint, not a limit -- carry on if you have a reason to.';
+      rotationBox.hidden = false;
+    };
+
+    typeSelect.addEventListener('change', updateRotation);
+    rowSelect.addEventListener('change', updateRotation);
+    /* The garden select re-parents the row options, which drops the
+     * selection; re-check after it does. */
+    if (gardenSelect) { gardenSelect.addEventListener('change', updateRotation); }
+    updateRotation();
+  }
 }());

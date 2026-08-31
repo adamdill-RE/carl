@@ -219,6 +219,42 @@ final class SystemController extends Controller
         }
         $lines[] = '';
 
+        // -- Recommendations (Phase 5 handoff Section 3.1) -------------------
+        $lines[] = 'ANALYSIS';
+        try {
+            $analyst = $this->app->analyst();
+            $health = $analyst->health();
+            $lines[] = \sprintf('  provider            %s', $analyst->describeDriver());
+            $lines[] = \sprintf('  queue               %d waiting, %d answered, %d failed',
+                $health['queued'], $health['done'], $health['failed']);
+            if ($health['oldest_queued'] !== null) {
+                $lines[] = \sprintf('  oldest waiting      %s', $health['oldest_queued']);
+            }
+            $lastAnalysis = $analyst->lastRun();
+            $lines[] = $lastAnalysis === null
+                ? '  last run            NEVER -- is the hourly cron entry in place?'
+                : \sprintf('  last run            %s  %s (%d answered, %d failed)',
+                    $lastAnalysis['started_at'], $lastAnalysis['outcome'],
+                    $lastAnalysis['completed'], $lastAnalysis['failed']);
+            if (($lastAnalysis['error_text'] ?? null) !== null) {
+                $lines[] = \sprintf('  last run note       %s', $lastAnalysis['error_text']);
+            }
+            // The size question of Phase 5 handoff Section 3.1, answered from
+            // the live data rather than from a container measurement.
+            $bytes = $this->app->db()->one(
+                'SELECT MAX(`document_bytes`) AS biggest, AVG(`document_bytes`) AS mean'
+                . ' FROM `analysis` WHERE `document_bytes` > 0'
+            );
+            if ((int) ($bytes['biggest'] ?? 0) > 0) {
+                $lines[] = \sprintf('  document sent       %d KB largest, %d KB mean',
+                    (int) \round((int) $bytes['biggest'] / 1024),
+                    (int) \round((float) $bytes['mean'] / 1024));
+            }
+        } catch (Throwable $e) {
+            $lines[] = '  ERROR              ' . $e->getMessage();
+        }
+        $lines[] = '';
+
         $lines[] = \sprintf('statements this request: %d', $this->app->db()->statementCount());
         $lines[] = \sprintf('rendered in %.1f ms', (\microtime(true) - CARL_START) * 1000);
 
@@ -471,6 +507,39 @@ final class SystemController extends Controller
             \sprintf('due %d, reminders %d, emails queued %d, silent %d, failures %d, %.1f s',
                 $summary['due'], $summary['reminders'], $summary['queued'],
                 $summary['silent'], $summary['failures'], \microtime(true) - $started),
+            '',
+        ];
+        foreach ($summary['log'] as $entry) {
+            $lines[] = '  ' . $entry;
+        }
+
+        return Response::text(\implode("\n", $lines) . "\n");
+    }
+
+    /**
+     * The browser fallback for the analysis drain (Phase 5 handoff Section
+     * 3.1), guarded by the same key as the other jobs.
+     *
+     * The budget is the difference between this and the CLI form. One
+     * analysis is a single long request to a third party, and this runs under
+     * the web SAPI's 30 s ceiling on a host that kills the process without
+     * leaving a PHP error behind (hosting Section 4). So it stops STARTING
+     * requests at 20 s, and a request that was already running when the
+     * process died is picked up by the lease on the next run rather than
+     * being stuck in 'sending' for ever.
+     */
+    public function analysisRun(Request $request): Response
+    {
+        $started = \microtime(true);
+        $analyst = $this->app->analyst();
+        $summary = $analyst->drain(null, 20.0);
+
+        $lines = [
+            'analysis run',
+            \sprintf('provider %s', $analyst->describeDriver()),
+            \sprintf('considered %d, answered %d, failed %d, %.1f s',
+                $summary['considered'], $summary['completed'], $summary['failed'],
+                \microtime(true) - $started),
             '',
         ];
         foreach ($summary['log'] as $entry) {

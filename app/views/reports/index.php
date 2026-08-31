@@ -1,0 +1,120 @@
+<?php
+/**
+ * The Reports menu (Phase 5 handoff Section 3.2).
+ *
+ * Links and nothing else. Every destination here already existed; what did
+ * not exist was a place that named them all, so a person who had never
+ * opened a plant page had no way of knowing there was a PDF at the bottom of
+ * one.
+ *
+ * @var Carl\Core\App $app @var Carl\Core\View $view
+ * @var list<array<string,mixed>> $gardens
+ * @var int $plantCount @var int $livingCount
+ * @var bool $hasWeather @var bool $analysisReady
+ */
+$e = $view->e(...);
+$pageTitle = 'Reports';
+?>
+<h1 class="page-title">Reports</h1>
+<p class="page-sub">
+  <?= $e($livingCount) ?> living plants across <?= $e($plantCount) ?> plantings.
+  Everything Carl can tell you about them, and everything you can take away.
+</p>
+
+<section class="card">
+  <h2>Read</h2>
+  <ul class="list">
+    <li>
+      <a href="<?= $e($app->url('advice')) ?>">Recommendations</a>
+      <div class="small muted">
+        What your records say about your season, read against the weather that
+        actually happened.
+<?php if (!$analysisReady): ?>
+        No analysis key is configured yet, so a request waits in the queue until
+        one is.
+<?php endif; ?>
+      </div>
+    </li>
+    <li>
+      <a href="<?= $e($app->url('plants')) ?>">Plant reports</a>
+      <div class="small muted">
+        One per planting: the research card for it, its whole timeline, its
+        photographs, and the temperature, rain and ET&#8320; over the days it has
+        been in the ground. &ldquo;Download PDF&rdquo; is at the bottom of each.
+      </div>
+    </li>
+    <li>
+      <a href="<?= $e($app->url('gardens')) ?>">Garden reports</a>
+      <div class="small muted">
+<?php if ($gardens === []): ?>
+        You have no gardens yet.
+        <a href="<?= $e($app->url('gardens/new')) ?>">Build one</a>.
+<?php else: ?>
+        The same for a whole bed: what is in each row, what it yielded, the
+        garden's own actions, and the weather over the dates it has been in use.
+<?php endif; ?>
+      </div>
+    </li>
+  </ul>
+<?php if ($gardens !== []): ?>
+  <ul class="list">
+<?php foreach ($gardens as $garden): ?>
+    <li>
+      <div class="grow">
+        <a href="<?= $e($app->url('gardens/' . $garden['id'])) ?>"><?= $e($garden['name']) ?></a>
+<?php if ((int) $garden['is_indoor'] === 1): ?>
+        <span class="badge badge-muted">indoor</span>
+<?php endif; ?>
+      </div>
+    </li>
+<?php endforeach; ?>
+  </ul>
+<?php endif; ?>
+</section>
+
+<section class="card">
+  <h2>Take away</h2>
+  <ul class="list">
+    <li>
+      <a href="<?= $e($app->url('export/plants.csv')) ?>">plants.csv</a>
+      <div class="small muted">One row per planting, with its yield to date.</div>
+    </li>
+    <li>
+      <a href="<?= $e($app->url('export/events.csv')) ?>">events.csv</a>
+      <div class="small muted">Every logged action, plant and garden alike.</div>
+    </li>
+    <li>
+      <a href="<?= $e($app->url('export/weather.csv')) ?>">weather.csv</a>
+      <div class="small muted">
+<?php if ($hasWeather): ?>
+        The daily series for your location, in SI as it is stored.
+<?php else: ?>
+        Nothing yet &mdash; finish onboarding so Carl knows where your garden is.
+<?php endif; ?>
+      </div>
+    </li>
+    <li>
+      <a href="<?= $e($app->url('export/claude.json')) ?>">for-claude.json</a>
+      <div class="small muted">
+        The whole record as one document, for pasting into a conversation with
+        Claude yourself. Recommendations above does this for you, on a smaller
+        summary of the same data.
+      </div>
+    </li>
+  </ul>
+  <p class="small">
+    <a href="<?= $e($app->url('export')) ?>">More about these files</a> &mdash; what is in
+    each column, and why a cell can start with an apostrophe.
+  </p>
+</section>
+
+<section class="card">
+  <h2>Print</h2>
+  <p class="small muted">
+    The field-recording sheet &mdash; a blank page to take out to the garden and
+    write on &mdash; is not built yet. It is waiting on the sheet's design
+    (handoff &sect;13.4); once that lands, a prefilled one per garden follows.
+  </p>
+</section>
+
+<p><a class="btn btn-secondary" href="<?= $e($app->url('')) ?>">Back to the menu</a></p>

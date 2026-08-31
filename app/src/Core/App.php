@@ -29,6 +29,7 @@ final class App
     private ?Request $request = null;
     private ?string $publicPath = null;
     private ?\Carl\Mail\Outbox $outbox = null;
+    private ?\Carl\Analysis\Analyst $analyst = null;
 
     public function __construct(private Config $config, private string $root)
     {
@@ -73,6 +74,17 @@ final class App
     public function outbox(): \Carl\Mail\Outbox
     {
         return $this->outbox ??= new \Carl\Mail\Outbox($this);
+    }
+
+    /**
+     * The analysis queue (Phase 5 handoff Section 3.1). Pages queue a
+     * request; only the drain cron calls the API, for the same reason mail
+     * and weather work that way -- no third-party call on the request path
+     * (Phase 3 handoff Section 5).
+     */
+    public function analyst(): \Carl\Analysis\Analyst
+    {
+        return $this->analyst ??= new \Carl\Analysis\Analyst($this);
     }
 
     /** Store SI, convert at display, in one helper (weather.md Section 6.3). */

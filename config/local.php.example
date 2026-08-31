@@ -62,4 +62,27 @@ return [
     //     'driver' => 'api',
     //     'api'    => ['key' => 'xkeysib-...'],
     // ],
+
+    // --- Recommendations (Phase 5 handoff Section 3.1) -------------------
+    // The Anthropic API key, and the ONLY place it may ever appear. Nothing
+    // in the repository holds it; config/app.php carries the model and the
+    // URL, which are not secret, and an empty key there is what makes the
+    // feature queue and wait rather than fail.
+    //
+    // Leave this block out until there is a key. With none, the button on
+    // /advice still works, the request goes in the queue, and the drain says
+    // "no analysis API key configured; 1 request waiting for one". Nothing
+    // is lost and nothing is charged.
+    //
+    // Every queued row is a paid call, so config/app.php caps them at three
+    // per user per day. Lower it here if that is still too many.
+    //
+    // 'analysis' => [
+    //     'api' => ['key' => 'sk-ant-api03-...'],
+    // ],
+    //
+    // Outbound HTTPS to api.anthropic.com is NOT one of the five hosts Phase
+    // 0 spike 1 proved reachable from sh193 (deploy.md Section 0.1). The
+    // first drain is the test; a failure lands in analysis_run.error_text
+    // and on /status, not on anybody's page.
 ];

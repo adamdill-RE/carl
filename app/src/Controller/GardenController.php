@@ -346,6 +346,111 @@ final class GardenController extends Controller
         return $this->redirect('gardens/' . $gardenId . '/actions');
     }
 
+    // -- End Growing Season (Phase 5 handoff Section 3.3) -------------------
+
+    /**
+     * The confirmation screen.
+     *
+     * Section 3.3 is explicit that "the care needed is in the confirmation
+     * screen, not the code", and it is right: the write itself is one call to
+     * `recordBatch()`, which already exists and already re-derives state per
+     * planting. What is new is that this is **the one destructive action in
+     * the application** -- everything else in Carl adds a row to an
+     * append-only log; this adds a row to twenty of them at once and takes
+     * twenty plants out of the garden.
+     *
+     * So the screen names every planting it will end, and how many living
+     * plants each stands for, before there is a button to press. A count is
+     * not enough: "this will end 14 plantings" reads the same whether or not
+     * the fourteenth is the one you have been nursing since February.
+     */
+    public function endSeasonForm(Request $request, array $params): Response
+    {
+        $gardenId = (int) $params['id'];
+        $garden = $this->gardens()->findOrFail($gardenId);
+
+        return $this->render('gardens/end_season', [
+            'garden'    => $garden,
+            'plantings' => $this->plantings()->listWithDetail(
+                ['garden_id' => $gardenId, 'living' => true]
+            ),
+            'errors'    => [],
+        ]);
+    }
+
+    /**
+     * Do it.
+     *
+     * Three guards, in order of how much they would cost to be missing:
+     *
+     *  1. **A typed confirmation.** Not a checkbox: a checkbox next to a
+     *     submit button is one mis-tap on a phone, and this is the action
+     *     with no undo.
+     *  2. **The date is a real event date** -- the user's own today by
+     *     default, and backdatable like every other event (handoff Section
+     *     4), because a season ends on the day of the frost, not on the day
+     *     someone gets round to recording it.
+     *  3. **The planting ids come from the database, not the form.** The
+     *     screen lists them; the write re-reads them. A stale tab whose list
+     *     is a week old must not resurrect a planting that has since been
+     *     ended, nor miss one started since.
+     *
+     * `culled` is the event type rather than a new "season ended" one. It is
+     * already in the vocabulary (handoff Section 5.3), it is already
+     * attrition, and `PlantingState::derive()` already ends a planting the
+     * moment its last living plant is gone by any route. A new type would
+     * have meant a new column value, a new label, a new marker colour and a
+     * new case in the state machine, to record the same fact.
+     */
+    public function endSeason(Request $request, array $params): Response
+    {
+        $gardenId = (int) $params['id'];
+        $garden = $this->gardens()->findOrFail($gardenId);
+
+        $living = $this->plantings()->listWithDetail(['garden_id' => $gardenId, 'living' => true]);
+        $eventDate = $this->eventDate($request);
+
+        $errors = [];
+        if (\strtolower(\trim((string) $request->input('confirm', ''))) !== 'end season') {
+            $errors[] = 'Type "end season" in the box to confirm. Nothing has been changed.';
+        }
+        if ($living === []) {
+            $errors[] = 'There is nothing living in this garden to end.';
+        }
+
+        if ($errors !== []) {
+            return $this->render('gardens/end_season', [
+                'garden'    => $garden,
+                'plantings' => $living,
+                'errors'    => $errors,
+            ]);
+        }
+
+        $written = $this->events()->recordBatch(
+            \array_map(static fn (array $p): int => (int) $p['id'], $living),
+            EventType::CULLED,
+            $eventDate,
+            [
+                // Each planting's own remainder, not a single number across
+                // all of them -- which is exactly what recordBatch()'s
+                // quantity_all already means (handoff Section 4.4).
+                'quantity_all' => true,
+                'garden_id'    => $gardenId,
+                'narrative'    => $request->nullable('narrative')
+                    ?? 'End of season for ' . $garden['name'] . '.',
+            ]
+        );
+
+        $this->flash(
+            'Season ended for ' . $written . ' planting' . ($written === 1 ? '' : 's')
+            . ' in ' . $garden['name'] . ', dated ' . $eventDate . '. '
+            . 'The log is append-only: every one of them is still on its timeline, and a '
+            . 'later event brings a planting back if you ended one by mistake.'
+        );
+
+        return $this->redirect('gardens/' . $gardenId);
+    }
+
     /** @param list<int> $wanted @return list<int> */
     private function validRows(int $gardenId, array $wanted): array
     {

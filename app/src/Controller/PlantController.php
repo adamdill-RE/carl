@@ -270,6 +270,12 @@ final class PlantController extends Controller
         $gardens = $this->gardens()->activeGardens();
         $gardenIds = \array_map(static fn (array $g): int => (int) $g['id'], $gardens);
 
+        // How far back a bed's history still counts against planting the same
+        // family in it again (Phase 5 handoff Section 3.4). Three years is
+        // the conventional rotation for the families that need one.
+        $rotationYears = \max(1, $this->app->config()->int('rotation.years', 3));
+        $rotationSince = (string) Clock::addDays($this->today(), -($rotationYears * 365));
+
         return [
             'kind'       => $kind,
             'meta'       => self::KINDS[$kind],
@@ -285,6 +291,11 @@ final class PlantController extends Controller
             // statement for every garden, because the row select carries the
             // rows of all of them and filters in the browser.
             'occupancy'  => $this->gardens()->livingCountByRow(),
+            // The crop rotation history (Phase 5 handoff Section 3.4), which
+            // is the same shape and the same trick: one statement for every
+            // row this user has, because the select carries all of them.
+            'rotation'      => $this->plantings()->familyHistoryByRow($rotationSince),
+            'rotationYears' => $rotationYears,
             'errors'     => [],
             'old'        => $request->isPost() ? $request->post : [],
         ];

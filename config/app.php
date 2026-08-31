@@ -137,6 +137,76 @@ return [
         'retention_days'  => 30,         // sent rows are pruned; failed ones stay
     ],
 
+    // --- Recommendations (Phase 5 handoff Section 3.1) -------------------
+    // The Claude analysis. Same discipline as weather and mail and for the
+    // same reason: a page queues an `analysis` row and returns, and a cron
+    // makes the call. Nothing here may be reached from a request.
+    //
+    // The API KEY IS NOT HERE AND MUST NEVER BE. It goes in
+    // config/local.php, which is gitignored and lives outside public_html
+    // (hosting Section 6.4). With no key, requests queue and wait -- exactly
+    // as mail does before the mailbox exists.
+    'analysis' => [
+        'api' => [
+            'url' => 'https://api.anthropic.com/v1/messages',
+            'key' => '',                 // config/local.php, NEVER here
+        ],
+
+        'model' => 'claude-opus-5',
+
+        // Effort is the first cost lever and it is left at the model's own
+        // default ('high'). Set 'low' or 'medium' here if the bill matters
+        // more than the depth of the answer.
+        'effort' => '',
+
+        // Around 700 words of prose, with headroom. Small on purpose: the
+        // request is not streamed (see ClaudeClient), so the whole answer has
+        // to arrive inside http_timeout.
+        'max_tokens' => 2000,
+
+        // Longer than the weather client's 20 s: an analysis is one long
+        // request, not a series of short ones. The CLI cron has no execution
+        // ceiling; the browser twin has 30 s (hosting Section 4) and passes
+        // its own budget instead of relying on this.
+        'http_timeout' => 120,
+
+        // --- What is sent -------------------------------------------------
+        // Measured 2026-08-31: a five-year account's /export/claude.json is
+        // 3.3 MB, roughly 900,000 tokens, and 93% of it is the raw event log
+        // and the daily weather (deploy.md Section 0.9). These three bound
+        // the analysis document instead; Carl\Analysis\Document says how.
+        'days'            => 365,        // the window, back from the user's own today
+        'max_narratives'  => 60,         // notes sent verbatim, most recent first
+        'max_plantings'   => 400,
+        // A tripwire, not a target. If a built document exceeds this the
+        // request fails permanently and says so, rather than being sent.
+        'max_document_bytes' => 1048576,
+
+        // --- The queue ----------------------------------------------------
+        'batch'          => 3,           // requests per drain
+        'max_per_day'    => 3,           // per user; every one of these is money
+        'max_attempts'   => 4,
+        'retry_minutes'  => [5, 30, 180],
+        'lease_minutes'  => 10,          // past this, a 'sending' row is a dead process
+        'retention_days' => 365,         // answers are kept a season; failures stay
+    ],
+
+    // --- Crop rotation (Phase 5 handoff Section 3.4) ---------------------
+    // How far back a bed's history still counts against planting the same
+    // family in it again. Three years is the conventional rotation for the
+    // families that need one; it is a nudge on the form, never a block.
+    'rotation' => [
+        'years' => 3,
+    ],
+
+    // --- Account invitations (Phase 5 handoff Section 3.5) ---------------
+    // How long a set-password link in an email stays usable. Short enough
+    // that a forwarded or archived message is not a standing credential;
+    // long enough to survive a weekend.
+    'invite' => [
+        'lifetime_days' => 7,
+    ],
+
     // --- Display --------------------------------------------------------
     // Store SI, convert at display (weather.md Section 6.3).
     'units' => 'us',   // 'us' => F / in / mph ; 'si' => C / mm / km/h
