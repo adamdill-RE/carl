@@ -17,7 +17,7 @@ $pageTitle = 'Users';
 <?php if ($created !== null): ?>
 <div class="notice notice-ok">
   <p><strong><?= $e($created['username']) ?></strong> created.</p>
-  <p>Temporary password: <code style="font-size:18px"><?= $e($created['password']) ?></code></p>
+  <p>Temporary password: <code> class="credential"<?= $e($created['password']) ?></code></p>
   <p class="small">
     This is shown once and is not stored anywhere readable. Write it down or send it now.
     They will be made to change it the first time they sign in.

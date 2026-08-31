@@ -33,15 +33,17 @@ $weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', '
 
   <h3>Hours outside</h3>
 <?php foreach ($weekdays as $index => $day): ?>
-  <div class="row row-tight" style="margin-bottom:6px">
-    <span class="check" style="min-width:130px">
+  <div class="weekday-row">
+    <span class="check">
       <input type="checkbox" id="wd-<?= $e($index) ?>" name="weekday[]" value="<?= $e($index) ?>">
       <label for="wd-<?= $e($index) ?>"><?= $e($day) ?></label>
     </span>
-    <input type="time" name="time_from[<?= $e($index) ?>]" value="09:00" class="grow"
-           aria-label="<?= $e($day) ?> from">
-    <input type="time" name="time_to[<?= $e($index) ?>]" value="15:00" class="grow"
-           aria-label="<?= $e($day) ?> to">
+    <div class="times">
+      <input type="time" name="time_from[<?= $e($index) ?>]" value="09:00"
+             aria-label="<?= $e($day) ?> from">
+      <input type="time" name="time_to[<?= $e($index) ?>]" value="15:00"
+             aria-label="<?= $e($day) ?> to">
+    </div>
   </div>
 <?php endforeach; ?>
 

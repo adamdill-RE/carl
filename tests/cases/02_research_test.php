@@ -227,3 +227,66 @@ $t->test('re-uploading the exact same file is recognised, not repeated', functio
     $t->ok($result->alreadyImported, 'the importer recognised the sha256');
     $t->contains('already imported', \implode(' ', $result->warnings));
 });
+
+$t->group('Reading the catalog back');
+
+$t->test('a plant with two seasons appears once in the list, not twice',
+    function ($t) use ($app, $db): void {
+    // plant_region is keyed on (region, plant, season), so a LEFT JOIN
+    // without an aggregate multiplies the plant by its season count and the
+    // dropdown lists it twice.
+    $reference = new Carl\Repo\ReferenceRepository($db);
+    $regionId = $reference->regionIdForCounty('48217');
+    if ($regionId === null) {
+        $t->ok(true, 'no Hill County region in this database');
+        return;
+    }
+
+    $seasons = (int) $db->value(
+        'SELECT COUNT(*) FROM `plant_region` pr JOIN `plant_type` pt ON pt.id = pr.plant_type_id'
+        . " WHERE pr.region_id = :r AND pt.category = 'Tomato' AND pt.type = 'Roma'",
+        ['r' => $regionId], 0
+    );
+    $t->ok($seasons >= 2, 'Roma really does have more than one season window');
+
+    $rows = $reference->plantTypesForRegion($regionId, '2026-08-31');
+    $ids = \array_column($rows, 'id');
+    $t->same(\count($ids), \count(\array_unique($ids)), 'one row per plant type');
+
+    $romas = \array_filter($rows, static fn (array $r): bool
+        => $r['category'] === 'Tomato' && $r['type'] === 'Roma');
+    $t->same(1, \count($romas));
+});
+
+$t->test('a plant recommended in any season is marked recommended',
+    function ($t) use ($db): void {
+    $reference = new Carl\Repo\ReferenceRepository($db);
+    $regionId = $reference->regionIdForCounty('48217');
+    if ($regionId === null) {
+        $t->ok(true, 'no Hill County region in this database');
+        return;
+    }
+    $rows = $reference->plantTypesForRegion($regionId, '2026-08-31');
+    $roma = null;
+    foreach ($rows as $row) {
+        if ($row['category'] === 'Tomato' && $row['type'] === 'Roma') {
+            $roma = $row;
+        }
+    }
+    $t->ok($roma !== null, 'Roma is in the list');
+    // Roma is recommended=N in spring and Y in fall; the aggregate takes the Y.
+    $t->same(1, (int) $roma['recommended']);
+    $t->same(1, (int) $roma['in_region']);
+});
+
+$t->test('without a region the whole catalog is offered with nothing marked',
+    function ($t) use ($db): void {
+    $reference = new Carl\Repo\ReferenceRepository($db);
+    $rows = $reference->plantTypesForRegion(null, '2026-08-31');
+    $total = (int) $db->value('SELECT COUNT(*) FROM `plant_type`', [], 0);
+    $t->same($total, \count($rows), 'every plant is still selectable');
+    foreach ($rows as $row) {
+        $t->same(0, (int) $row['recommended']);
+        $t->same(0, (int) $row['in_region']);
+    }
+});

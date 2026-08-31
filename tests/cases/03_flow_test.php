@@ -367,6 +367,25 @@ $t->test('the plant report shows the timeline and the yield', function ($t) use 
     $t->contains('Yield', $response->body);
 });
 
+$t->test('a timeline separator is not double-escaped', function ($t) use ($client, $plantIds): void {
+    // Escaping a string that already holds an entity turns the separator into
+    // literal "&middot;" on the page.
+    $response = $client->get('/plants/' . $plantIds['transplant']);
+    $t->same(200, $response->status);
+    $t->notContains('&amp;middot;', $response->body);
+});
+
+$t->test('a user-supplied value is escaped, entity or not', function ($t) use ($client, $today, $plantIds): void {
+    $client->post('/log/' . $plantIds['sow'], [
+        'event_type' => EventType::NOTE, 'event_date' => $today,
+        'narrative' => 'Storm <script>alert(1)</script> & hail',
+    ]);
+    $response = $client->get('/plants/' . $plantIds['sow']);
+    $t->notContains('<script>alert(1)</script>', $response->body);
+    $t->contains('&lt;script&gt;', $response->body);
+    $t->contains('&amp; hail', $response->body);
+});
+
 $t->test('the plant list and the log list both render', function ($t) use ($client): void {
     $t->same(200, $client->get('/plants')->status);
     $t->same(200, $client->get('/log')->status);
@@ -700,4 +719,50 @@ $t->test('every GET admin route returns 200 for an admin',
         }
         $t->same(200, $client->get($route->pattern)->status, 'GET ' . $route->pattern);
     }
+});
+
+$t->group('The MOTD weather matrix');
+
+$t->test('the matrix shows the last observed days once the cron has run',
+    function ($t) use ($client, $alice, $db): void {
+    $client->forgetCookies();
+    $client->post('/login', ['username' => $alice['username'], 'password' => $alice['password']]);
+
+    $locationId = (int) $db->value(
+        'SELECT weather_location_id FROM `user` WHERE id = :id', ['id' => $alice['id']], 0
+    );
+    $held = (int) $db->value(
+        'SELECT COUNT(*) FROM `weather_daily` WHERE location_id = :id',
+        ['id' => $locationId], 0
+    );
+
+    $response = $client->get('/');
+    $t->same(200, $response->status);
+
+    if ($held === 0) {
+        // Phase 1 acceptance allows the cron not to be live yet, and the box
+        // says so rather than showing an empty table (handoff Section 14).
+        $t->contains('Weather arrives nightly', $response->body);
+        return;
+    }
+
+    $t->contains('High / low', $response->body);
+    $t->contains('ET', $response->body);
+    // Attribution is required and non-optional (weather.md Section 10).
+    $t->contains('Open-Meteo.com', $response->body);
+});
+
+$t->test('dismissing the MOTD hides it for the day', function ($t) use ($client): void {
+    $page = $client->get('/');
+    if (!\str_contains($page->body, 'forecast_hash')) {
+        $t->ok(true, 'nothing to dismiss without weather');
+        return;
+    }
+    \preg_match('/name="forecast_hash" value="([^"]*)"/', $page->body, $m);
+
+    $t->same(303, $client->post('/motd/dismiss', ['forecast_hash' => $m[1] ?? ''])->status);
+
+    $after = $client->get('/');
+    $t->notContains('High / low', $after->body, 'the matrix is gone for this session');
+    $t->contains('What would you like to do?', $after->body, 'the menu is still there');
 });

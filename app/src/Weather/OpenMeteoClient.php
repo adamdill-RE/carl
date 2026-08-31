@@ -16,7 +16,7 @@ use Carl\Core\HttpResult;
  * as `time` before iterating. A silently short array produces silently wrong
  * rows, which is worse than a failed run.
  */
-final class OpenMeteoClient
+final class OpenMeteoClient implements WeatherProvider
 {
     /** weather.md Section 5.1: store all of these from day one. */
     public const ARCHIVE_DAILY = [

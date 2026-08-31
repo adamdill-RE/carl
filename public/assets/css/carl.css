@@ -51,7 +51,10 @@ body {
 .stack > * + * { margin-top: var(--carl-gap); }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .row-tight { gap: 6px; }
-.grow { flex: 1 1 auto; min-width: 0; }
+/* flex-basis 0, not auto: form controls are width:100%, and with an auto
+ * basis two of them can never share a line -- they wrap instead, which turns
+ * a two-up pair of fields into two full-width rows at 380px. */
+.grow { flex: 1 1 0; min-width: 0; }
 .muted { color: var(--carl-text-muted); }
 .small { font-size: 13px; }
 .tiny { font-size: 12px; }
@@ -201,6 +204,9 @@ table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
 table.data th, table.data td { padding: 8px 6px; text-align: left; border-bottom: 1px solid var(--carl-border); }
 table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
 
+/* Links inside content use the palette; the topbar sets its own colour. */
+.card a, .timeline a, main p a { color: var(--carl-primary-dark); }
+
 /* ---------- Timeline ---------- */
 
 .timeline { list-style: none; margin: 0; padding: 0; }
@@ -228,6 +234,23 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
 .filters label { font-size: 12px; }
 @media (min-width: 560px) { .filters { grid-template-columns: repeat(4, 1fr); } }
 
+/* ---------- Hardening schedule ---------- */
+
+/* A weekday and its two times. At 380px the label takes its own line and the
+ * times share the next one; wider than that they sit on one row. */
+.weekday-row {
+  display: grid; gap: 6px;
+  grid-template-columns: 1fr;
+  padding-bottom: 10px; margin-bottom: 10px;
+  border-bottom: 1px solid var(--carl-border);
+}
+.weekday-row:last-of-type { border-bottom: none; }
+.weekday-row .times { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.weekday-row .check { min-height: 32px; }
+@media (min-width: 480px) {
+  .weekday-row { grid-template-columns: 150px 1fr; align-items: center; }
+}
+
 /* ---------- Steps ---------- */
 
 .steps { display: flex; gap: 6px; margin-bottom: 14px; font-size: 12px; }
@@ -237,6 +260,23 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
 }
 .steps .on { background: var(--carl-primary); color: var(--carl-text-inverse); font-weight: 700; }
 .steps .done { background: var(--carl-primary-soft); color: var(--carl-primary-dark); }
+
+/* ---------- Utilities ----------
+ * These exist so no template needs a style="" attribute. The CSP is
+ * style-src 'self' with no 'unsafe-inline' (hosting Section 8.5), and an
+ * inline style attribute is silently refused under it -- the element simply
+ * renders unstyled, with the only trace a console message nobody reads.
+ */
+
+.flush          { margin: 0; }
+.gap-xs         { margin-top: 6px; }
+.gap-sm         { margin-top: 8px; }
+.gap-md         { margin-top: 12px; }
+.gap-below      { margin-bottom: 6px; }
+.inline         { display: inline-flex; }
+.inherit-colour { color: inherit; }
+.tickbox        { width: 20px; height: 20px; margin-top: 4px; flex: none; }
+.credential     { font-size: 18px; letter-spacing: .05em; }
 
 /* ---------- Footer ---------- */
 

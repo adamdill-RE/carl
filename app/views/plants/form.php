@@ -66,7 +66,7 @@ foreach ($plantTypes as $type) {
     </select>
 <?php if ($hasRegion): ?>
     <p class="help">
-      <label class="check" style="display:inline-flex">
+      <label class="check inline">
         <input type="checkbox" id="show-all-types"> <span>Show every plant, not only those researched for your area</span>
       </label><br>
       * recommended for your area.

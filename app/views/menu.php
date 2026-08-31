@@ -34,7 +34,7 @@ $hasWeather = $weather['recent'] !== [] || $weather['forecast'] !== [];
 
 <?php if (!$dismissed): ?>
 <section class="card motd">
-  <form method="post" action="<?= $e($app->url('motd/dismiss')) ?>" style="margin:0">
+  <form method="post" action="<?= $e($app->url('motd/dismiss')) ?>" class="flush">
     <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
     <input type="hidden" name="forecast_hash" value="<?= $e($forecastHash) ?>">
     <button type="submit" class="btn btn-secondary btn-small dismiss"

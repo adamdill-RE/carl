@@ -57,7 +57,7 @@ $attr2 = $L::attr2Label($type);
 <?php if (!empty($item['attr_2'])): ?><br><span class="muted small"><?= $e($item['attr_2']) ?></span><?php endif; ?>
 <?php if (!$active): ?><span class="badge badge-muted">archived</span><?php endif; ?>
       </span>
-      <form method="post" action="<?= $e($app->url('lists/archive')) ?>" style="margin:0">
+      <form method="post" action="<?= $e($app->url('lists/archive')) ?>" class="flush">
         <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
         <input type="hidden" name="list_type" value="<?= $e($type) ?>">
         <input type="hidden" name="id" value="<?= $e($item['id']) ?>">

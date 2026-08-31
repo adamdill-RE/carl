@@ -85,24 +85,30 @@ final class ReferenceRepository
     {
         if ($regionId === null) {
             return $this->db->all(
-                'SELECT pt.*, 0 AS in_region, 0 AS recommended, NULL AS season,'
-                . ' NULL AS window_start, NULL AS window_end, NULL AS region_method,'
-                . ' NULL AS regional_notes, NULL AS region_confidence'
+                'SELECT pt.*, 0 AS in_region, 0 AS recommended, 0 AS season_count,'
+                . ' NULL AS earliest_window, NULL AS dtm_days_min_override,'
+                . ' NULL AS dtm_days_max_override'
                 . ' FROM `plant_type` pt ORDER BY pt.category, pt.type'
             );
         }
 
-        // One statement: the region overlay is a LEFT JOIN, not a second read.
+        // One statement, and one row per plant: the overlay is a LEFT JOIN,
+        // but a plant with both a spring and a fall window has TWO
+        // plant_region rows, so without the aggregate the dropdown would list
+        // it twice. The seasons themselves belong on the research card, which
+        // reads them separately.
         return $this->db->all(
             'SELECT pt.*,'
-            . ' CASE WHEN pr.id IS NULL THEN 0 ELSE 1 END AS in_region,'
-            . ' COALESCE(pr.recommended, 0) AS recommended,'
-            . ' pr.season, pr.window_start, pr.window_end, pr.method AS region_method,'
-            . ' pr.regional_notes, pr.confidence AS region_confidence,'
-            . ' pr.dtm_days_min_override, pr.dtm_days_max_override'
+            . ' MAX(CASE WHEN pr.id IS NULL THEN 0 ELSE 1 END) AS in_region,'
+            . ' MAX(COALESCE(pr.recommended, 0)) AS recommended,'
+            . ' COUNT(pr.id) AS season_count,'
+            . ' MIN(pr.window_start) AS earliest_window,'
+            . ' MIN(pr.dtm_days_min_override) AS dtm_days_min_override,'
+            . ' MAX(pr.dtm_days_max_override) AS dtm_days_max_override'
             . ' FROM `plant_type` pt'
             . ' LEFT JOIN `plant_region` pr'
             . '   ON pr.plant_type_id = pt.id AND pr.region_id = :region_id'
+            . ' GROUP BY pt.id'
             . ' ORDER BY in_region DESC, recommended DESC, pt.category, pt.type',
             ['region_id' => $regionId]
         );

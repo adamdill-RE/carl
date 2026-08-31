@@ -61,7 +61,7 @@ $pageTitle = 'Research import';
   </table>
 
 <?php if ($result->ok()): ?>
-  <form method="post" action="<?= $e($app->url('admin/research-import/confirm')) ?>" style="margin-top:12px">
+  <form method="post" action="<?= $e($app->url('admin/research-import/confirm')) ?>" class="gap-md">
     <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
     <button type="submit" class="btn btn-block">
       Apply <?= $e($result->totalNew()) ?> new and <?= $e($result->totalChanged()) ?> changed rows

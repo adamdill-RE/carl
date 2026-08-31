@@ -25,13 +25,19 @@ use Throwable;
  */
 final class WeatherSync
 {
+    /**
+     * The source_model on a row derived from the forecast endpoint's
+     * past_days. It marks a row the archive is allowed to replace.
+     */
+    public const FORECAST_PAST = 'forecast_past';
+
     private Database $db;
-    private OpenMeteoClient $client;
+    private WeatherProvider $client;
 
     /** @var list<string> */
     private array $log = [];
 
-    public function __construct(private App $app, ?OpenMeteoClient $client = null)
+    public function __construct(private App $app, ?WeatherProvider $client = null)
     {
         $this->db = $app->db();
         $this->client = $client ?? new OpenMeteoClient(
@@ -227,7 +233,8 @@ final class WeatherSync
 
         $this->recordRun($locationId, 'archive', $from, $to, $result->status, $written, 'ok',
             null, $startedAt);
-        $this->note('archive ' . $from . '..' . $to . ': ' . $written . ' rows in ' . $result->ms() . ' ms');
+        $this->note('archive ' . $from . '..' . $to . ': ' . $written . ' rows in '
+            . $result->ms() . ' ms' . self::retryNote($result));
 
         // Elevation as the API resolved it, recorded once.
         if (isset($result->json['elevation']) && $location['elevation_m'] === null) {
@@ -322,7 +329,7 @@ final class WeatherSync
                 $soilMoisture[$date] ?? null,
                 $soilTemp[$date] ?? null,
                 self::intOrNull($row['weather_code']),
-                'forecast_past',
+                self::FORECAST_PAST,
                 1,
                 $issuedAt,
             ];
@@ -350,14 +357,16 @@ final class WeatherSync
         }
 
         if ($pastRows !== []) {
-            // Never overwrite a settled archive row with a forecast-derived
-            // one: the WHERE in the update guard is what keeps ERA5 winning.
+            // These exist only to fill the hole the archive's five-day lag
+            // leaves. The arrow points one way: the archive overwrites them
+            // when ERA5 arrives, never the reverse (handoff Section 8.2).
             $written += $this->writeDaily($pastRows, true);
         }
 
         $this->recordRun($locationId, 'forecast', $today, null, $result->status, $written, 'ok',
             null, $startedAt);
-        $this->note('forecast: ' . $written . ' rows in ' . $result->ms() . ' ms');
+        $this->note('forecast: ' . $written . ' rows in ' . $result->ms() . ' ms'
+            . self::retryNote($result));
 
         return $written;
     }
@@ -395,10 +404,13 @@ final class WeatherSync
     }
 
     /**
-     * A forecast-derived row may fill a hole or refresh another provisional
-     * row, but must never clobber a settled archive value. MySQL has no
-     * conditional ON DUPLICATE KEY, so the assignment is written as a CASE
-     * that keeps the existing value when the stored row is already settled.
+     * A forecast-derived row may fill a hole, or refresh an earlier
+     * forecast-derived row, but must never clobber an archive value --
+     * including one still inside the revision window, which is provisional
+     * but is already the better number (weather.md Section 6.2).
+     *
+     * MySQL has no conditional ON DUPLICATE KEY, so the assignment is a CASE
+     * that keeps the stored value unless it too came from a forecast.
      *
      * @param list<string> $columns
      * @param list<array<int,mixed>> $chunk
@@ -412,8 +424,9 @@ final class WeatherSync
         $assignments = [];
         foreach (\array_slice($columns, 2) as $column) {
             $assignments[] = \sprintf(
-                '`%1$s` = CASE WHEN `is_provisional` = 1 THEN VALUES(`%1$s`) ELSE `%1$s` END',
-                $column
+                '`%1$s` = CASE WHEN `source_model` = %2$s THEN VALUES(`%1$s`) ELSE `%1$s` END',
+                $column,
+                "'" . self::FORECAST_PAST . "'"
             );
         }
 
@@ -454,8 +467,10 @@ final class WeatherSync
         return $this->db->run(
             'UPDATE `weather_daily` SET `is_provisional` = 0'
             . ' WHERE `is_provisional` = 1 AND `obs_date` < (UTC_DATE() - INTERVAL :days DAY)'
-            . "   AND `source_model` <> 'forecast_past'",
-            ['days' => $settleDays]
+            // A forecast-derived row is never settled: it is a placeholder
+            // waiting for the archive to replace it.
+            . '   AND `source_model` <> :forecast_past',
+            ['days' => $settleDays, 'forecast_past' => self::FORECAST_PAST]
         )->rowCount();
     }
 
@@ -532,6 +547,12 @@ final class WeatherSync
             $cursor = (string) Clock::addDays($end, 1);
         }
         return $ranges;
+    }
+
+    /** A retry cost 30 seconds; saying so is what makes it visible. */
+    private static function retryNote(\Carl\Core\HttpResult $result): string
+    {
+        return $result->attempts > 1 ? ' (after ' . $result->attempts . ' attempts)' : '';
     }
 
     private static function intOrNull(mixed $value): ?int

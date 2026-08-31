@@ -52,7 +52,7 @@ $U = Carl\Support\Units::class;
     <li>
 <?php if ($batch): ?>
       <input type="checkbox" name="planting_ids[]" value="<?= $e($id) ?>"
-             style="width:20px;height:20px;margin-top:4px" aria-label="Select this plant">
+             class="tickbox" aria-label="Select this plant">
 <?php endif; ?>
       <a class="grow" href="<?= $e($app->url(($target === 'log' ? 'log/' : 'plants/') . $id)) ?>">
         <span class="name">

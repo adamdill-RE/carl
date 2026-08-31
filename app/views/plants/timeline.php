@@ -58,14 +58,16 @@ foreach ($photos as $photo) {
     if (!empty($event['container_name'])) {
         $bits[] = (string) $event['container_name'];
     }
-    echo $e(\implode(' &middot; ', $bits));
+    // Each part is escaped on its own and the separator is joined in raw --
+    // escaping the joined string would turn the entity into &amp;middot;.
+    echo \implode(' &middot; ', \array_map($e, $bits));
 ?>
     </div>
 <?php if (!empty($event['narrative'])): ?>
     <div class="small"><?= $e($event['narrative']) ?></div>
 <?php endif; ?>
 <?php if (isset($photosByEvent[$eventId])): ?>
-    <div class="photos" style="margin-top:6px">
+    <div class="photos gap-xs">
 <?php foreach ($photosByEvent[$eventId] as $photo): ?>
       <a href="<?= $e($app->url('photos/' . $photo['id'])) ?>">
         <img src="<?= $e($app->url('photos/' . $photo['id'] . '/thumb')) ?>" alt="" loading="lazy">

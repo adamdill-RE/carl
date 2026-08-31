@@ -16,6 +16,10 @@ $pageTitle = $pageTitle ?? null;
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
 <title><?= $e($pageTitle !== null ? $pageTitle . ' - ' . $title : $title) ?></title>
+<?php /* Stopgap until Claude Design delivers the logo (handoff 13.5): an
+       empty data URI stops every page load from requesting a favicon that
+       is not there. */ ?>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="<?= $e($app->asset('assets/css/tokens.css')) ?>">
 <link rel="stylesheet" href="<?= $e($app->asset('assets/css/carl.css')) ?>">
 </head>
@@ -27,9 +31,9 @@ $pageTitle = $pageTitle ?? null;
   <span class="spacer"></span>
 <?php if ($user !== null): ?>
   <span class="who"><?= $e($user->displayName()) ?></span>
-  <form method="post" action="<?= $e($app->url('logout')) ?>" style="margin:0">
+  <form method="post" action="<?= $e($app->url('logout')) ?>" class="flush">
     <input type="hidden" name="_csrf" value="<?= $e($csrf ?? '') ?>">
-    <button type="submit" class="btn-link" style="color:inherit">Sign out</button>
+    <button type="submit" class="btn-link inherit-colour">Sign out</button>
   </form>
 <?php endif; ?>
 </header>

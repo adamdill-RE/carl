@@ -15,6 +15,26 @@ use Carl\Core\Route;
 use Carl\Core\Router;
 use Carl\Support\Clock;
 
+/** Every view template, for the policy checks at the end of this file. */
+final class TemplateFiles
+{
+    /** @return list<string> */
+    public static function all(string $root): array
+    {
+        $out = [];
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($root . '/app/views', FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($iterator as $file) {
+            if (\str_ends_with((string) $file, '.php')) {
+                $out[] = (string) $file;
+            }
+        }
+        \sort($out);
+        return $out;
+    }
+}
+
 $t->group('Migrator::split');
 
 $t->test('splits on semicolons between statements', function ($t): void {
@@ -268,4 +288,54 @@ $t->test('base_path appears in exactly one committed file', function ($t) use ($
         }
     }
     $t->same(['config/app.php'], $hits, 'literal "/carl/" should only appear in config/app.php');
+});
+
+$t->group('Templates stay inside the Content Security Policy');
+
+$t->test('no template uses an inline style attribute', function ($t) use ($app): void {
+    // The CSP is style-src 'self' with no 'unsafe-inline' (hosting Section
+    // 8.5). An inline style attribute is refused silently under it -- the
+    // element just renders unstyled -- so this has to be caught here.
+    $offenders = [];
+    foreach (TemplateFiles::all($app->root()) as $path) {
+        if (\preg_match('/\sstyle\s*=\s*"/i', (string) \file_get_contents($path)) === 1) {
+            $offenders[] = \substr($path, \strlen($app->root()) + 1);
+        }
+    }
+    $t->same([], $offenders, 'use a utility class in carl.css instead');
+});
+
+$t->test('no template uses an inline event handler or inline script body',
+    function ($t) use ($app): void {
+    // Same policy, script-src 'self': onclick= and <script>...</script>
+    // bodies are both refused. Scripts are files under assets/js/.
+    $offenders = [];
+    foreach (TemplateFiles::all($app->root()) as $path) {
+        $contents = (string) \file_get_contents($path);
+        if (\preg_match('/\son(click|change|submit|load|input|focus|blur)\s*=/i', $contents) === 1) {
+            $offenders[] = \substr($path, \strlen($app->root()) + 1) . ' (event handler)';
+        }
+        // A <script src=...> tag is fine; a script with a body is not.
+        if (\preg_match('/<script(?![^>]*\ssrc=)[^>]*>\s*\S/i', $contents) === 1) {
+            $offenders[] = \substr($path, \strlen($app->root()) + 1) . ' (inline script)';
+        }
+    }
+    $t->same([], $offenders, 'put it in a file under public/assets/js/');
+});
+
+$t->test('every script the templates load exists on disk', function ($t) use ($app): void {
+    $missing = [];
+    foreach (TemplateFiles::all($app->root()) as $path) {
+        \preg_match_all(
+            "/\\\$app->asset\('([^']+)'\)/",
+            (string) \file_get_contents($path),
+            $matches
+        );
+        foreach ($matches[1] as $asset) {
+            if (!\is_file($app->root() . '/public/' . $asset)) {
+                $missing[] = $asset . ' (in ' . \basename($path) . ')';
+            }
+        }
+    }
+    $t->same([], $missing);
 });

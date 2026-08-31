@@ -33,8 +33,7 @@ $help = $help ?? null;
     <option value="__new">+ Add new...</option>
   </select>
   <input type="text" name="<?= $e($newName) ?>" id="<?= $e($newName) ?>"
-         class="new-item" placeholder="Name the new <?= $e(\strtolower($label)) ?>"
-         style="margin-top:6px">
+         class="new-item gap-xs" placeholder="Name the new <?= $e(\strtolower($label)) ?>">
 <?php if ($help !== null): ?>
   <p class="help"><?= $e($help) ?></p>
 <?php endif; ?>

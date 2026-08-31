@@ -89,7 +89,7 @@ $pageTitle = (string) $garden['name'];
       <span class="grow"><strong><?= $e($zone['name']) ?></strong>
         <?php if (!empty($zone['method_name'])): ?><span class="muted">-- <?= $e($zone['method_name']) ?></span><?php endif; ?>
       </span>
-      <form method="post" action="<?= $e($app->url('gardens/' . $garden['id'] . '/zones')) ?>" style="margin:0">
+      <form method="post" action="<?= $e($app->url('gardens/' . $garden['id'] . '/zones')) ?>" class="flush">
         <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
         <input type="hidden" name="delete_zone_id" value="<?= $e($zone['id']) ?>">
         <button type="submit" class="btn-link tiny">remove</button>
@@ -170,7 +170,9 @@ $pageTitle = (string) $garden['name'];
     if ($event['duration_min'] !== null) {
         $bits[] = $event['duration_min'] . ' min';
     }
-    echo $e(\implode(' &middot; ', $bits));
+    // Each part is escaped on its own and the separator is joined in raw --
+    // escaping the joined string would turn the entity into &amp;middot;.
+    echo \implode(' &middot; ', \array_map($e, $bits));
 ?>
       </div>
 <?php if (!empty($event['narrative'])): ?>

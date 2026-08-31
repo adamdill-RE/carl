@@ -104,9 +104,15 @@ final class HttpClient
             return $first;
         }
 
-        // A 429 is a quota, not a blip -- retrying inside the same run cannot
-        // help and the daily reset is the only thing that will.
-        if ($first->status === 429) {
+        // A quota is not a blip: retrying inside the same run cannot help, and
+        // hammering a limit that resets on a clock just burns the account's
+        // reputation with the provider (weather.md Section 8.1).
+        //
+        // Open-Meteo reports this as an error envelope whose status is not
+        // always 429 -- an hourly limit came back 200 with
+        // {"error":true,"reason":"Hourly API request limit exceeded..."} --
+        // so the reason text decides, not the status code alone.
+        if ($first->status === 429 || self::isQuota($first->error)) {
             return $first;
         }
 
@@ -115,5 +121,20 @@ final class HttpClient
         }
 
         return $this->getJson($url, $query)->withAttempts(2);
+    }
+
+    /** Does this error say a rate limit was hit rather than something failed? */
+    public static function isQuota(?string $error): bool
+    {
+        if ($error === null) {
+            return false;
+        }
+        // 'HTTP 429' is the string this class itself sets when the status
+        // says so, matched explicitly rather than by digits so a 429 inside a
+        // response body cannot masquerade as one.
+        return \preg_match(
+            '/(\blimit exceeded\b|\brate limit\b|\bquota\b|\btoo many requests\b|^HTTP 429$)/i',
+            $error
+        ) === 1;
     }
 }

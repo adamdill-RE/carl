@@ -53,7 +53,7 @@ $e = $view->e(...);
       </select>
     </div>
   </div>
-  <div class="row" style="margin-top:8px">
+  <div class="row gap-sm">
     <input type="search" name="q" value="<?= $e($filters['search']) ?>" placeholder="Search" class="grow">
     <button type="submit" class="btn btn-small">Filter</button>
     <a class="btn btn-secondary btn-small" href="<?= $e($app->url($target)) ?>">Clear</a>

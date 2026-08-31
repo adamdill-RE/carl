@@ -47,7 +47,7 @@ $pageTitle = 'Containers';
 <?php if (!empty($container['size'])): ?><span class="muted small"> &middot; <?= $e($container['size']) ?></span><?php endif; ?>
 <?php if (!empty($container['soil_type'])): ?><span class="muted small"> &middot; <?= $e($Soil::label($container['soil_type'])) ?></span><?php endif; ?>
       </span>
-      <form method="post" action="<?= $e($app->url('lists/archive')) ?>" style="margin:0">
+      <form method="post" action="<?= $e($app->url('lists/archive')) ?>" class="flush">
         <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
         <input type="hidden" name="list_type" value="containers">
         <input type="hidden" name="id" value="<?= $e($container['id']) ?>">
