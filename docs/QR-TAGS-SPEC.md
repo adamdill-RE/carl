@@ -231,7 +231,7 @@ Why:
 
 ### 3.1 Data model — migration `016_qr_tags.sql`
 
-Two tables. `utf8mb4_unicode_ci`, like everything else.
+Two tables, plus one column on `user` for the label-stock preference (§5.3). `utf8mb4_unicode_ci`, like everything else.
 
 ```
 qr_tag
@@ -333,46 +333,107 @@ case-insensitive and FPDF is a wide surface (Phase 5 handoff §7).
 
 ## 5. Printing sheets
 
-The thinnest-looking part of this feature and the one most likely to waste
-money: a mis-registered sheet of UltraDuty is $2 of polyester in the bin, and
-a silently scaled one is forty tags that will not scan, discovered in July.
+### 5.1 Two print jobs, and only one of them is common
 
-### 5.1 The flow from the user's side
+**This is the flow question, and the answer is that blank sheets are always
+printed whole.**
 
-From the Tags screen, **Print tags**:
+| | **Blank sheet** (Phase 5a) | **Named label** (Phase 5b) |
+| --- | --- | --- |
+| What it is | A sheet of anonymous codes | A label for one planting, with its name on it |
+| How many | **Always a full sheet**, or several | Exactly as many as there are plantings queued |
+| When | Once, in January, at a desk | Occasionally, when the queue is worth a sheet |
+| Partial sheets | **Never** | Yes — and this is the only place they occur |
 
-1. **How many** — default one sheet's worth of the chosen stock.
-2. **Which label stock** — a SKU picker, because the geometry differs.
-3. **Which position to start at** — a small diagram of the sheet, click the
-   first free label.
-4. Mint, **download** the PDF, print at 100 %, peel.
+The pre-printed pool (§3) exists precisely so the common job has no count to
+choose. You print a sheet, the codes go in a box, and you take one out
+whenever a plant needs a tag. The form asks **how many sheets**, not how many
+tags, and there is no start-position control on it at all.
 
-Step 3 is not a nicety. A sheet holds 24 labels and you will almost never want
-exactly 24, so every sheet after the first is a partial. Without a start
-position the second print run wastes a whole sheet, and after three runs the
-user is doing it by hand in a word processor and Carl has lost.
+**The first draft of this section got that wrong.** It carried a
+start-at-position control on the blank-sheet path, reasoning that "a sheet
+holds 24 and you will never want exactly 24" — which is true of *named*
+labels and false of blank ones, because blank ones are never printed to
+demand. The control is real; it belongs on the 5b path, and it is one more
+reason that path is 5b.
 
-### 5.2 Routes
+**A useful property falls out of this: the physical sheet is its own state.**
+Nothing needs to track which labels have been peeled, because you can see the
+empty positions. Carl tracks bound and unbound, which is a different question
+and is the one the scan answers.
+
+### 5.2 Activation, and it works from either end
+
+A printed tag is inert until it is bound to a planting. "Activate" and "bind"
+are the same act; the tables use *bind* (§3.1).
+
+Both directions must work, because both happen:
+
+- **Tag first** — the seed-starting case. Stick a tag in the cell, scan it,
+  Carl says the tag is not assigned, choose a planting or start a new one
+  (§6.2). This is the one that matters and it is why the pool exists.
+- **Planting first** — the desk case. You planned the season in Carl in
+  February. At the foot of Start a New Plant, and on any plant's page:
+  "assign a tag" — scan one, or type the six characters. Same binding, other
+  direction.
+
+### 5.3 The label stock preference
+
+Both recommended stocks are first-class, because the choice follows the
+printer the user owns (§1.3) and neither is right for everyone.
+
+```
+Carl\Domain\LabelStock          the vocabulary + geometry, one entry per SKU
+  avery_60517   1 × 2½ in polyester, laser only          most durable
+  avery_00757   self-laminating, laser or inkjet         works with any printer
+
+user.label_stock  VARCHAR(32) NOT NULL DEFAULT 'avery_00757'
+```
+
+Three decisions in that:
+
+- **A Domain class, like `EventType` and `SoilType`.** It carries the display
+  name, the printer requirement, the per-sheet count and the layout constants
+  of §5.5. Adding a third stock is then one entry, and every screen that lists
+  stocks picks it up.
+- **`VARCHAR(32)` validated in code, not an `ENUM`.** The repository uses both
+  — `onboarding_step` is the VARCHAR precedent — and the deciding fact is that
+  the list will grow. An `ENUM` makes adding a label stock an `ALTER TABLE`,
+  and migrations are immutable, so it would cost a migration every time.
+- **The default is the self-laminating stock**, because it is the one that
+  cannot fail on an unknown printer. A user who has never opened the setting
+  gets the safe answer; a user with a laser printer changes it once.
+
+A column on `user`, following `email_digest_enabled`, rather than a settings
+table — the repository does not have one and this does not justify inventing
+it. Set in Lists or a small Preferences screen, shown on the print form as a
+**per-print override**, so trying the other stock for one sheet does not mean
+changing a setting and changing it back.
+
+### 5.4 Routes
 
 ```
 GET  /tags                       the tag pool: printed, bound, free, retired
-GET  /tags/print                 the form above
-POST /tags/batches               mint N tags at a start position → redirect
+GET  /tags/print                 how many sheets, which stock
+POST /tags/batches               mint one sheet's worth × n → redirect
 GET  /tags/batches/{id}.pdf      render that batch — idempotent, re-printable
-GET  /tags/{code}/label.pdf      one named label for a bound tag (§5.6)
+POST /tags/batches/{id}/retire   a lost or ruined sheet, back out of the pool
+GET  /tags/{code}/label.pdf      one named label for a bound tag (5b)
 ```
 
 The mint is a POST because it writes; the render is a GET because **a paper
-jam must not cost you thirty codes**. `stock_sku` and `start_position` are
-recorded **on the batch**, so the render stays a pure function of the batch
-row and reproduces the identical sheet forever.
+jam must not cost you thirty codes**. `stock_sku` is recorded on the batch, so
+the render stays a pure function of the batch row and reproduces the identical
+sheet forever — including after the user has changed their stock preference,
+which is exactly when a re-render would otherwise come back subtly wrong.
 
-If a jam does eat half a sheet, mint a fresh batch for the replacements rather
-than trying to re-render around the damage. A minted tag that never reaches a
-stake is harmless — it is a code in the pool that nothing will ever scan.
-Codes are free; labels are not.
+**Retire covers the sheet you lost**, which under a pre-printed pool is a real
+event rather than a hypothetical: twenty-four codes that will never be
+scanned, cluttering the pool count. Retiring is not deleting — the rows stay,
+so a tag that turns up in a drawer next spring still resolves and can be
+un-retired.
 
-### 5.3 `Carl\Reports\Document` cannot be reused, and the reason will bite
+### 5.5 `Carl\Reports\Document` cannot be reused, and the reason will bite
 
 **`Document` is hard-coded to A4** — `parent::__construct('P','mm','A4')`, with
 `MARGIN = 15.0` and `WIDTH = 180.0` as private constants derived from it.
@@ -398,16 +459,13 @@ The two classes share `t()` and the module-drawing routine of §4.3 and nothing
 else. Do not try to parameterise `Document`'s page size — `MARGIN` and `WIDTH`
 are consts used in twenty places and every one of them assumes a text column.
 
-### 5.4 Layout constants, and how they get verified
+### 5.6 Layout constants, and how they get verified
 
-One row per SKU: page size, origin of the first label, label width and height,
-column and row pitch, columns, rows. **Taken from each manufacturer's
-published template, never from arithmetic here** — Avery's pitches are not
-always label width plus gutter, and a 0.5 mm error compounds across eight
-rows into a visibly crooked sheet.
-
-Ship two: **Avery 60517** (1 × 2½ in, 24 per sheet) and **Avery 00757**.
-Anything else is a row in that table.
+Per SKU, on the `LabelStock` entry: page size, origin of the first label,
+label width and height, column and row pitch, columns, rows, labels per sheet.
+**Taken from each manufacturer's published template, never from arithmetic
+here** — Avery's pitches are not always label width plus gutter, and a 0.5 mm
+error compounds across eight rows into a visibly crooked sheet.
 
 Two checks, both cheap, both catching failures that are otherwise invisible
 until the labels are on stakes:
@@ -418,10 +476,11 @@ until the labels are on stakes:
 - **A registration test sheet** — the same layout with position outlines and
   numbers instead of codes, meant for plain paper. Hold it against a real
   label sheet up to a window before committing $2 of polyester. This is the
-  acceptance test for §5.4's constants; it is not optional the first time a
-  SKU is added.
+  acceptance test for this section's constants; it is not optional the first
+  time a SKU is added, and **it is how both stocks get verified** rather than
+  one being trusted because the other worked.
 
-### 5.5 How the user prints it, which is where scaling actually happens
+### 5.7 How the user prints it, which is where scaling actually happens
 
 **Download the PDF and print it from a PDF viewer with scaling set to
 "None" / "Actual size" / 100 %.** Chrome's built-in print preview defaults to
@@ -432,7 +491,7 @@ and take the module below the size §2.3 sized it for.
 Say this on the print screen, next to the download button, in words — not in a
 help page. The calibration rule is the backstop, not the instruction.
 
-### 5.6 Minting: one statement, and the collision that will never happen until it does
+### 5.8 Minting: one statement, and the collision that will never happen until it does
 
 Generate the codes in PHP, then **one multi-row `INSERT`** for the whole batch.
 The codes are already in hand, so nothing needs reading back — which matters
@@ -444,21 +503,22 @@ to a few attempts. At 32⁶ and a pool of a few hundred this will not fire in
 this application's lifetime, and it must still be written, because the
 alternative failure is a 500 on the one screen that mints things.
 
-### 5.7 What is on a label
+### 5.9 What is on a label
 
 **Blank tag** (the batch sheet): the code, the six characters beneath it in a
 large mono font, one small line of text so that a stranger who finds a stake
 knows what it is, and **a blank write-on band** for a garden marker.
 
-**Named label** (printed later, for a tag already bound): the same code — the
-*same* code, this is a reprint, not a new tag — plus the plant name, the
-variety and the start date. Applied over or beside the blank one.
+**Named label** (5b, for a tag already bound): the same code — the *same*
+code, this is a reprint, not a new tag — plus the plant name, the variety and
+the start date. Applied over or beside the blank one. This is the path that
+carries the queue and the start-at-position control of §5.1.
 
-That two-stage workflow is the point. Blank tags get you through
-seed-starting week; named labels get applied in June when you are back at a
-desk and can print thirty at once for everything started that spring. Plant
-names go through `Document::t()`: FPDF's core fonts are Windows-1252 and a
-curly apostrophe in a variety name is silent mojibake (Phase 5 handoff §7).
+The two-stage split is the point. Blank tags get you through seed-starting
+week; named labels get applied in June when you are back at a desk and can
+print a sheet's worth for everything started that spring. Plant names go
+through `Document::t()`: FPDF's core fonts are Windows-1252 and a curly
+apostrophe in a variety name is silent mojibake (Phase 5 handoff §7).
 
 ## 6. The scan: `GET /t/{code}`
 
@@ -565,10 +625,10 @@ JavaScript.
 6. **`tokens.css` is still the only file that names a colour** — including the
    two new QR tokens, which must be marked un-themeable. §4.2.
 7. **Migration `016` is immutable once applied.**
-8. **Every string printed by FPDF goes through `Document::t()`.** §5.7.
+8. **Every string printed by FPDF goes through `Document::t()`.** §5.9.
 9. **Label sheets are US Letter; `Carl\Reports\Document` is A4** and cannot
    be parameterised into one. A separate FPDF subclass, margins zero, auto
-   page break off, empty header and footer. §5.3.
+   page break off, empty header and footer. §5.5.
 10. **276 tests green under `--strict` on MySQL 8.0 and MariaDB 10.11** before
    any push.
 
@@ -594,12 +654,15 @@ JavaScript.
 
 ## 11. Phasing
 
-**5a — the whole useful thing.** Encoder + fixtures, migration 016, the batch
-sheet PDF, `/t/{code}` with bind, the field screen. Nothing here depends on
-anything unbuilt except `?next=` on login.
+**5a — the whole useful thing.** Encoder + fixtures, migration 016, both label
+stocks and the preference, the full-sheet PDF, `/t/{code}` with bind in both
+directions (§5.2), the field screen. Nothing here depends on anything unbuilt
+except `?next=` on login. **No partial-sheet handling anywhere in 5a** — that
+is what printing whole sheets buys.
 
-**5b — the polish.** Named-label reprint, the tag pool screen, "find a tag by
-code", release-on-end-season, rebind.
+**5b — the polish.** Named labels — the queue, the partial sheet and the
+start-at-position control that goes with them — the tag pool screen, "find a
+tag by code", retire a lost sheet, release-on-end-season, rebind.
 
 **Deferred.** In-app scanner (never — §7). NFC (§1.6). Scan log (§3.1).
 Anything that assumes a planting can split (§10.1).
