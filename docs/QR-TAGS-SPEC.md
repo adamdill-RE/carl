@@ -333,32 +333,118 @@ case-insensitive and FPDF is a wide surface (Phase 5 handoff §7).
 
 ## 5. Printing sheets
 
-### 5.1 Routes
+The thinnest-looking part of this feature and the one most likely to waste
+money: a mis-registered sheet of UltraDuty is $2 of polyester in the bin, and
+a silently scaled one is forty tags that will not scan, discovered in July.
+
+### 5.1 The flow from the user's side
+
+From the Tags screen, **Print tags**:
+
+1. **How many** — default one sheet's worth of the chosen stock.
+2. **Which label stock** — a SKU picker, because the geometry differs.
+3. **Which position to start at** — a small diagram of the sheet, click the
+   first free label.
+4. Mint, **download** the PDF, print at 100 %, peel.
+
+Step 3 is not a nicety. A sheet holds 24 labels and you will almost never want
+exactly 24, so every sheet after the first is a partial. Without a start
+position the second print run wastes a whole sheet, and after three runs the
+user is doing it by hand in a word processor and Carl has lost.
+
+### 5.2 Routes
 
 ```
 GET  /tags                       the tag pool: printed, bound, free, retired
-POST /tags/batches               mint N tags → redirect to the PDF
+GET  /tags/print                 the form above
+POST /tags/batches               mint N tags at a start position → redirect
 GET  /tags/batches/{id}.pdf      render that batch — idempotent, re-printable
-GET  /tags/{code}/label.pdf      one named label for a bound tag (§5.3)
+GET  /tags/{code}/label.pdf      one named label for a bound tag (§5.6)
 ```
 
-The mint is a POST because it writes; the render is a GET because a paper
-jam must not cost you thirty codes. This is the one place the shape differs
-from `/report/plant/{id}/pdf`, which is a POST only because the browser posts
-canvases up to it.
+The mint is a POST because it writes; the render is a GET because **a paper
+jam must not cost you thirty codes**. `stock_sku` and `start_position` are
+recorded **on the batch**, so the render stays a pure function of the batch
+row and reproduces the identical sheet forever.
 
-### 5.2 Sheet layout
+If a jam does eat half a sheet, mint a fresh batch for the replacements rather
+than trying to re-render around the damage. A minted tag that never reaches a
+stake is harmless — it is a code in the pool that nothing will ever scan.
+Codes are free; labels are not.
 
-Layout constants per label template, in a small table, keyed by SKU. Ship two:
-**Avery 60517** (1 × 2½ in, 24 per sheet) and **Avery 00757** (self-laminating,
-laser or inkjet). Anything else is a row in that table.
+### 5.3 `Carl\Reports\Document` cannot be reused, and the reason will bite
 
-**Every sheet carries a 100 mm calibration rule** across the foot, labelled
-"this line must measure 100 mm". Scaled printing is the single most likely
-cause of a batch of tags that will not scan, it is invisible until the tags
-are already stuck to stakes, and one printed line catches it.
+**`Document` is hard-coded to A4** — `parent::__construct('P','mm','A4')`, with
+`MARGIN = 15.0` and `WIDTH = 180.0` as private constants derived from it.
+**Every Avery template is US Letter.**
 
-### 5.3 What is on a label
+A4 is 210 × 297 mm; Letter is 215.9 × 279.4 mm. Render a Letter template onto
+A4 and every column sits ~3 mm off horizontally while the sheet runs 17.6 mm
+short vertically — the bottom row falls off the page. Nothing errors. You find
+out when you hold the print against a real label sheet.
+
+So the label sheet is a **sibling** of `Document`, not a subclass of it:
+
+- `parent::__construct('P', 'mm', 'Letter')` — FPDF 1.86 has `letter` in
+  `StdPageSizes` (612 × 792 pt), so this needs no patching.
+- `SetMargins(0, 0, 0)` — labels are absolutely positioned from the template's
+  own origin, not laid out in a text flow.
+- **`SetAutoPageBreak(false)`.** With it on, a label positioned near the foot
+  of the sheet silently throws itself onto a second page.
+- Empty `Header()` and `Footer()`. `Document` draws a running header and
+  "page n of m"; on a label sheet those print across the labels.
+
+The two classes share `t()` and the module-drawing routine of §4.3 and nothing
+else. Do not try to parameterise `Document`'s page size — `MARGIN` and `WIDTH`
+are consts used in twenty places and every one of them assumes a text column.
+
+### 5.4 Layout constants, and how they get verified
+
+One row per SKU: page size, origin of the first label, label width and height,
+column and row pitch, columns, rows. **Taken from each manufacturer's
+published template, never from arithmetic here** — Avery's pitches are not
+always label width plus gutter, and a 0.5 mm error compounds across eight
+rows into a visibly crooked sheet.
+
+Ship two: **Avery 60517** (1 × 2½ in, 24 per sheet) and **Avery 00757**.
+Anything else is a row in that table.
+
+Two checks, both cheap, both catching failures that are otherwise invisible
+until the labels are on stakes:
+
+- **A 100 mm calibration rule** across the foot of every sheet, labelled "this
+  line must measure 100 mm". Scaled printing is the single most likely cause
+  of a batch that will not scan.
+- **A registration test sheet** — the same layout with position outlines and
+  numbers instead of codes, meant for plain paper. Hold it against a real
+  label sheet up to a window before committing $2 of polyester. This is the
+  acceptance test for §5.4's constants; it is not optional the first time a
+  SKU is added.
+
+### 5.5 How the user prints it, which is where scaling actually happens
+
+**Download the PDF and print it from a PDF viewer with scaling set to
+"None" / "Actual size" / 100 %.** Chrome's built-in print preview defaults to
+*Fit to printable area*, which shrinks the page by a few per cent to clear the
+printer's unprintable margin. That is enough to both misregister every label
+and take the module below the size §2.3 sized it for.
+
+Say this on the print screen, next to the download button, in words — not in a
+help page. The calibration rule is the backstop, not the instruction.
+
+### 5.6 Minting: one statement, and the collision that will never happen until it does
+
+Generate the codes in PHP, then **one multi-row `INSERT`** for the whole batch.
+The codes are already in hand, so nothing needs reading back — which matters
+because MySQL has no `RETURNING` (`hosting.md` §2.2) and the database is on
+other hardware (§9).
+
+On a duplicate-key failure, regenerate the colliding code and retry, bounded
+to a few attempts. At 32⁶ and a pool of a few hundred this will not fire in
+this application's lifetime, and it must still be written, because the
+alternative failure is a 500 on the one screen that mints things.
+
+### 5.7 What is on a label
 
 **Blank tag** (the batch sheet): the code, the six characters beneath it in a
 large mono font, one small line of text so that a stranger who finds a stake
@@ -373,8 +459,6 @@ seed-starting week; named labels get applied in June when you are back at a
 desk and can print thirty at once for everything started that spring. Plant
 names go through `Document::t()`: FPDF's core fonts are Windows-1252 and a
 curly apostrophe in a variety name is silent mojibake (Phase 5 handoff §7).
-
----
 
 ## 6. The scan: `GET /t/{code}`
 
@@ -481,8 +565,11 @@ JavaScript.
 6. **`tokens.css` is still the only file that names a colour** — including the
    two new QR tokens, which must be marked un-themeable. §4.2.
 7. **Migration `016` is immutable once applied.**
-8. **Every string printed by FPDF goes through `Document::t()`.** §5.3.
-9. **276 tests green under `--strict` on MySQL 8.0 and MariaDB 10.11** before
+8. **Every string printed by FPDF goes through `Document::t()`.** §5.7.
+9. **Label sheets are US Letter; `Carl\Reports\Document` is A4** and cannot
+   be parameterised into one. A separate FPDF subclass, margins zero, auto
+   page break off, empty header and footer. §5.3.
+10. **276 tests green under `--strict` on MySQL 8.0 and MariaDB 10.11** before
    any push.
 
 ---
