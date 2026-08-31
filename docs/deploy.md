@@ -28,7 +28,7 @@ different network policy. Run them on the server and record the numbers here.
 the event log is worth keeping; without it the correlation the app exists for
 cannot be drawn.
 
-### What was measured off-host, 2026-08-31
+### What was measured off-host, 2026-08-31 — and what it does not tell you
 
 Useful as a contract check, not as evidence about sh193:
 
@@ -57,16 +57,49 @@ Useful as a contract check, not as evidence about sh193:
 
 ## 2. cPanel: Git Version Control
 
-1. **Create** → clone `https://github.com/adamdill-RE/carl.git` into a
-   repository path of your choosing (not inside `public_html`).
-2. Set the checked-out branch to the one you want deployed.
-3. **Deploy HEAD Commit.** The tasks in `.cpanel.yml` run: they create
-   `/home/reshiftmanager/carl-app` and `/home/reshiftmanager/public_html/carl`,
-   remove the code directories before copying so a file deleted in git is
-   deleted on the server, copy `app/ db/ bin/ vendor/` and `public/.`, fix
-   modes in one pass, and create the private `var/` directories at 0700.
+1. **Create** → Clone URL `https://github.com/adamdill-RE/carl.git`,
+   Repository Path **`/home/reshiftmanager/repos/carl`**.
+
+   The path matters. The clone holds the whole repository — `app/`, every
+   migration, `docs/`, and `.git` itself. Put it anywhere under
+   `public_html` and all of that is fetchable over the web, which is the
+   thing hosting §5 exists to prevent. Anywhere outside `public_html` is
+   fine; `repos/carl` is just a tidy choice.
+
+2. The checked-out branch is the repository's default. Right now that is
+   `claude/carl-garden-helper-phase-one-he3fyp`, because it is the only
+   branch, so there is nothing to change. If you later make `main` the
+   default, come back and switch the checkout here too — cPanel does not
+   follow a default-branch change on its own.
+
+3. **Manage** → **Deploy HEAD Commit.**
+
+What the tasks in `.cpanel.yml` do, in order: create
+`/home/reshiftmanager/carl-app` and `/home/reshiftmanager/public_html/carl`;
+remove the code directories *before* copying, so a file deleted in git is
+deleted on the server; copy `app/ db/ bin/ vendor/` and `public/.`; copy
+`config/app.php` only; fix modes in one pass with `chmod -R u=rwX,go=rX`;
+tighten `config/local.php` to 0600 if it is there; and create the private
+`var/` directories at 0700.
 
 The deploy never touches `config/local.php` and never runs a migration.
+
+**This has been dry-run against a fresh clone**, into a sandbox laid out like
+the account. It completes with no failing task and produces: `carl-app/` with
+`app db bin vendor config` and `var/` at 0700, `public_html/carl/` holding
+only `index.php`, `.htaccess`, `assets/` and `sw.js`, directories at 0755 and
+files at 0644, and no `.sql`, `.md`, `local.php` or `.git` anywhere under the
+web directory. `tests/lint_cpanel_yml.php` asserts in CI that every path the
+deploy copies actually exists in a clean checkout — the first version of this
+file did not, and would have failed the whole deployment on `cp -R vendor`.
+
+### If the deploy button does nothing
+
+A `.cpanel.yml` the host's parser rejects **disables deployment entirely
+rather than failing loudly** (hosting §6.2). If Deploy HEAD Commit appears to
+succeed but nothing changes on disk, that is the first thing to suspect.
+`php tests/lint_cpanel_yml.php` checks the rules that bite — ASCII only, no
+tabs, no braces, plain-string tasks — and runs on every push.
 
 ## 3. File Manager: the credentials file
 
