@@ -254,6 +254,29 @@ final class PlantController extends Controller
 
     // -- Helpers ---------------------------------------------------------
 
+    /**
+     * The three fields the succession planner may fill in for the reader.
+     *
+     * Deliberately not "whatever is in the query string": every value here is
+     * re-validated by create() anyway, but a form that will echo any
+     * parameter it is handed is a form somebody can build a misleading link
+     * to. Three named fields cannot be.
+     *
+     * @return array<string,string>
+     */
+    private static function prefillFrom(Request $request): array
+    {
+        $out = [];
+        foreach (['plant_type_id', 'category', 'start_date'] as $field) {
+            $value = $request->query($field);
+            if ($value !== null && $value !== '') {
+                $out[$field] = $value;
+            }
+        }
+        return $out;
+    }
+
+
     /** @return array<string,mixed> */
     private function formData(string $kind, Request $request): array
     {
@@ -297,7 +320,15 @@ final class PlantController extends Controller
             'rotation'      => $this->plantings()->familyHistoryByRow($rotationSince),
             'rotationYears' => $rotationYears,
             'errors'     => [],
-            'old'        => $request->isPost() ? $request->post : [],
+            // On a POST this is what the person just typed, so the form can
+            // come back with their work in it. On a GET it is the succession
+            // planner handing over a crop and a date (Phase 6): the planner's
+            // "Sow" link is only useful if it arrives filled in, and a
+            // whitelist is what keeps that from being an open prefill of
+            // every field in the form from the query string.
+            'old'        => $request->isPost()
+                ? $request->post
+                : self::prefillFrom($request),
         ];
     }
 

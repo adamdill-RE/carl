@@ -17,6 +17,7 @@ use Carl\Controller\OnboardingController;
 use Carl\Controller\PhotoController;
 use Carl\Controller\PlantController;
 use Carl\Controller\ReportController;
+use Carl\Controller\SuccessionController;
 use Carl\Controller\SystemController;
 
 /**
@@ -166,6 +167,9 @@ final class Routes
         // two report pages, and until this existed the only way to reach any
         // of them was from a plant or a garden. No new data access.
         $r->get('/reports', ReportController::class, 'menu');
+
+        // -- Succession planting (handoff Section 15, Phase 6) --------------
+        $r->get('/succession', SuccessionController::class, 'index');
 
         // -- Recommendations (handoff Section 14 v2; Phase 5 Section 3.1) ---
         // The POST queues an `analysis` row and returns. It does NOT call the

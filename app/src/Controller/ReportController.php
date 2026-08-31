@@ -46,6 +46,9 @@ final class ReportController extends Controller
             'plantCount'   => $this->plantings()->count(),
             'livingCount'  => $this->events()->livingTotal(),
             'hasWeather'   => $this->user()->weatherLocationId !== null,
+            // The succession planner is built entirely out of the sowing
+            // windows in the research, so it has nothing to draw without one.
+            'hasRegion'    => $this->user()->hasRegion(),
             // The Recommendations screen is reachable from here whether or
             // not a key is configured: without one it still explains itself
             // and still queues, which is the state the install starts in.

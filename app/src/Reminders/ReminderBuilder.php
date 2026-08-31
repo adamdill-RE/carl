@@ -8,6 +8,7 @@ use Carl\Core\Database;
 use Carl\Domain\EventType;
 use Carl\Domain\PlantingState;
 use Carl\Domain\ReminderKind;
+use Carl\Planting\Succession;
 use Carl\Support\Clock;
 use Carl\Weather\AlertPoller;
 
@@ -84,6 +85,7 @@ final class ReminderBuilder
                 $this->heatWatch($userId, $today, $user, $data),
                 $this->pestScouting($userId, $today, $user, $data),
                 $this->pestGdd($userId, $today, $user, $data),
+                $this->succession($userId, $today, $user, $data),
                 $this->watering($userId, $today, $data),
                 $this->inactivity($userId, $today, $data),
                 $this->researchDiff($userId, $today, $user, $data),
@@ -139,7 +141,7 @@ final class ReminderBuilder
         //    and whether it has ever yielded.
         $plantings = $this->db->all(
             'SELECT p.id, p.user_id, p.plant_type_id, p.label, p.start_date, p.in_ground_date,'
-            . ' p.state, p.quantity_live, p.hardening_started_at, p.hardening_days,'
+            . ' p.state, p.quantity_live, p.hardening_started_at, p.hardening_days, p.start_method,'
             . ' pt.category, pt.type, pt.dtm_days_min, pt.dtm_days_max, pt.dtm_counted_from,'
             . ' pt.heat_tolerant, pt.weeks_before_transplant_to_start,'
             . " EXISTS (SELECT 1 FROM `plant_event` y WHERE y.planting_id = p.id"
@@ -799,6 +801,114 @@ final class ReminderBuilder
     }
 
     /**
+     * succession: a fortnight after a sowing, while the window is still open
+     * and a round sown today would still ripen -- "you could sow another
+     * round of beans this week".
+     *
+     * Keyed to the sowing it follows up on rather than to a date, so the
+     * chain only continues if another round actually goes in. A gardener who
+     * stops sowing stops hearing about it, which is the difference between a
+     * suggestion and a nag.
+     *
+     * The screen at /succession is the same arithmetic laid out for the
+     * whole season; this is the one line of it that is true today.
+     *
+     * @param array<string,mixed> $user
+     * @param array<string,mixed> $data
+     * @return list<array<string,mixed>>
+     */
+    private function succession(int $userId, string $today, array $user, array $data): array
+    {
+        $regionId = (int) ($user['region_id'] ?? 0);
+        if ($regionId === 0) {
+            return [];
+        }
+
+        // The most recent sowing of each type. Only a sowing counts: a
+        // nursery transplant says nothing about whether there is seed left
+        // in the packet, and a seedling started indoors is a round that has
+        // not been planted out yet.
+        $lastSown = [];
+        foreach ($data['plantings'][$userId] ?? [] as $planting) {
+            if ((string) ($planting['start_method'] ?? '') !== 'direct_sow') {
+                continue;
+            }
+            $typeId = (int) $planting['plant_type_id'];
+            $sownOn = (string) $planting['start_date'];
+            if (!isset($lastSown[$typeId]) || $sownOn > (string) $lastSown[$typeId]['start_date']) {
+                $lastSown[$typeId] = $planting;
+            }
+        }
+        if ($lastSown === []) {
+            return [];
+        }
+
+        $region = $data['regions'][$regionId] ?? null;
+        $firstFrost = \is_string($region['first_frost_avg'] ?? null)
+            ? (string) $region['first_frost_avg']
+            : null;
+
+        $out = [];
+        foreach ($lastSown as $typeId => $planting) {
+            $sownOn = (string) $planting['start_date'];
+            if (!Succession::isFollowUpDue($today, $sownOn)) {
+                continue;
+            }
+
+            $subject = 'succ:' . $typeId . ':' . $sownOn;
+            if (isset($data['alreadySaid'][$userId][ReminderKind::SUCCESSION][$subject])) {
+                continue;
+            }
+
+            foreach ($data['windowsByType'][$regionId][$typeId] ?? [] as $window) {
+                // A transplant window is about moving a seedling out, not
+                // about opening another seed packet.
+                if ((string) ($window['method'] ?? '') === 'transplant') {
+                    continue;
+                }
+                if (!Clock::inRecurringWindow($today, $window['window_start'], $window['window_end'])) {
+                    continue;
+                }
+
+                $rounds = Succession::schedule(
+                    $today,
+                    $window['window_start'] === null ? null : (string) $window['window_start'],
+                    $window['window_end'] === null ? null : (string) $window['window_end'],
+                    self::dtm($planting, $window, 'min'),
+                    self::dtm($planting, $window, 'max'),
+                    $firstFrost
+                );
+                // A round that cannot ripen before the frost is not a round.
+                if ($rounds === [] || $rounds[0]['sow_on'] !== $today || $rounds[0]['after_frost']) {
+                    continue;
+                }
+
+                $name = (string) $planting['type'];
+                $since = Clock::daysBetween($sownOn, $today);
+                $ripe = $rounds[0]['harvest_from'] !== null
+                    ? ' A round sown today should start coming in around '
+                        . $rounds[0]['harvest_from'] . '.'
+                    : '';
+
+                $out[] = [
+                    'planting_id' => null,
+                    'subject_key' => $subject,
+                    'kind'        => ReminderKind::SUCCESSION,
+                    'due_date'    => $today,
+                    'title'       => 'You could sow another round of ' . $name,
+                    'body'        => 'Your last ' . $name . ' went in on ' . $sownOn
+                        . ($since === null ? '' : ', ' . $since . ' days ago')
+                        . ', and your area sows it until ' . $window['window_end'] . '.'
+                        . $ripe . ' A short row every fortnight beats one long one in spring.',
+                ];
+                break;   // one suggestion per type, not one per season row
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * watering: today's stored tier is water or likely. The model computed it
      * overnight; nothing is recomputed here (handoff Section 11).
      *
@@ -988,6 +1098,28 @@ final class ReminderBuilder
             return $thisYear;
         }
         return Clock::recurringOn((string) $monthDay, $year + 1);
+    }
+
+    /**
+     * Days to maturity, with the region's override winning over the global
+     * catalogue value.
+     *
+     * research-template README, plant_region.csv: "Overrides replace the
+     * global DTM for this region only." A tomato that takes 75 days in the
+     * catalogue and 90 in a short-season county is two different plants for
+     * every countdown Carl draws.
+     *
+     * @param array<string,mixed> $planting carries pt.dtm_days_min / _max
+     * @param array<string,mixed> $window   carries the overrides
+     */
+    private static function dtm(array $planting, array $window, string $end): ?int
+    {
+        $override = $window['dtm_days_' . $end . '_override'] ?? null;
+        if ($override !== null) {
+            return (int) $override;
+        }
+        $global = $planting['dtm_days_' . $end] ?? null;
+        return $global === null ? null : (int) $global;
     }
 
     /**

@@ -10,7 +10,7 @@
  * @var Carl\Core\App $app @var Carl\Core\View $view
  * @var list<array<string,mixed>> $gardens
  * @var int $plantCount @var int $livingCount
- * @var bool $hasWeather @var bool $analysisReady
+ * @var bool $hasWeather @var bool $analysisReady @var bool $hasRegion
  */
 $e = $view->e(...);
 $pageTitle = 'Reports';
@@ -70,6 +70,25 @@ $pageTitle = 'Reports';
 <?php endforeach; ?>
   </ul>
 <?php endif; ?>
+</section>
+
+<section class="card">
+  <h2>Plan</h2>
+  <ul class="list">
+    <li>
+      <a href="<?= $e($app->url('succession')) ?>">Succession planting</a>
+      <div class="small muted">
+<?php if ($hasRegion): ?>
+        Every sowing your area&rsquo;s research still allows this season, a
+        fortnight apart, with the date each round should start coming in. Each
+        one is a link straight into Start a New Plant.
+<?php else: ?>
+        The sowing windows come from the research for your county, and none is
+        loaded yet &mdash; so there is nothing to plan from.
+<?php endif; ?>
+      </div>
+    </li>
+  </ul>
 </section>
 
 <section class="card">

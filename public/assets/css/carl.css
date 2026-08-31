@@ -98,6 +98,9 @@ input[type=date], input[type=time], input[type=search], select, textarea {
   border-radius: var(--carl-radius);
 }
 textarea { min-height: 88px; resize: vertical; }
+/* A number that is two digits wide has no business being 100% wide, and the
+   Content Security Policy rules out saying so inline (hosting Section 8.5). */
+input.narrow { width: 5em; }
 input:focus-visible, select:focus-visible, textarea:focus-visible,
 button:focus-visible, a:focus-visible {
   outline: 3px solid var(--carl-accent); outline-offset: 1px;
