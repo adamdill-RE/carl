@@ -474,7 +474,7 @@ Confirm, in this order:
 ## 6. First research import
 
 Sign in as the administrator, then Admin → Research import, and upload
-`research-template/populated/research_US-48217_2026-08-30.1.zip`.
+`research-template/populated/research_US-48217_2026-08-31.2.zip`.
 
 Nothing is written until you confirm the preview. Without this there is no
 plant catalog and the plant forms have nothing to offer.
@@ -1065,8 +1065,8 @@ file is refused rather than silently re-run.
    list and both are still outstanding; Phase 5 added a sixth route behind
    `cron_key`, which does not change the argument but does add one more thing
    a leaked key can start.
-9. **Import the Phase 6 dataset**,
-   `research-template/populated/research_US-48217_2026-08-31.1.zip`, at
+9. **Import the current dataset**,
+   `research-template/populated/research_US-48217_2026-08-31.2.zip`, at
    `/admin/research-import`. It is template_version 2 and carries the
    companion pairings, the five companion crops, and the validated squash
    vine borer GDD row. Without it the companion reference is an empty page

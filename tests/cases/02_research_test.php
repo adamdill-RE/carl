@@ -17,7 +17,7 @@ declare(strict_types=1);
 use Carl\Research\ResearchImporter;
 
 $db = $app->db();
-$zipPath = $app->root() . '/research-template/populated/research_US-48217_2026-08-31.1.zip';
+$zipPath = $app->root() . '/research-template/populated/research_US-48217_2026-08-31.2.zip';
 // The dataset Phase 5 shipped, kept so that "a version 1 zip still imports"
 // is a claim with a file behind it rather than a sentence in a README.
 $oldZipPath = $app->root() . '/research-template/populated/research_US-48217_2026-08-30.1.zip';
@@ -43,11 +43,11 @@ $t->test('a later date wins regardless of counter', function ($t): void {
 $t->group('Importing the first dataset');
 
 $t->test('the shipped dataset zip exists', function ($t) use ($zipPath): void {
-    $t->ok(\is_file($zipPath), 'research-template/populated/research_US-48217_2026-08-31.1.zip');
+    $t->ok(\is_file($zipPath), 'research-template/populated/research_US-48217_2026-08-31.2.zip');
 });
 
 $t->test('it validates completely', function ($t) use ($importer, $zipPath, $db): void {
-    $result = $importer->validate($zipPath, 'research_US-48217_2026-08-31.1.zip');
+    $result = $importer->validate($zipPath, 'research_US-48217_2026-08-31.2.zip');
 
     $alreadyHeld = $db->value(
         "SELECT `dataset_version` FROM `region` WHERE `region_key` = 'US-48217'"
@@ -65,12 +65,12 @@ $t->test('it validates completely', function ($t) use ($importer, $zipPath, $db)
         throw new RuntimeException("validation failed:\n  " . \implode("\n  ", $result->firstErrors()));
     }
 
-    $t->same('2026-08-31.1', $result->datasetVersion);
+    $t->same('2026-08-31.2', $result->datasetVersion);
     $t->same(2, $result->templateVersion);
     $t->same(['US-48217'], $result->regionKeys);
     $t->same(1, $result->files['regions.csv']['rows']);
-    $t->same(35, $result->files['plant_types.csv']['rows']);
-    $t->same(64, $result->files['plant_region.csv']['rows']);
+    $t->same(103, $result->files['plant_types.csv']['rows']);
+    $t->same(139, $result->files['plant_region.csv']['rows']);
     $t->same(16, $result->files['pests.csv']['rows']);
     $t->same(10, $result->files['region_guidance.csv']['rows']);
     $t->same(20, $result->files['companions.csv']['rows']);
@@ -83,12 +83,12 @@ $t->test('applying it writes every file in dependency order', function ($t) use 
         return;
     }
 
-    $result = $importer->validate($zipPath, 'research_US-48217_2026-08-31.1.zip');
+    $result = $importer->validate($zipPath, 'research_US-48217_2026-08-31.2.zip');
     $written = $importer->apply($result, 1);
 
     $t->same(1, $written['regions.csv']);
-    $t->same(35, $written['plant_types.csv']);
-    $t->same(64, $written['plant_region.csv']);
+    $t->same(103, $written['plant_types.csv']);
+    $t->same(139, $written['plant_region.csv']);
     $t->same(16, $written['pests.csv']);
     $t->same(10, $written['region_guidance.csv']);
     $t->same(20, $written['companions.csv']);
@@ -175,7 +175,7 @@ $t->test('the region is marked researched and carries its version', function ($t
     $region = $db->one("SELECT * FROM `region` WHERE `region_key` = 'US-48217'");
     $t->ok($region !== null, 'the Hill County region exists');
     $t->same('researched', $region['research_status']);
-    $t->same('2026-08-31.1', $region['dataset_version']);
+    $t->same('2026-08-31.2', $region['dataset_version']);
     $t->same('03-18', $region['last_frost_avg']);
     $t->same('11-20', $region['first_frost_avg']);
 });
@@ -213,6 +213,103 @@ $t->test('guidance is stored with its window and confidence', function ($t) use 
     $t->same('06-15', $row['show_from']);
     $t->contains('shade cloth', \strtolower((string) $row['guidance']));
     $t->contains('Tomato', (string) $row['applies_to_categories']);
+});
+
+$t->group('The Phase 7 cultivars');
+
+$t->test('the report\'s "Crop, Cultivar" strings arrived split into category and type',
+    function ($t) use ($db): void {
+    // The research report packed the crop into `type` ("Tomato, Sun Gold F1")
+    // and put a life-form word in `category` ("Vegetable"). The catalogue is
+    // keyed the other way round, and the dropdown groups on category, so a
+    // literal import would have produced one "Vegetable" heading with 60
+    // cultivars under it and no way to find anything.
+    $plant = $db->one("SELECT * FROM `plant_type` WHERE `category` = 'Tomato' AND `type` = 'Sun Gold F1'");
+    $t->ok($plant !== null, 'Tomato / Sun Gold F1 was imported');
+    $t->same('Solanaceae', $plant['plant_family']);
+    $t->same('transplant', $plant['dtm_counted_from']);
+    $t->same('indoor', $plant['typical_start_method']);
+    $t->same(1, (int) $plant['heat_tolerant']);
+
+    $t->same(0, (int) $db->value(
+        "SELECT COUNT(*) FROM `plant_type` WHERE `category` IN ('Vegetable','Herb','Flower')", [], 0
+    ), 'no life-form word survived as a category');
+});
+
+$t->test('a botanical biennial is stored as the annual it is grown as',
+    function ($t) use ($db): void {
+    // The catalogue enum is annual|perennial. Carrots, cabbage, kale and
+    // Brussels sprouts came through the report as `biennial`, which is true
+    // botanically and wrong for a planting calendar: nobody in Hill County
+    // is carrying a carrot to its second year for seed.
+    $carrot = $db->one("SELECT * FROM `plant_type` WHERE `category` = 'Carrot' AND `type` = 'Tonda di Parigi'");
+    $t->ok($carrot !== null, 'Carrot / Tonda di Parigi was imported');
+    $t->same('annual', $carrot['lifecycle']);
+    $t->contains('annual', \strtolower((string) $carrot['notes']), 'and the note says why');
+});
+
+$t->test('napa cabbage is its own category, because it is its own species',
+    function ($t) use ($db): void {
+    // Minuet is Brassica rapa; the Cabbage category holds B. oleracea. Filing
+    // them together would make the crop-rotation warning plant_family exists
+    // for (Section 15) tell a gardener the wrong thing.
+    $napa = $db->one("SELECT * FROM `plant_type` WHERE `category` = 'Chinese cabbage' AND `type` = 'Minuet F1'");
+    $t->ok($napa !== null, 'Chinese cabbage / Minuet F1 was imported');
+    $t->same('Brassica rapa var. pekinensis', $napa['latin_name']);
+
+    $cowpea = $db->one("SELECT * FROM `plant_type` WHERE `category` = 'Southern pea' AND `type` = 'California Blackeye'");
+    $t->ok($cowpea !== null, 'and the report\'s "Cowpea" reused the Southern pea category');
+});
+
+$t->test('a cultivar the catalogue already held was not overwritten',
+    function ($t) use ($db): void {
+    // The report restated four cultivars the AgriLife recommended-cultivar
+    // list had already put in the catalogue. plant_type upserts on
+    // (category, type), so shipping them again would have replaced a
+    // verified extension row with a seed-catalogue estimate, silently.
+    $okra = $db->one("SELECT * FROM `plant_type` WHERE `category` = 'Okra' AND `type` = 'Clemson Spineless'");
+    $t->ok($okra !== null, 'Okra / Clemson Spineless is still there');
+    $t->contains('UGA Extension B577', (string) $okra['source'], 'with its original citation');
+    $t->same(60, (int) $okra['dtm_days_max'], 'and its original DTM');
+
+    $roma = $db->all(
+        'SELECT pr.`confidence` FROM `plant_region` pr'
+        . ' JOIN `region` r ON r.id = pr.region_id'
+        . ' JOIN `plant_type` pt ON pt.id = pr.plant_type_id'
+        . " WHERE r.region_key = 'US-48217' AND pt.category = 'Tomato' AND pt.type = 'Roma'"
+        . " AND pr.season = 'spring'"
+    );
+    $t->same(1, \count($roma));
+    $t->same('verified', $roma[0]['confidence'], 'the AgriLife spring window still stands');
+});
+
+$t->test('every new plant is reachable by a user in Hill County',
+    function ($t) use ($db, $app): void {
+    // What the import is for. plantTypesForRegion() LEFT JOINs the overlay,
+    // so the whole global catalogue is selectable and the region only decides
+    // ordering and the "recommended" marker -- no per-user step is needed.
+    $reference = new Carl\Repo\ReferenceRepository($db);
+    $regionId = (int) $db->value("SELECT `id` FROM `region` WHERE `region_key` = 'US-48217'", [], 0);
+    $t->ok($regionId > 0, 'the region exists');
+
+    $rows = $reference->plantTypesForRegion($regionId, '2026-08-31');
+    $t->ok(\count($rows) >= 103, 'the whole catalogue is offered: ' . \count($rows));
+
+    $byKey = [];
+    foreach ($rows as $row) {
+        $byKey[$row['category'] . '|' . $row['type']] = $row;
+    }
+    foreach (['Tomatillo|Tomatillo', 'Watermelon|Sugar Baby', 'Gomphrena|Buddy Purple',
+              'Asian greens|Tokyo Bekana', 'Brussels sprouts|Long Island Improved'] as $key) {
+        $t->ok(isset($byKey[$key]), $key . ' is selectable');
+    }
+    $t->same(1, (int) $byKey['Watermelon|Sugar Baby']['in_region'], 'and carries its region overlay');
+    $t->same(1, (int) $byKey['Watermelon|Sugar Baby']['recommended']);
+
+    // recommended = N keeps a plant selectable and unmarked, which is the
+    // point of the flag: iceberg lettuce is a bad bet here, not forbidden.
+    $t->same(0, (int) $byKey['Lettuce|Crispino']['recommended'],
+        'iceberg is offered without the recommended marker');
 });
 
 $t->group('The importer refuses bad input');

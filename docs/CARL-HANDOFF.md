@@ -33,7 +33,7 @@ Design**, the artefact is produced there, not in Claude Code.
    hard-coded to Texas.
 3. **Research arrives as a versioned zip of CSVs** produced by Claude and
    uploaded by the admin. Format: `research-template/README.md`. First dataset:
-   `research-template/populated/research_US-48217_2026-08-31.1.zip`. New
+   `research-template/populated/research_US-48217_2026-08-31.2.zip`. New
    regions and new plant types use the same route.
 4. **One location per user.** The user's zip at onboarding is their weather
    location and their region. Gardens inherit it. A person with two zips makes
