@@ -113,6 +113,14 @@ final class Routes
         $r->post('/admin/research-import', AdminController::class, 'researchPreview', Route::ADMIN_ACCESS);
         $r->post('/admin/research-import/confirm', AdminController::class, 'researchConfirm', Route::ADMIN_ACCESS);
         $r->get('/admin/regions', AdminController::class, 'regions', Route::ADMIN_ACCESS);
+        // Handoff Section 12.1 step 7 calls this "/admin/mail-test?key=".
+        // It is admin-only instead: a key-guarded route that sends mail to an
+        // address in the query string is an open relay to anyone who ever
+        // sees the key in a browser bar or an access log. Admin access is the
+        // stronger guard, and the destination is fixed to the signed-in
+        // admin's own address. Recorded in docs/PHASE-3-HANDOFF.md Section 9.
+        $r->get('/admin/mail-test', AdminController::class, 'mailTest', Route::ADMIN_ACCESS);
+        $r->post('/admin/mail-test', AdminController::class, 'sendMailTest', Route::ADMIN_ACCESS);
 
         // -- Key-guarded operations (hosting Section 6.3) -------------------
         // No key configured, or a wrong key, is 404 -- never 403.
@@ -120,6 +128,7 @@ final class Routes
         $r->get('/setup', SystemController::class, 'setup', Route::KEY_ACCESS, 'setup_key');
         $r->post('/setup', SystemController::class, 'runSetup', Route::KEY_ACCESS, 'setup_key');
         $r->get('/tasks/weather-sync', SystemController::class, 'weatherSync', Route::KEY_ACCESS, 'cron_key');
+        $r->get('/tasks/mail-send', SystemController::class, 'mailSend', Route::KEY_ACCESS, 'cron_key');
         $r->get('/diag', SystemController::class, 'diag', Route::KEY_ACCESS, 'diag_key');
 
         return $r;

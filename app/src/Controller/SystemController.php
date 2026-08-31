@@ -171,6 +171,30 @@ final class SystemController extends Controller
         }
         $lines[] = '';
 
+        // -- Mail (handoff Section 5.8) --------------------------------------
+        $lines[] = 'MAIL';
+        try {
+            $outbox = $this->app->outbox();
+            $health = $outbox->health();
+            $lines[] = \sprintf('  driver              %s', $outbox->describeDriver());
+            $lines[] = \sprintf('  outbox              %d queued, %d sent, %d failed',
+                $health['queued'], $health['sent'], $health['failed']);
+            if ($health['oldest_queued'] !== null) {
+                $lines[] = \sprintf('  oldest queued       %s', $health['oldest_queued']);
+            }
+            $lastRun = $outbox->lastRun();
+            $lines[] = $lastRun === null
+                ? '  last drain          NEVER -- is the cron entry in place?'
+                : \sprintf('  last drain          %s  %s (%d sent, %d failed)',
+                    $lastRun['started_at'], $lastRun['outcome'], $lastRun['sent'], $lastRun['failed']);
+            if (($lastRun['error_text'] ?? null) !== null) {
+                $lines[] = \sprintf('  last drain note     %s', $lastRun['error_text']);
+            }
+        } catch (Throwable $e) {
+            $lines[] = '  ERROR              ' . $e->getMessage();
+        }
+        $lines[] = '';
+
         $lines[] = \sprintf('statements this request: %d', $this->app->db()->statementCount());
         $lines[] = \sprintf('rendered in %.1f ms', (\microtime(true) - CARL_START) * 1000);
 
@@ -368,6 +392,38 @@ final class SystemController extends Controller
             \sprintf('locations %d, rows %d, failures %d, %.1f s',
                 $summary['locations'], $summary['rows'], $summary['failures'],
                 \microtime(true) - $started),
+            '',
+        ];
+        foreach ($summary['log'] as $entry) {
+            $lines[] = '  ' . $entry;
+        }
+
+        return Response::text(\implode("\n", $lines) . "\n");
+    }
+
+    /**
+     * The browser fallback for the mail drain, the same shape as the weather
+     * one above and for the same reason: no shell on this account, so every
+     * job needs a route a human can reach.
+     *
+     * This is the one place a request causes an outbound mail connection, and
+     * it is deliberately not reachable by a signed-in user -- it is guarded
+     * by cron_key, like the weather job (Phase 3 handoff Section 5).
+     */
+    public function mailSend(Request $request): Response
+    {
+        $limit = $request->query('limit');
+        $started = \microtime(true);
+
+        $summary = $this->app->outbox()->drain(
+            $limit !== null && \ctype_digit($limit) ? (int) $limit : null
+        );
+
+        $lines = [
+            'mail send: driver ' . $summary['driver'],
+            \sprintf('considered %d, sent %d, failed %d, outcome %s, %.1f s',
+                $summary['considered'], $summary['sent'], $summary['failed'],
+                $summary['outcome'], \microtime(true) - $started),
             '',
         ];
         foreach ($summary['log'] as $entry) {

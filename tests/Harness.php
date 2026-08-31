@@ -25,6 +25,16 @@ final class Harness
         if ($strict) {
             \error_reporting(\E_ALL);
             \set_error_handler(static function (int $severity, string $message, string $file, int $line): bool {
+                // Respect the suppression operator. Under @, error_reporting()
+                // is lowered for the duration of the expression, and a handler
+                // that ignores that turns every deliberate `@unlink` and
+                // `@stream_socket_client` in the application into a failure --
+                // which would mean the paths that use them could never be
+                // tested at all. The point of --strict is the diagnostics
+                // nobody looked at, not the ones somebody handled.
+                if ((\error_reporting() & $severity) === 0) {
+                    return false;
+                }
                 throw new \ErrorException($message, 0, $severity, $file, $line);
             });
         }

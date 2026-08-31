@@ -97,6 +97,46 @@ return [
         'past_days'     => 7,
     ],
 
+    // --- Mail (handoff Section 12.1) ------------------------------------
+    // Nothing sends inline in a request: everything is written to
+    // email_outbox and a cron drains it, the same discipline weather
+    // follows and for the same reason -- a third-party outage must not be
+    // able to make a page slow or 500 (Phase 3 handoff Section 4.1).
+    //
+    // driver 'none' is the state until the owner creates the mailbox
+    // (Section 12.1). Mail still queues; the drain leaves it queued and
+    // says so, so nothing is lost and nothing is sent twice when the
+    // credentials arrive.
+    'mail' => [
+        'driver'     => 'none',          // 'smtp' | 'api' | 'none'; set in local.php
+        'from_email' => 'carl@reshiftmanager.com',
+        'from_name'  => 'Carl The Garden Helper',
+        'reply_to'   => null,
+
+        'smtp' => [
+            // "Connect Devices" in cPanel Email Accounts prints these.
+            'host'       => 'mail.reshiftmanager.com',
+            'port'       => 465,
+            'encryption' => 'tls',       // 'tls' (implicit, 465) | 'starttls' (587)
+            'username'   => '',          // config/local.php
+            'password'   => '',          // config/local.php
+            'timeout'    => 20,
+        ],
+
+        'api' => [
+            'url' => 'https://api.brevo.com/v3/smtp/email',
+            'key' => '',                 // config/local.php
+        ],
+
+        // Bounded retries. A mail server that is down is down; five tries
+        // over roughly two hours is the whole budget, then the row is failed
+        // and /status says so.
+        'max_attempts'    => 5,
+        'retry_minutes'   => [2, 10, 30, 120],
+        'batch'           => 25,         // rows per drain
+        'retention_days'  => 30,         // sent rows are pruned; failed ones stay
+    ],
+
     // --- Display --------------------------------------------------------
     // Store SI, convert at display (weather.md Section 6.3).
     'units' => 'us',   // 'us' => F / in / mph ; 'si' => C / mm / km/h

@@ -266,11 +266,45 @@ plant catalog and the plant forms have nothing to offer.
 
 ## 7. Cron
 
-**cPanel → Cron Jobs.** One job, once a day. The fields, left to right:
+**cPanel → Cron Jobs.** Five jobs. The weather one is the one whose hour
+matters; the rest do their own clock arithmetic and can fire whenever.
 
-| Minute | Hour | Day | Month | Weekday |
-| --- | --- | --- | --- | --- |
-| `15` | `5` | `*` | `*` | `*` |
+| What | Minute | Hour | Day | Month | Weekday | Command |
+| --- | --- | --- | --- | --- | --- | --- |
+| Weather | `15` | `5` | `*` | `*` | `*` | `bin/weather_sync.php` |
+| Watering model | `45` | `5` | `*` | `*` | `*` | `bin/weather_sync.php --recommend` |
+| NWS alerts | `20` | `*/3` | `*` | `*` | `*` | `bin/alerts_poll.php` |
+| Mail outbox | `*/10` | `*` | `*` | `*` | `*` | `bin/mail_send.php` |
+| Digest | `15` | `*` | `*` | `*` | `*` | `bin/daily_digest.php` |
+
+Each command in full, with the pinned PHP binary and the output redirect —
+cPanel emails the account on every run otherwise, and a job that mails 365
+times a year trains everyone to ignore it:
+
+```
+15 5 * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/weather_sync.php >/dev/null 2>&1
+45 5 * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/weather_sync.php --recommend >/dev/null 2>&1
+20 */3 * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/alerts_poll.php >/dev/null 2>&1
+*/10 * * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/mail_send.php >/dev/null 2>&1
+15 * * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/daily_digest.php >/dev/null 2>&1
+```
+
+**The watering model runs after the weather, not with it.** It reads
+`weather_daily` and `weather_forecast` and computes; it fetches nothing. Half
+an hour is generous room for the sync to finish, and if it has not, the
+recommendation is simply a day behind rather than wrong.
+
+**The digest is hourly, and that is not a mistake.** It sends to each user
+whose *own local time* is between 06:00 and 07:00, computed from
+`user.timezone`. The server's zone never enters into it, which is exactly why
+the hour field is `*`: the job's job is to notice which users it is 06:00 for.
+
+**The mail drain is separate from everything that queues mail.** Nothing sends
+inline in a request or inside another job; pages and jobs write `email_outbox`
+rows and this drains them with bounded retries. A mail server being down then
+delays mail, which is what should happen, instead of making a page hang.
+
+### The weather job's hour
 
 **Hour 5, not 9.** Cron runs in the operating system's timezone, and this
 server is **US Eastern** — measured, not assumed (§0.6). PHP's `date.timezone`

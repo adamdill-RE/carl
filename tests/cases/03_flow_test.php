@@ -558,7 +558,8 @@ $t->test('an admin reaches the three admin screens', function ($t) use ($client,
     $adminPassword = 'yet another long passphrase';
     $client->post('/password/reset', ['password' => $adminPassword, 'password_confirm' => $adminPassword]);
 
-    foreach (['/admin', '/admin/users', '/admin/research-import', '/admin/regions'] as $path) {
+    foreach (['/admin', '/admin/users', '/admin/research-import', '/admin/regions',
+              '/admin/mail-test'] as $path) {
         $t->same(200, $client->get($path)->status, $path);
     }
 });

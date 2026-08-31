@@ -44,14 +44,48 @@ final class HttpClient
         return $result->withJson($decoded);
     }
 
-    /** @param array<string,scalar|null> $query */
-    public function get(string $url, array $query = []): HttpResult
+    /**
+     * @param array<string,scalar|null> $query
+     * @param list<string> $headers
+     */
+    public function get(string $url, array $query = [], array $headers = []): HttpResult
     {
         if ($query !== []) {
             $filtered = \array_filter($query, static fn ($v): bool => $v !== null);
             $url .= (\str_contains($url, '?') ? '&' : '?') . \http_build_query($filtered);
         }
 
+        return $this->request($url, null, $headers);
+    }
+
+    /**
+     * A JSON POST, for the one caller that needs it: the Brevo mail driver
+     * (handoff Section 12.1). It goes through this class rather than round
+     * its own curl handle so it inherits the timeouts, the certificate
+     * verification and the quota recognition.
+     *
+     * @param array<string,mixed> $payload
+     * @param list<string> $headers
+     */
+    public function postJson(string $url, array $payload, array $headers = []): HttpResult
+    {
+        $encoded = \json_encode($payload, \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE);
+        if ($encoded === false) {
+            return new HttpResult($url, 0, '', 0.0, 'Request payload could not be encoded as JSON');
+        }
+
+        $result = $this->request($url, $encoded, \array_merge($headers, ['Content-Type: application/json']));
+        if ($result->body === '') {
+            return $result;
+        }
+
+        $decoded = \json_decode($result->body, true);
+        return \is_array($decoded) ? $result->withJson($decoded) : $result;
+    }
+
+    /** @param list<string> $headers */
+    private function request(string $url, ?string $postBody, array $headers): HttpResult
+    {
         $started = \microtime(true);
         $handle = \curl_init();
         if ($handle === false) {
@@ -66,11 +100,16 @@ final class HttpClient
             \CURLOPT_CONNECTTIMEOUT => \min(10, $this->timeout),
             \CURLOPT_TIMEOUT        => $this->timeout,
             \CURLOPT_USERAGENT      => $this->userAgent,
-            \CURLOPT_HTTPHEADER     => ['Accept: application/json'],
+            \CURLOPT_HTTPHEADER     => \array_merge(['Accept: application/json'], $headers),
             \CURLOPT_SSL_VERIFYPEER => true,
             \CURLOPT_SSL_VERIFYHOST => 2,
             \CURLOPT_ENCODING       => '',
         ]);
+
+        if ($postBody !== null) {
+            \curl_setopt($handle, \CURLOPT_POST, true);
+            \curl_setopt($handle, \CURLOPT_POSTFIELDS, $postBody);
+        }
 
         $body = \curl_exec($handle);
         $status = (int) \curl_getinfo($handle, \CURLINFO_RESPONSE_CODE);

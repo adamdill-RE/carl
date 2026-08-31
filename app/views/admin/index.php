@@ -1,14 +1,16 @@
 <?php
 /** @var Carl\Core\App $app @var Carl\Core\View $view
  *  @var int $userCount @var array<string,int> $counts @var int $queue
- *  @var list<array<string,mixed>> $imports */
+ *  @var list<array<string,mixed>> $imports
+ *  @var array{queued:int,sent:int,failed:int} $mail */
 $e = $view->e(...);
 $U = Carl\Support\Units::class;
 $pageTitle = 'Admin';
 ?>
 <h1 class="page-title">Admin</h1>
 <p class="page-sub">Three functions: create users, import research, and see which
-   regions still need it.</p>
+   regions still need it. Mail health sits alongside them because the outbox is
+   the one thing here that can quietly stop.</p>
 
 <nav class="menu">
   <a href="<?= $e($app->url('admin/users')) ?>">Users
@@ -17,6 +19,8 @@ $pageTitle = 'Admin';
     <span class="hint"><?= $e($counts['plant_type']) ?> plants, <?= $e($counts['region']) ?> regions</span></a>
   <a href="<?= $e($app->url('admin/regions')) ?>">Regions needing research
     <span class="hint"><?= $e($queue) ?> in the queue</span></a>
+  <a href="<?= $e($app->url('admin/mail-test')) ?>">Mail
+    <span class="hint"><?= $e($mail['queued']) ?> queued, <?= $e($mail['failed']) ?> failed</span></a>
 </nav>
 
 <section class="card">

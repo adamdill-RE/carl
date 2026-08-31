@@ -28,6 +28,7 @@ final class App
     private ?Units $units = null;
     private ?Request $request = null;
     private ?string $publicPath = null;
+    private ?\Carl\Mail\Outbox $outbox = null;
 
     public function __construct(private Config $config, private string $root)
     {
@@ -62,6 +63,16 @@ final class App
     public function setClock(Clock $clock): void
     {
         $this->clock = $clock;
+    }
+
+    /**
+     * The mail queue (handoff Section 5.8). Pages queue; only the drain cron
+     * sends, so a mail server being down cannot reach a request
+     * (Phase 3 handoff Section 4.1).
+     */
+    public function outbox(): \Carl\Mail\Outbox
+    {
+        return $this->outbox ??= new \Carl\Mail\Outbox($this);
     }
 
     /** Store SI, convert at display, in one helper (weather.md Section 6.3). */
