@@ -7,6 +7,7 @@ namespace Carl\Controller;
 use Carl\Core\HttpException;
 use Carl\Core\Request;
 use Carl\Core\Response;
+use Carl\Reports\FieldSheet;
 use Carl\Reports\PdfBuilder;
 use Carl\Support\Tokens;
 
@@ -114,6 +115,87 @@ final class ReportController extends Controller
         );
 
         return $this->pdf($document, 'carl-plant-' . $plantingId . '-' . $today . '.pdf');
+    }
+
+    /**
+     * `/reports/field-sheet.pdf` -- the blank field sheet (handoff 13.4).
+     *
+     * Generated rather than served from `public/assets/`: see
+     * `Carl\Reports\FieldSheet` for why one layout with two entry points
+     * beats a checked-in binary that nothing tests.
+     */
+    public function fieldSheet(Request $request): Response
+    {
+        $sheet = new FieldSheet($this->app->basePath());
+        if ($request->query('kind') === 'garden') {
+            $sheet->gardenSheet();
+            return $this->pdf($sheet->render(), 'carl-garden-actions-sheet.pdf');
+        }
+        $sheet->plantSheet();
+        return $this->pdf($sheet->render(), 'carl-field-sheet.pdf');
+    }
+
+    /**
+     * `/reports/garden/<id>/field-sheet.pdf` -- the same sheet with this
+     * garden's rows and living plants already printed on it.
+     *
+     * The last Phase 4 item, and the one the Reports "Print" section has
+     * been apologising for since Phase 5.
+     *
+     * Two statements: the garden, and what is alive in it.
+     *
+     * `listWithDetail()`, not `livingInGarden()` -- the latter returns ids
+     * and quantities for the zone-watering fan-out and carries no names at
+     * all, which is a 500 rather than a blank sheet. The sort into row order
+     * is done here because the rows are already in memory; a second ORDER BY
+     * would be a second query for a list of at most a few dozen.
+     */
+    public function gardenFieldSheet(Request $request, array $params): Response
+    {
+        $gardenId = (int) $params['id'];
+        $garden = $this->gardens()->findOrFail($gardenId);
+        $living = $this->plantings()->listWithDetail(
+            ['garden_id' => $gardenId, 'living' => true], 400
+        );
+
+        // Row order, unplaced last, then by name inside a row -- which is the
+        // order somebody walks the bed in.
+        \usort($living, static function (array $a, array $b): int {
+            $rowA = $a['row_ordinal'] === null ? \PHP_INT_MAX : (int) $a['row_ordinal'];
+            $rowB = $b['row_ordinal'] === null ? \PHP_INT_MAX : (int) $b['row_ordinal'];
+            return [$rowA, (string) $a['category'], (string) $a['type']]
+               <=> [$rowB, (string) $b['category'], (string) $b['type']];
+        });
+
+        // Interleave a heading for each row as it changes. The query is
+        // already ordered by row, so this is a walk, not a sort.
+        $lines = [];
+        $currentRow = false;
+        foreach ($living as $planting) {
+            $rowName = $planting['row_name'] === null || (string) $planting['row_name'] === ''
+                ? 'Unplaced'
+                : (string) $planting['row_name'];
+            if ($rowName !== $currentRow) {
+                $lines[] = ['row' => $rowName, 'label' => ''];
+                $currentRow = $rowName;
+            }
+            $label = (string) ($planting['label'] ?? '');
+            if ($label === '') {
+                $label = (string) $planting['type'];
+            }
+            $lines[] = [
+                'row'   => null,
+                'label' => $label . ' - ' . $planting['category']
+                    . ' (' . (int) $planting['quantity_live'] . ')',
+            ];
+        }
+
+        $today = $this->today();
+        $sheet = new FieldSheet($this->app->basePath());
+        $sheet->plantSheet((string) $garden['name'], $lines, $today);
+
+        return $this->pdf($sheet->render(),
+            'carl-field-sheet-' . $gardenId . '-' . $today . '.pdf');
     }
 
     /** `/report/garden/<id>/pdf` -- the same for a whole garden. */

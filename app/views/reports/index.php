@@ -137,10 +137,36 @@ $pageTitle = 'Reports';
 
 <section class="card">
   <h2>Print</h2>
+  <ul class="list">
+    <li>
+      <a href="<?= $e($app->url('reports/field-sheet.pdf')) ?>">Field sheet (blank)</a>
+      <div class="small muted">
+        A page to take out to the beds and write on: a line per plant for the
+        round, and blocks underneath for anything with a quantity, a product
+        name or a sentence behind it. Every box on it is a field on Log Plant
+        Activity.
+      </div>
+    </li>
+    <li>
+      <a href="<?= $e($app->url('reports/field-sheet.pdf', ['kind' => 'garden'])) ?>">Garden actions sheet (blank)</a>
+      <div class="small muted">
+        The same for what you do to a whole bed or one watering zone.
+      </div>
+    </li>
+<?php foreach ($gardens as $garden): ?>
+    <li>
+      <a href="<?= $e($app->url('reports/garden/' . (int) $garden['id'] . '/field-sheet.pdf')) ?>">
+        Field sheet &mdash; <?= $e($garden['name']) ?></a>
+      <div class="small muted">
+        The same sheet with this garden&rsquo;s rows and living plants already
+        printed on it, so you only write what changed.
+      </div>
+    </li>
+<?php endforeach; ?>
+  </ul>
   <p class="small muted">
-    The field-recording sheet &mdash; a blank page to take out to the garden and
-    write on &mdash; is not built yet. It is waiting on the sheet's design
-    (handoff &sect;13.4); once that lands, a prefilled one per garden follows.
+    A4 and US Letter both, from one page: drawn to fit inside whichever of the
+    two is smaller in each direction, so nothing needs shrinking to fit.
   </p>
 </section>
 

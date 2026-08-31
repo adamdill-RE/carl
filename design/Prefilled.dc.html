@@ -1,0 +1,226 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; font-family: Helvetica, Arial, sans-serif; color: #000; background: #fff; }
+    a { color: #000; } a:hover { color: #000; }
+    .rule { border: 0; border-top: 1px solid #000; margin: 0; }
+    .box { width: 12px; height: 12px; border: 1px solid #000; flex: 0 0 auto; }
+    .write { border-bottom: 1px solid #000; }
+    .lbl { font-size: 11px; line-height: 13px; text-transform: uppercase; letter-spacing: .06em; }
+    .lbl-plain { font-size: 11px; line-height: 13px; }
+    .cell { padding: 4px 3px; text-align: center; border-left: 1px solid #000; }
+  </style>
+</helmet>
+
+<!-- The per-garden prefilled sheet: the same layout as the blank one, with
+     the rows and the living plants already printed. This is the version
+     Carl\Reports\Document builds through FPDF, which is why every measure
+     here is one Helvetica can hit -- FPDF has no other face.
+
+     Everything that varies is a {{hole}}, because this artboard is the
+     contract the FPDF implementation is written against and a hardcoded
+     "Main Bed" does not tell anyone it is a variable. -->
+<div style="width: 794px; height: 1056px; box-sizing: border-box; padding: 40px 44px 32px;
+            display: flex; flex-direction: column; gap: 13px; background: #fff;">
+
+  <div style="display: flex; align-items: flex-end; gap: 16px;">
+    <div style="flex: 0 0 auto;">
+      <div style="font-size: 21px; line-height: 22px; font-weight: 700; letter-spacing: -0.01em;">
+        Field sheet
+      </div>
+      <div style="font-size: 12px; line-height: 15px; margin-top: 2px;">Carl &middot; the garden helper</div>
+    </div>
+    <div style="flex: 1 1 0; display: flex; gap: 12px; align-items: flex-end;">
+      <div style="flex: 1 1 0;">
+        <div class="lbl">Garden</div>
+        <div style="border-bottom: 1px solid #000; height: 21px; font-size: 15px;
+                    line-height: 19px; font-weight: 700;">{{gardenName}}</div>
+      </div>
+      <div style="flex: 0 0 120px;">
+        <div class="lbl">Date</div>
+        <div class="write" style="height: 21px;"></div>
+      </div>
+      <div style="flex: 0 0 128px;">
+        <div class="lbl">Printed</div>
+        <div style="border-bottom: 1px solid #000; height: 21px; font-size: 12px;
+                    line-height: 19px;">{{printedOn}}</div>
+      </div>
+    </div>
+  </div>
+  <hr class="rule">
+
+  <div style="font-size: 12px; line-height: 16px;">
+    Everything living in this garden on the day it was printed, in row order.
+    Cross out what has gone; write anything new at the bottom.
+  </div>
+
+  <div style="border: 1px solid #000;">
+    <div style="display: flex; font-weight: 700; font-size: 11px; line-height: 14px;
+                border-bottom: 1px solid #000;">
+      <div style="flex: 1 1 0; padding: 4px 6px;">Plant</div>
+      <div class="cell" style="flex: 0 0 34px;">Wat</div>
+      <div class="cell" style="flex: 0 0 34px;">Fert</div>
+      <div class="cell" style="flex: 0 0 34px;">Mul</div>
+      <div class="cell" style="flex: 0 0 34px;">Pest</div>
+      <div class="cell" style="flex: 0 0 34px;">Pick</div>
+      <div class="cell" style="flex: 0 0 46px;">Qty</div>
+      <div class="cell" style="flex: 0 0 40px;">Min</div>
+      <div style="flex: 0 0 138px; padding: 4px 6px; border-left: 1px solid #000;">Short note</div>
+    </div>
+
+    <!-- One flat repeat of flex ROWS. The band and the plant line are both
+         a whole row, so the branch never has to sit between a grid and its
+         cells -- which is the arrangement that turns nine columns into one
+         if any wrapper is not display: contents. -->
+    <sc-for list="{{lines}}" as="line" hint-placeholder-count="13">
+      <sc-if value="{{line.isRow}}" hint-placeholder-val="true">
+        <!-- A row heading is a solid black bar with the text knocked out.
+             A light grey fill is the one thing on this sheet that a mono
+             laser would render differently from one driver to the next. -->
+        <div style="background: #000; color: #fff; padding: 3px 6px;
+                    font-size: 11px; line-height: 14px; font-weight: 700;
+                    text-transform: uppercase; letter-spacing: .06em;">{{line.label}}</div>
+      </sc-if>
+      <sc-if value="{{line.isPlant}}" hint-placeholder-val="true">
+        <div style="display: flex; height: 27px; border-bottom: 1px solid #000;">
+          <div style="flex: 1 1 0; padding: 6px 6px 0; font-size: 12px; line-height: 15px;
+                      overflow: hidden; white-space: nowrap;">{{line.label}}</div>
+          <div style="flex: 0 0 34px; border-left: 1px solid #000;"></div>
+          <div style="flex: 0 0 34px; border-left: 1px solid #000;"></div>
+          <div style="flex: 0 0 34px; border-left: 1px solid #000;"></div>
+          <div style="flex: 0 0 34px; border-left: 1px solid #000;"></div>
+          <div style="flex: 0 0 34px; border-left: 1px solid #000;"></div>
+          <div style="flex: 0 0 46px; border-left: 1px solid #000;"></div>
+          <div style="flex: 0 0 40px; border-left: 1px solid #000;"></div>
+          <div style="flex: 0 0 138px; border-left: 1px solid #000;"></div>
+        </div>
+      </sc-if>
+    </sc-for>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 6px;">
+    <div style="display: flex; align-items: baseline; gap: 8px;">
+      <div style="font-size: 14px; line-height: 17px; font-weight: 700;">In detail</div>
+      <div style="font-size: 12px; line-height: 17px;">
+        For a quantity, a product name, or a sentence.
+      </div>
+    </div>
+
+    <sc-for list="{{blocks}}" as="block" hint-placeholder-count="1">
+      <div style="border: 1px solid #000; padding: 8px 10px 10px;
+                  display: flex; flex-direction: column; gap: 7px;">
+        <div style="display: flex; gap: 10px; align-items: flex-end;">
+          <div style="flex: 1 1 0;">
+            <div class="lbl">Plant</div>
+            <div class="write" style="height: 20px;"></div>
+          </div>
+          <div style="flex: 0 0 96px;">
+            <div class="lbl">Date</div>
+            <div class="write" style="height: 20px;"></div>
+          </div>
+          <div style="flex: 0 0 56px;">
+            <div class="lbl">Qty</div>
+            <div class="write" style="height: 20px;"></div>
+          </div>
+          <div style="flex: 0 0 60px;">
+            <div class="lbl">Photos</div>
+            <div class="write" style="height: 20px;"></div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px 8px;">
+          <sc-for list="{{actions}}" as="action" hint-placeholder-count="15">
+            <div style="display: flex; align-items: center; gap: 5px;
+                        font-size: 11px; line-height: 14px;">
+              <div class="box"></div><span>{{action}}</span>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="display: flex; gap: 10px; align-items: flex-end;">
+          <div style="flex: 1 1 0;">
+            <div class="lbl-plain">Which one &mdash; the fertiliser, mulch, treatment or soil</div>
+            <div class="write" style="height: 20px;"></div>
+          </div>
+          <div style="flex: 0 0 70px;">
+            <div class="lbl-plain">Minutes</div>
+            <div class="write" style="height: 20px;"></div>
+          </div>
+          <div style="flex: 0 0 112px;">
+            <div class="lbl-plain">Weight + unit</div>
+            <div class="write" style="height: 20px;"></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="lbl">Notes</div>
+          <div class="write" style="height: 22px;"></div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="flex: 1 1 0;"></div>
+  <hr class="rule">
+  <div style="display: flex; justify-content: space-between; font-size: 12px; line-height: 15px;">
+    <span>Transcribe at <strong>/carl/log</strong> &mdash; every field here is a field there.</span>
+    <span>{{summary}}</span>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":794,"height":1056},"blockCount":{"editor":"int","default":1,"min":1,"max":2,"section":"Layout"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    // One block by default: this sheet already lists every plant, so the
+    // detail blocks are for the exception rather than the round. Two is the
+    // most that fits under the table.
+    const blocks = Math.max(1, Math.min(2, this.props.blockCount ?? 1));
+
+    const actions = [
+      'Watered', 'Fertilised', 'Mulched', 'Amended', 'Pest seen',
+      'Pest treated', 'Yield', 'Germinated', 'Failed to germ.', 'Died',
+      'Culled', 'Up-potted', 'Transplanted', 'Hardening started', 'Moved',
+    ];
+
+    // Sample content, so the layout is judged against real-length names --
+    // "Squash (summer) · Zucchini (2)" is what actually has to fit, not
+    // "Plant 1". FPDF fills these from the garden; the shape is the contract.
+    const bed = [
+      { row: 'Row 1', plants: ['Tomato · Roma (6)', 'Tomato · Solar Fire (4)', 'Basil · Genovese (8)'] },
+      { row: 'Row 2', plants: ['Pepper · Jalapeno (5)', 'Pepper · TAM Mild Jalapeno (3)'] },
+      { row: 'Row 3', plants: ['Squash (summer) · Zucchini (2)', 'Marigold · French (12)'] },
+      { row: 'Unplaced', plants: ['Okra · Clemson Spineless (9)', 'Bean · Bush snap (20)'] },
+    ];
+
+    const lines = [];
+    let living = 0;
+    for (const group of bed) {
+      lines.push({ isRow: true, isPlant: false, label: group.row });
+      for (const plant of group.plants) {
+        lines.push({ isRow: false, isPlant: true, label: plant });
+        living++;
+      }
+    }
+
+    const gardenName = 'Main Bed';
+    return {
+      actions,
+      lines,
+      gardenName,
+      printedOn: '31 Aug 2026',
+      summary: gardenName + ' · ' + living + ' living plants when printed',
+      blocks: Array.from({ length: blocks }, (_, i) => ({ i })),
+    };
+  }
+}
+</script>
+</body>
+</html>

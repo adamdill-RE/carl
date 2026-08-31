@@ -2,7 +2,8 @@
 /** @var Carl\Core\App $app @var Carl\Core\View $view
  *  @var int $userCount @var array<string,int> $counts @var int $queue
  *  @var list<array<string,mixed>> $imports
- *  @var array{queued:int,sent:int,failed:int} $mail */
+ *  @var array{queued:int,sent:int,failed:int} $mail
+ *  @var array{queued:int,done:int,failed:int,oldest_queued:?string} $analysis */
 $e = $view->e(...);
 $U = Carl\Support\Units::class;
 $pageTitle = 'Admin';
@@ -10,7 +11,8 @@ $pageTitle = 'Admin';
 <h1 class="page-title">Admin</h1>
 <p class="page-sub">Three functions: create users, import research, and see which
    regions still need it. Mail health sits alongside them because the outbox is
-   the one thing here that can quietly stop.</p>
+   the one thing here that can quietly stop &mdash; and the analysis cost because
+   it is the one thing here that spends money.</p>
 
 <nav class="menu">
   <a href="<?= $e($app->url('admin/users')) ?>">Users
@@ -21,6 +23,8 @@ $pageTitle = 'Admin';
     <span class="hint"><?= $e($queue) ?> in the queue</span></a>
   <a href="<?= $e($app->url('admin/mail-test')) ?>">Mail
     <span class="hint"><?= $e($mail['queued']) ?> queued, <?= $e($mail['failed']) ?> failed</span></a>
+  <a href="<?= $e($app->url('admin/analysis')) ?>">Recommendations cost
+    <span class="hint"><?= $e($analysis['done']) ?> answered, <?= $e($analysis['queued']) ?> waiting</span></a>
 </nav>
 
 <section class="card">

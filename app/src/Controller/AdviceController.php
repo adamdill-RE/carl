@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Carl\Controller;
 
+use Carl\Analysis\Scope;
 use Carl\Core\HttpException;
 use Carl\Core\Request;
 use Carl\Core\Response;
@@ -73,6 +74,12 @@ final class AdviceController extends Controller
             'canAsk'     => $askedToday < $perDay,
             'lastRun'    => $analyst->lastRun(),
             'days'       => $this->app->config()->int('analysis.days', 365),
+            // Phase 6: what a narrower analysis can be about. Two statements
+            // the page was not making before, and both are lists this account
+            // already owns -- a gardener looking at one struggling bed does
+            // not want a review of the year.
+            'gardens'    => $this->gardens()->activeGardens(),
+            'plantings'  => $this->plantings()->listWithDetail(['living' => true], 60),
         ]);
     }
 
@@ -104,8 +111,18 @@ final class AdviceController extends Controller
             $question = \mb_substr($question, 0, 500);
         }
 
+        // Parsing a scope says what to filter to; it says nothing about who
+        // may see it. This is where that is settled, against the user's own
+        // repositories -- and a subject that is not theirs is refused here
+        // rather than quietly producing an empty document they paid for.
+        $scope = Scope::parse($request->input('scope'));
+        if (!$scope->isSeason() && !$this->ownsSubject($scope)) {
+            $this->flash('That is not one of your gardens or plants.', 'error');
+            return $this->redirect('advice');
+        }
+
         try {
-            $id = $analyst->request($userId, $today, $question === '' ? null : $question);
+            $id = $analyst->request($userId, $today, $question === '' ? null : $question, $scope);
         } catch (Throwable $e) {
             \error_log('[carl] analysis not queued: ' . $e->getMessage());
             $this->flash('That could not be queued. Try again in a moment.', 'error');
@@ -117,6 +134,18 @@ final class AdviceController extends Controller
             : 'Asked. Carl works this out on its next run -- come back in an hour or so.');
 
         return $this->redirect('advice');
+    }
+
+    /** Does this account own the thing a scope names? */
+    private function ownsSubject(Scope $scope): bool
+    {
+        $id = (int) $scope->subjectId;
+        if ($id <= 0) {
+            return false;
+        }
+        return $scope->kind === Scope::GARDEN
+            ? $this->gardens()->find($id) !== null
+            : $this->plantings()->find($id) !== null;
     }
 
     /**

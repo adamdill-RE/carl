@@ -40,7 +40,8 @@ use Throwable;
  */
 final class Analyst
 {
-    public const SCOPE_SEASON = 'season';
+    /** @deprecated Phase 6: `Scope::SEASON` is the same value with a grammar. */
+    public const SCOPE_SEASON = Scope::SEASON;
 
     private Database $db;
 
@@ -55,8 +56,13 @@ final class Analyst
      * @param string $today the gardener's OWN local day (handoff Section 6)
      * @return int the row id, or 0 when an identical request is already queued
      */
-    public function request(int $userId, string $today, ?string $question = null): int
-    {
+    public function request(
+        int $userId,
+        string $today,
+        ?string $question = null,
+        ?Scope $scope = null,
+    ): int {
+        $scope ??= Scope::season();
         $question = $question === null ? null : \trim($question);
         $question = ($question === null || $question === '') ? null : \substr($question, 0, 500);
 
@@ -65,7 +71,10 @@ final class Analyst
         // double-tapped button races itself, and the loser learns that from
         // the duplicate-key error rather than from a check that was true a
         // millisecond ago.
-        $dedupe = self::SCOPE_SEASON . ':' . $userId . ':' . $today . ':'
+        // The scope is part of the key: asking about the whole season and
+        // asking about one bed on the same day are two different questions,
+        // and one must not silently swallow the other.
+        $dedupe = $scope->value() . ':' . $userId . ':' . $today . ':'
             . \substr(\hash('sha256', (string) $question), 0, 16);
 
         try {
@@ -77,7 +86,7 @@ final class Analyst
                 . '  UTC_TIMESTAMP(), UTC_TIMESTAMP(), :dedupe_key)',
                 [
                     'user_id'      => $userId,
-                    'scope'        => self::SCOPE_SEASON,
+                    'scope'        => $scope->value(),
                     'requested_on' => $today,
                     'question'     => $question,
                     'dedupe_key'   => $dedupe,
@@ -249,8 +258,9 @@ final class Analyst
         }
         $user = \Carl\Auth\User::fromRow($userRow);
 
+        $scope = Scope::parse($row['scope'] === null ? null : (string) $row['scope']);
         $document = Document::forUser($this->app, $user);
-        $built = $document->build($user, (string) $row['requested_on']);
+        $built = $document->build($user, (string) $row['requested_on'], $scope);
         $json = $document->encode($built);
 
         // Recorded whether the call succeeds or not: the size question of
@@ -276,8 +286,41 @@ final class Analyst
 
         return $provider->analyse(
             Prompt::system(),
-            Prompt::user($json, $row['question'] === null ? null : (string) $row['question'])
+            Prompt::user(
+                $json,
+                $row['question'] === null ? null : (string) $row['question'],
+                $scope->isSeason() ? null : $scope->describe($this->subjectName($scope, $user->id))
+            )
         );
+    }
+
+    /**
+     * The name of a scope's subject, for the prompt and the page.
+     *
+     * One statement, and only for a scoped request -- a season analysis never
+     * asks. Scoped to the owner, so a subject that is not theirs comes back
+     * null and the prompt falls back to the id, which is what the document
+     * will be empty about anyway.
+     */
+    public function subjectName(Scope $scope, int $userId): ?string
+    {
+        if ($scope->isSeason() || $scope->subjectId === null) {
+            return null;
+        }
+
+        $name = $scope->kind === Scope::GARDEN
+            ? $this->db->value(
+                'SELECT `name` FROM `garden` WHERE `id` = :id AND `user_id` = :user_id',
+                ['id' => $scope->subjectId, 'user_id' => $userId]
+            )
+            : $this->db->value(
+                'SELECT COALESCE(NULLIF(p.label, \'\'), pt.type) FROM `planting` p'
+                . ' JOIN `plant_type` pt ON pt.id = p.plant_type_id'
+                . ' WHERE p.id = :id AND p.user_id = :user_id',
+                ['id' => $scope->subjectId, 'user_id' => $userId]
+            );
+
+        return \is_string($name) && $name !== '' ? $name : null;
     }
 
     // -- Rows ---------------------------------------------------------------
@@ -336,6 +379,68 @@ final class Analyst
             'failed'        => (int) ($row['failed'] ?? 0),
             'oldest_queued' => \is_string($row['oldest_queued'] ?? null) ? $row['oldest_queued'] : null,
         ];
+    }
+
+    /**
+     * What the analyses have cost, by month and by model (Phase 6 handoff
+     * Section 3.5: "input_tokens, output_tokens and document_bytes are all
+     * stored per row and nothing displays them").
+     *
+     * One statement. The money is worked out in PHP from the rates in
+     * `config/app.php`, because a price list belongs in configuration rather
+     * than in a column: rates change, and re-pricing history at read time is
+     * right where storing a dollar figure per row would freeze yesterday's
+     * rate into the record for ever.
+     *
+     * A row whose model has no configured rate comes back with a null cost
+     * rather than a zero. Zero would read as free.
+     *
+     * @return list<array{month:string,model:string,runs:int,failed:int,
+     *                    input_tokens:int,output_tokens:int,document_bytes:int,cost:?float}>
+     */
+    public function costByMonth(int $months = 12): array
+    {
+        $rows = $this->db->all(
+            "SELECT DATE_FORMAT(`created_at`, '%Y-%m') AS `month`,"
+            . " COALESCE(NULLIF(`model`, ''), '(none)') AS `model`,"
+            . ' COUNT(*) AS `runs`,'
+            . " SUM(`status` = 'failed') AS `failed`,"
+            . ' SUM(`input_tokens`) AS `input_tokens`,'
+            . ' SUM(`output_tokens`) AS `output_tokens`,'
+            . ' SUM(`document_bytes`) AS `document_bytes`'
+            . ' FROM `analysis`'
+            . ' WHERE `created_at` >= DATE_SUB(UTC_DATE(), INTERVAL :months MONTH)'
+            . ' GROUP BY `month`, `model`'
+            . ' ORDER BY `month` DESC, `model`',
+            ['months' => \max(1, $months)]
+        );
+
+        /** @var array<string,array{input:float,output:float}> $prices */
+        $prices = (array) $this->app->config()->get('analysis.prices', []);
+
+        $out = [];
+        foreach ($rows as $row) {
+            $model = (string) $row['model'];
+            $rate = $prices[$model] ?? null;
+            $input = (int) $row['input_tokens'];
+            $output = (int) $row['output_tokens'];
+
+            $out[] = [
+                'month'          => (string) $row['month'],
+                'model'          => $model,
+                'runs'           => (int) $row['runs'],
+                'failed'         => (int) $row['failed'],
+                'input_tokens'   => $input,
+                'output_tokens'  => $output,
+                'document_bytes' => (int) $row['document_bytes'],
+                'cost'           => $rate === null
+                    ? null
+                    : $input / 1000000 * (float) $rate['input']
+                        + $output / 1000000 * (float) $rate['output'],
+            ];
+        }
+
+        return $out;
     }
 
     /** @return array<string,mixed>|null the last drain, for /status */

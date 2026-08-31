@@ -77,18 +77,34 @@ final class Prompt
      * more specific half, and burying it after ten thousand tokens of JSON is
      * the reliable way to have it half-answered.
      */
-    public static function user(string $documentJson, ?string $question): string
-    {
+    public static function user(
+        string $documentJson,
+        ?string $question,
+        ?string $subject = null,
+    ): string {
         $lines = [];
+        // Phase 6: a scoped document is already filtered, but the prompt has
+        // to say so too. A model handed one bed's records without being told
+        // they are one bed's will answer as though that were the garden --
+        // the same failure the read_me block exists to prevent.
+        $about = $subject === null || $subject === ''
+            ? 'the season'
+            : $subject;
+
         if ($question !== null && $question !== '') {
-            $lines[] = 'The gardener asks:';
+            $lines[] = 'The gardener asks, about ' . $about . ':';
             $lines[] = $question;
             $lines[] = '';
             $lines[] = 'Answer that, using the record below. If the record cannot answer it,';
             $lines[] = 'say so plainly and tell them what would have to be logged for it to.';
-        } else {
+        } elseif ($subject === null || $subject === '') {
             $lines[] = 'No specific question was asked. Review the season below: what has gone';
             $lines[] = 'well, what the weather did to it, and what to do in the next few weeks.';
+        } else {
+            $lines[] = 'No specific question was asked. The record below is ' . $about . ' only,';
+            $lines[] = 'not the whole garden -- review it on its own terms: how it has done, what';
+            $lines[] = 'the weather did to it, and what to do with it in the next few weeks. Do';
+            $lines[] = 'not draw conclusions about anything that is not in it.';
         }
         $lines[] = '';
         $lines[] = 'The record:';

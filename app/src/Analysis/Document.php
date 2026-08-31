@@ -65,8 +65,13 @@ use Carl\Support\Units;
  */
 final class Document
 {
-    /** Bumped when the shape changes, so a stored answer can be read back. */
-    public const VERSION = 1;
+    /**
+     * Bumped when the shape changes, so a stored answer can be read back.
+     *
+     * 2 (Phase 6): `research` gained a `sources` map and folded each plant's
+     * region windows underneath it. See researchSection().
+     */
+    public const VERSION = 2;
 
     public function __construct(
         private PlantingRepository $plantings,
@@ -103,20 +108,39 @@ final class Document
 
     /**
      * @param string $today the gardener's own local calendar day
+     * @param Scope|null $scope narrows the document to one garden or one
+     *        planting (Phase 6). Null is the whole season, as Phase 5 shipped.
      * @return array<string,mixed>
      */
-    public function build(User $user, string $today): array
+    public function build(User $user, string $today, ?Scope $scope = null): array
     {
+        $scope ??= Scope::season();
         $from = (string) Clock::addDays($today, -($this->days - 1));
 
         $plantings = $this->plantings->overlappingWindow($from, $today, $this->maxPlantings);
         $byPlanting = $this->groupByPlanting($from, $today);
 
+        // A narrower scope is a FILTER over rows already fetched, never a
+        // second query. The repositories scoped them to their owner on the
+        // way in, so filtering here cannot widen anything -- and the twelve
+        // statements of Phase 6 handoff Section 4.3 stay twelve whether the
+        // question is about one bed or the year.
+        $plantings = self::withinScope($plantings, $scope);
+
         $document = [
             'document'  => 'carl-analysis',
             'version'   => self::VERSION,
             'generated' => \gmdate('c'),
-            'covers'    => ['from' => $from, 'to' => $today, 'days' => $this->days],
+            'covers'    => \array_filter([
+                'from'    => $from,
+                'to'      => $today,
+                'days'    => $this->days,
+                // Said in covers rather than tucked away, because it bounds
+                // the document exactly as the dates do: an answer about one
+                // bed that reads as an answer about the garden is the same
+                // failure as a summary that does not say it is one.
+                'subject' => $scope->isSeason() ? null : $scope->value(),
+            ], static fn (mixed $v): bool => $v !== null),
             // Said once, here, rather than left for the reader to infer from
             // the shape: a summary that does not announce itself as a summary
             // gets read as a complete record.
@@ -131,6 +155,9 @@ final class Document
                     . ' rather than being logged against it directly.',
                 'Anything outside covers.from and covers.to is not in this document. The'
                     . ' gardener may have records going back further.',
+            'research.sources maps an id to a citation. A research row carries source_id, not'
+                    . ' the text, because the same publication is cited by most of them; look'
+                    . ' the id up before quoting a source.',
                 'A research value carries a confidence: verified, approx or generic. A generic'
                     . ' value is a catalogue default, not a measurement for this county.',
             ],
@@ -148,7 +175,7 @@ final class Document
             $document['gardener']['region'] = $region === null ? null : self::clean($region);
         }
 
-        $document['gardens'] = $this->gardenSection($from, $today);
+        $document['gardens'] = $this->gardenSection($from, $today, $scope, $plantings);
         $document['plantings'] = $this->plantingSection($plantings, $byPlanting);
         $document['weather'] = $this->weatherSection($user, $from, $today);
 
@@ -156,16 +183,7 @@ final class Document
         foreach ($plantings as $planting) {
             $plantTypeIds[(int) $planting['plant_type_id']] = true;
         }
-        // The same two statements `/export/claude.json` uses, with the
-        // bookkeeping columns dropped: `SELECT *` on plant_type and
-        // plant_region carries a created_at, an updated_at and a
-        // dataset_version per row, which is ~30% of this section and is not
-        // something a reader can use.
-        $research = $this->reference->researchFor(\array_keys($plantTypeIds), $user->regionId);
-        $document['research'] = [
-            'plants'  => \array_map(self::clean(...), $research['plants']),
-            'regions' => \array_map(self::clean(...), $research['regions']),
-        ];
+        $document['research'] = $this->researchSection(\array_keys($plantTypeIds), $user->regionId);
 
         return $document;
     }
@@ -182,8 +200,122 @@ final class Document
 
     // -- Sections ----------------------------------------------------------
 
-    /** @return list<array<string,mixed>> */
-    private function gardenSection(string $from, string $to): array
+    /**
+     * The research values in force, and the section Phase 6 went after.
+     *
+     * Phase 6 handoff Section 3.5 named this "the section with the worst
+     * ratio of bytes to signal", and said a trimmed version would have to
+     * keep the citations and confidences -- because they are what stop the
+     * answer presenting a catalogue default as a local measurement.
+     *
+     * Measured before cutting, on an account holding a planting of every
+     * plant type in the catalogue: 51,288 bytes, 68% of a 74,893-byte
+     * document. Where it went, and what happened to it:
+     *
+     * | Cut | Bytes | Why it carries nothing |
+     * | --- | --- | --- |
+     * | `source` repeated per row | 8,886 | 12 distinct citations, cited 99 times |
+     * | nulls | 5,518 | an absent value and a null say the same thing |
+     * | `dataset_version` per row | 3,168 | identical on all 99 rows |
+     * | `region_id` / `plant_type_id` | 1,966 | opaque ids, replaced by nesting |
+     *
+     * **Not one citation or confidence is dropped.** The sources move into a
+     * map and each row points at one; the version is stated once instead of
+     * ninety-nine times; the region windows sit under the plant they belong
+     * to, so the join that needed the ids is structural. A reader loses
+     * nothing except the repetition, and `read_me` says how to follow a
+     * source_id so the map cannot be mistaken for a truncation.
+     *
+     * @param list<int> $plantTypeIds
+     * @return array<string,mixed>
+     */
+    private function researchSection(array $plantTypeIds, ?int $regionId): array
+    {
+        // The same two statements `/export/claude.json` uses.
+        $research = $this->reference->researchFor($plantTypeIds, $regionId);
+
+        $sources = [];
+        $datasetVersions = [];
+
+        /** Hoist one row's citation into the map and leave an id behind. */
+        $hoist = static function (array $row) use (&$sources, &$datasetVersions): array {
+            $version = $row['dataset_version'] ?? null;
+            if (\is_string($version) && $version !== '') {
+                $datasetVersions[$version] = true;
+            }
+            unset($row['dataset_version'], $row['region_id'], $row['plant_type_id']);
+
+            $source = $row['source'] ?? null;
+            unset($row['source']);
+            if (\is_string($source) && $source !== '') {
+                $id = \array_search($source, $sources, true);
+                if ($id === false) {
+                    $id = 's' . (\count($sources) + 1);
+                    $sources[$id] = $source;
+                }
+                $row['source_id'] = $id;
+            }
+
+            // An absent key and a null key say the same thing to a reader,
+            // and one of them is free.
+            return \array_filter($row, static fn (mixed $v): bool => $v !== null);
+        };
+
+        $windowsByPlant = [];
+        foreach ($research['regions'] as $window) {
+            $windowsByPlant[(int) $window['plant_type_id']][] = $hoist(self::clean($window));
+        }
+
+        $plants = [];
+        foreach ($research['plants'] as $plant) {
+            $plantId = (int) $plant['id'];
+            $row = $hoist(self::clean($plant));
+            // The windows belong to this plant, so they hang off it rather
+            // than in a parallel list joined by an id nobody can read.
+            $row['windows'] = $windowsByPlant[$plantId] ?? [];
+            $plants[] = $row;
+        }
+
+        $section = ['plants' => $plants];
+        if ($sources !== []) {
+            $section['sources'] = $sources;
+        }
+        if ($datasetVersions !== []) {
+            // Normally one. More than one means a region was imported at a
+            // different time from the global catalogue, which is worth
+            // seeing rather than silently picking a winner.
+            $section['dataset_version'] = \count($datasetVersions) === 1
+                ? \array_key_first($datasetVersions)
+                : \array_keys($datasetVersions);
+        }
+
+        return $section;
+    }
+
+    /**
+     * Which of these plantings the scope is asking about.
+     *
+     * @param list<array<string,mixed>> $plantings
+     * @return list<array<string,mixed>>
+     */
+    private static function withinScope(array $plantings, Scope $scope): array
+    {
+        if ($scope->isSeason()) {
+            return $plantings;
+        }
+
+        $key = $scope->kind === Scope::GARDEN ? 'garden_id' : 'id';
+        return \array_values(\array_filter(
+            $plantings,
+            static fn (array $p): bool => (int) ($p[$key] ?? 0) === $scope->subjectId
+        ));
+    }
+
+    /**
+     * @param list<array<string,mixed>> $plantings already narrowed to the scope
+     * @return list<array<string,mixed>>
+     */
+    private function gardenSection(string $from, string $to, Scope $scope, array $plantings): array
     {
         $actions = [];
         foreach ($this->events->gardenSummaryInWindow($from, $to) as $row) {
@@ -198,6 +330,26 @@ final class Document
         }
 
         $gardens = $this->gardens->activeGardens();
+
+        // A scoped document carries only the beds it is about: the one named
+        // for a garden scope, and for a plant scope whichever bed it stands
+        // in. Filtered after the read, so this is still one statement.
+        if (!$scope->isSeason()) {
+            $keep = [];
+            if ($scope->kind === Scope::GARDEN) {
+                $keep[(int) $scope->subjectId] = true;
+            }
+            foreach ($plantings as $planting) {
+                if ($planting['garden_id'] !== null) {
+                    $keep[(int) $planting['garden_id']] = true;
+                }
+            }
+            $gardens = \array_values(\array_filter(
+                $gardens,
+                static fn (array $g): bool => isset($keep[(int) $g['id']])
+            ));
+        }
+
         // rowsForGardens(), not rows() per garden: the loop below would
         // otherwise cost one statement per garden, which is the only part of
         // this document whose cost grew with the account (hosting Section 9).
