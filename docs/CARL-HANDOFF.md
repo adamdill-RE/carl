@@ -711,6 +711,9 @@ unsubscribe route.
 Chart.js plant/garden charts; FPDF plant and garden PDFs; per-garden prefilled
 field sheet; `/export/claude.json`.
 
+**Built 2026-08-31**, except the per-garden prefilled field sheet, which needs
+the static sheet of §13.4 first. See `docs/PHASE-5-HANDOFF.md`.
+
 ### v2 (not scoped here)
 Reports menu; Recommendations (Claude analysis); End Growing Season; crop
 rotation warnings by plant family; GDD pest reminders; succession planting;

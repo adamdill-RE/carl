@@ -105,6 +105,113 @@ final class Photos
         }
     }
 
+    /**
+     * A stored photo, re-encoded small enough to sit in a PDF report
+     * (handoff Section 13.2).
+     *
+     * The budget is what shapes this. GD holds a decoded image at roughly
+     * width x height x 4 bytes, so a stored 1920px photo is about 11 MB while
+     * it is open and memory_limit is 128M (hosting Section 4). Both handles
+     * are freed before this returns, so a caller looping over twenty photos
+     * pays for one at a time rather than for twenty.
+     *
+     * Returns null rather than throwing when a file is missing or unreadable:
+     * a report with nineteen photos and a note is worth more than a 500.
+     */
+    public function downscaledJpeg(int $userId, string $storedName, int $longEdge, int $quality = 78): ?string
+    {
+        $path = $this->path($userId, $storedName);
+        if (!\is_file($path)) {
+            return null;
+        }
+
+        $info = @\getimagesize($path);
+        if ($info === false) {
+            return null;
+        }
+        // These files were written by store(), which already refused a
+        // decompression bomb -- but the guard is cheap and this is the one
+        // path that opens twenty of them in a row.
+        if (($info[0] * $info[1]) / 1_000_000 > $this->maxMegapixels) {
+            return null;
+        }
+
+        $source = $this->decode($path, (string) ($info['mime'] ?? ''));
+        if ($source === false) {
+            return null;
+        }
+
+        try {
+            $scaled = $this->scaleTo($source, $longEdge);
+        } finally {
+            \imagedestroy($source);
+        }
+
+        try {
+            \ob_start();
+            $ok = \imagejpeg($scaled, null, $quality);
+            $jpeg = (string) \ob_get_clean();
+        } finally {
+            \imagedestroy($scaled);
+        }
+
+        return $ok && $jpeg !== '' ? $jpeg : null;
+    }
+
+    /**
+     * The same for an image that arrived in the request rather than from
+     * disk -- the chart canvases a report POSTs up (handoff Section 13.2).
+     *
+     * Everything about this input is the browser's word: it is decoded here,
+     * flattened onto white and re-encoded as a JPEG, which is what makes it
+     * safe to hand to FPDF. FPDF's PNG path unpacks an alpha channel through
+     * zlib into a full RGBA bitmap; a JPEG is embedded as-is. Going through
+     * GD also means an SVG or a text file claiming to be a PNG dies here,
+     * with a message, rather than somewhere inside a PDF writer.
+     *
+     * @param int $maxPixels decoded size cap; a canvas on a 3x phone is under
+     *                       4 MP, so anything far above that is not a chart
+     */
+    public function chartJpeg(string $binary, int $maxPixels = 8_000_000, int $quality = 90): ?string
+    {
+        if ($binary === '') {
+            return null;
+        }
+
+        $info = @\getimagesizefromstring($binary);
+        if ($info === false || ($info[0] * $info[1]) > $maxPixels) {
+            return null;
+        }
+        if (!\in_array((string) ($info['mime'] ?? ''), ['image/png', 'image/jpeg', 'image/webp'], true)) {
+            return null;
+        }
+
+        $source = @\imagecreatefromstring($binary);
+        if ($source === false) {
+            return null;
+        }
+
+        try {
+            $width = \imagesx($source);
+            $height = \imagesy($source);
+            $flat = \imagecreatetruecolor($width, $height);
+            $this->flatten($flat, $width, $height);
+            \imagecopy($flat, $source, 0, 0, 0, 0, $width, $height);
+        } finally {
+            \imagedestroy($source);
+        }
+
+        try {
+            \ob_start();
+            $ok = \imagejpeg($flat, null, $quality);
+            $jpeg = (string) \ob_get_clean();
+        } finally {
+            \imagedestroy($flat);
+        }
+
+        return $ok && $jpeg !== '' ? $jpeg : null;
+    }
+
     public function path(int $userId, string $storedName): string
     {
         // The name is generated here and stored; still, never let a value

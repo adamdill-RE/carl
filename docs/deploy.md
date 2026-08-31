@@ -172,6 +172,67 @@ were right; the table above is what proves the host allows them.
   hour is enough to hit it. The client recognises a quota by its reason text and does not
   spend thirty seconds retrying it.
 
+### 0.7 GD is invisible to `memory_get_peak_usage()` — Phase 4
+
+**Measured 2026-08-31** in the development container, PHP 8.4 with the host's
+limits from `dev/php.ini`. It is a property of PHP and libgd, not of sh193, so
+it holds on the server too.
+
+| | Process resident | `memory_get_peak_usage(true)` |
+| --- | --- | --- |
+| Baseline | 35.7 MB | 2.0 MB |
+| Five open 1920×1440 truecolour images (53 MB of pixels) | 88.9 MB | **2.0 MB** |
+
+**PHP's own counter did not move at all.** libgd allocates its pixel buffers
+outside the Zend allocator, so `memory_get_peak_usage()` cannot see them.
+
+Two consequences pull in opposite directions and both matter:
+
+- `memory_limit` is enforced *by* the Zend allocator, so decoded images do not
+  count against it. Twenty open photographs will not produce "Allowed memory
+  size exhausted". Handoff §13.2's 64 MB budget is therefore **not** a
+  `memory_limit` question.
+- The host's own per-process ceiling still applies, and when a shared host
+  kills a process for exceeding one there is no PHP error to read — the page
+  simply does not arrive.
+
+So a memory budget for anything touching GD has to be checked against the
+**process**, not against PHP's counter. `Carl\Support\ProcessMemory` reads
+`VmHWM` from `/proc/self/status` for exactly this; `tests/measure_report.php`
+is the runnable measurement, and `11_reports_test.php` runs it in a child
+process on every suite run.
+
+The child process is not ceremony either: resident memory is a high-water mark
+a long-lived process never gives back, so a delta measured around one report
+inside a test suite that has already churned through images reads **zero**
+however much that report used. Only a process that boots, builds one report
+and exits gives a real figure — which is also exactly what a web request is.
+
+### 0.8 The PDF report budget — Phase 4
+
+Handoff §13.2 sets the target at **under 10 s and 64 MB on a 20-photo report**
+and says to measure it rather than assume it. Measured 2026-08-31, in a fresh
+process, three times, stable to ±0.2 s:
+
+| | |
+| --- | --- |
+| Time | **1.9 s** (budget 10 s) |
+| Process growth | **+16 MB** resident (budget 64 MB) |
+| Absolute process peak | 53 MB, of which 37 MB is a booted PHP with the app loaded |
+| `memory_get_peak_usage(true)` | 6 MB — see §0.7, it is not the figure that matters |
+| Output | 489 KB PDF, 4 pages, 20 photographs and 3 charts |
+
+The fixture is what the server actually gets: 25 stored photographs at the
+1920 px long edge `Photos::store()` writes, of which 20 reach the report, plus
+three 1140×720 chart PNGs — the size a 380 px canvas posts from a phone with a
+3× device pixel ratio.
+
+The 16 MB is what the design predicts: one decoded photograph (1920×1440×4 ≈
+11 MB) at a time, plus one decoded chart PNG (≈3 MB), plus the small JPEGs
+already collected and FPDF's buffer. Holding twenty open at once would be
+about 220 MB. `PdfBuilder::photoSection()` is the loop that keeps it to one,
+and the child-process measurement is what proves it still does.
+
 ---
 
 ## 1. cPanel: database
@@ -665,6 +726,24 @@ openssl rand -hex 24
 
 Push, then **Deploy HEAD Commit**. There is no build and no restart; the next
 request picks the files up, because there is no OPcache on this host.
+
+### The Phase 4 deploy adds no migration
+
+Phase 4 added five routes, two vendored libraries and no schema change at all,
+so the trap below does not apply to it. `/status?key=` should read `pending 0`
+straight afterwards; check it anyway, because that is the check that catches
+the deploy that *did* add one.
+
+Two things about it are worth knowing before you press the button:
+
+- **`vendor/` grew.** `.cpanel.yml` already copies it, and it now carries FPDF
+  (`fpdf.php`, `font/` and `license.txt`). `public/assets/vendor/chart.umd.js`
+  goes over with the rest of `public/`. Nothing new has to be created by hand.
+- **`var/reports/` is no longer created.** Nothing ever wrote there — the PDF
+  is built in memory and sent (handoff §13.2, "streams the file; nothing
+  kept") — so the two lines that made the directory are gone from
+  `.cpanel.yml`. An existing empty `carl-app/var/reports/` on the server can be
+  deleted by hand or left; nothing reads it either way.
 
 ### If the deploy added a migration, the site is down until you run it
 

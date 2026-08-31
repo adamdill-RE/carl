@@ -1,7 +1,12 @@
 <?php
 /**
- * View Garden -- the garden report (handoff Section 4.8), in list form.
- * Charts and the PDF are Phase 4.
+ * View Garden -- the garden report (handoff Section 4.8): the rows, the
+ * zones, what is planted, the garden's own actions, and from Phase 4 the
+ * weather over the dates it has been in use, as charts and as a PDF.
+ *
+ * The charts are drawn by assets/js/charts.js from /api/garden/<id>/series.
+ * There is no JSON island: CSP is script-src 'self' with no nonce (hosting
+ * Section 8.5).
  *
  * @var Carl\Core\App $app @var Carl\Core\View $view
  * @var array<string,mixed> $garden
@@ -11,6 +16,8 @@
  * @var array<int,array<string,mixed>> $yieldByRow
  * @var array<int,array{living:int,plantings:int}> $occupancy
  * @var array<string,list<array<string,mixed>>> $lists
+ * @var array<string,mixed> $series
+ * @var string $seriesUrl @var string $pdfUrl
  */
 $e = $view->e(...);
 $S = Carl\Domain\PlantingState::class;
@@ -145,6 +152,32 @@ $pageTitle = (string) $garden['name'];
 <?php endif; ?>
 </section>
 
+<?php
+$range = $series['range'];
+$hasWeather = $series['days'] !== [];
+?>
+<?php if ($hasWeather): ?>
+<section class="card">
+  <h2>Weather over this garden</h2>
+  <table class="data">
+    <tbody>
+      <tr><th>Days covered</th><td><?= $e($range['days_held']) ?></td></tr>
+      <tr><th>Total rain</th><td><?= $e($series['totals']['rain']) ?></td></tr>
+      <tr><th>Total ET&#8320;</th><td><?= $e($series['totals']['et0']) ?></td></tr>
+      <tr><th>Water balance</th><td><?= $e($series['totals']['balance']) ?>
+        <span class="muted small">rain minus evapotranspiration</span></td></tr>
+      <tr><th>Hottest / coldest</th><td><?= $e($series['totals']['temp_range']) ?></td></tr>
+    </tbody>
+  </table>
+  <?= $view->partial('partials/charts', [
+        'seriesUrl' => $seriesUrl,
+        'pdfUrl'    => $pdfUrl,
+        'range'     => $range,
+        'csrf'      => $csrf,
+      ]) ?>
+</section>
+<?php endif; ?>
+
 <section class="card">
   <h2>Garden events</h2>
 <?php if ($events === []): ?>
@@ -195,4 +228,11 @@ $pageTitle = (string) $garden['name'];
 <?php endforeach; ?>
   </div>
 </section>
+<?php endif; ?>
+
+<?php /* Scripts last, as everywhere else; the vendored library before the
+       file that uses it. Both are deferred, so this is the run order. */ ?>
+<?php if ($series['days'] !== []): ?>
+<script src="<?= $e($app->asset('assets/vendor/chart.umd.js')) ?>" defer></script>
+<script src="<?= $e($app->asset('assets/js/charts.js')) ?>" defer></script>
 <?php endif; ?>

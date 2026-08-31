@@ -202,6 +202,13 @@ final class GardenController extends Controller
             $yieldByRow[(int) ($row['garden_row_id'] ?? 0)] = $row;
         }
 
+        // The Phase 4 charts, from the same builder the plant report and
+        // /api/garden/<id>/series read: one weather statement and one for the
+        // garden's own actions, whatever the size of the garden.
+        $series = $this->series()->forGarden(
+            $gardenId, $this->user()->weatherLocationId, $this->today()
+        );
+
         return $this->render('gardens/show', [
             'garden'     => $garden,
             'rows'       => $rows,
@@ -212,6 +219,10 @@ final class GardenController extends Controller
             'yieldByRow' => $yieldByRow,
             'occupancy'  => $this->gardens()->livingCountByRow($gardenId),
             'lists'      => $this->lists()->manyTypes([ListType::WATER_METHOD, ListType::SHADE_CLOTH]),
+            'series'        => $series,
+            'weatherModels' => $series['sources'],
+            'seriesUrl'     => $this->app->url('api/garden/' . $gardenId . '/series'),
+            'pdfUrl'        => $this->app->url('report/garden/' . $gardenId . '/pdf'),
         ]);
     }
 

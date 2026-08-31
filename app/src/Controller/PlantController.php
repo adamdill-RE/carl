@@ -197,7 +197,16 @@ final class PlantController extends Controller
         ]);
     }
 
-    /** The plant report (handoff Section 4.5). Charts are Phase 4. */
+    /**
+     * The plant report (handoff Section 4.5), now with the Phase 4 charts.
+     *
+     * The weather half comes from the Series builder, which is also what
+     * `/api/plant/<id>/series` returns -- so the totals printed here and the
+     * chart drawn beside them cannot disagree about which days a plant
+     * covers. It also costs one weather statement where this page used to
+     * spend three (series, gapCount, sourceModels), because the gap count and
+     * the source models are both answerable from the rows already in hand.
+     */
     public function show(Request $request, array $params): Response
     {
         $plantingId = (int) $params['id'];
@@ -212,25 +221,9 @@ final class PlantController extends Controller
         $photos = $this->photos()->forPlanting($plantingId);
         $yield = $this->plantings()->yieldSummary($plantingId);
 
-        // Weather over the in-ground period, and honest about any gap the
-        // nightly sync has not filled yet (handoff Section 8.1).
-        $weather = [];
-        $gaps = 0;
-        $models = [];
-        $from = $planting['in_ground_date'] ?? $planting['start_date'];
-        if ($user->weatherLocationId !== null && \is_string($from)) {
-            // Yesterday, not today: today's day is not over, so the archive
-            // has no observation for it and weather_forecast is where it
-            // lives (weather.md Section 6.2). Counting today as missing would
-            // put a permanent "1 day has not been fetched yet" notice on
-            // every living plant, every day, which teaches people to ignore
-            // the one that means something.
-            $to = $planting['ended_at'] ?? Clock::addDays($this->today(), -1);
-            $to = (string) $to;
-            $weather = $this->weather()->series($user->weatherLocationId, $from, $to);
-            $gaps = $this->weather()->gapCount($user->weatherLocationId, $from, $to);
-            $models = $this->weather()->sourceModels($user->weatherLocationId, $from, $to);
-        }
+        // The row is already loaded and already user-scoped, so the builder
+        // is handed it rather than looking it up again.
+        $series = $this->series()->forPlantingRow($planting, $user->weatherLocationId, $this->today());
 
         return $this->render('plants/show', [
             'planting'      => $planting,
@@ -238,9 +231,10 @@ final class PlantController extends Controller
             'events'        => $events,
             'photos'        => $photos,
             'yield'         => $yield,
-            'weather'       => $weather,
-            'weatherGaps'   => $gaps,
-            'weatherModels' => $models,
+            'series'        => $series,
+            'weatherModels' => $series['sources'],
+            'seriesUrl'     => $this->app->url('api/plant/' . $plantingId . '/series'),
+            'pdfUrl'        => $this->app->url('report/plant/' . $plantingId . '/pdf'),
             'countdowns'    => $this->countdowns($planting, $card),
         ]);
     }

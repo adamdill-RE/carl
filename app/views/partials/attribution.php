@@ -4,30 +4,24 @@
  * generated from source_model on the rows actually shown rather than
  * hard-coded, which keeps it honest.
  *
+ * The sentences themselves live in Carl\Support\Attribution, because the JSON
+ * series endpoint and the PDF report have to print the same ones.
+ *
  * @var Carl\Core\View $view
  * @var list<string> $models
  */
 $e = $view->e(...);
-
-$hasOpenMeteo = false;
-$hasNcei = false;
-foreach ($models as $model) {
-    if (\str_starts_with($model, 'ncei:')) {
-        $hasNcei = true;
-    } else {
-        $hasOpenMeteo = true;
-    }
-}
-if ($models === []) {
+$credits = Carl\Support\Attribution::of($models);
+if ($credits === []) {
     return;
 }
 ?>
 <p class="tiny">
-<?php if ($hasOpenMeteo): ?>
-  Weather data by <a href="https://open-meteo.com/" rel="noopener">Open-Meteo.com</a>
-  (CC BY 4.0), based on ERA5 reanalysis from Copernicus / ECMWF.
+<?php foreach ($credits as $credit): ?>
+  <?= $e($credit['before']) ?>
+<?php if ($credit['link_text'] !== null && $credit['url'] !== null): ?>
+<a href="<?= $e($credit['url']) ?>" rel="noopener"><?= $e($credit['link_text']) ?></a>
 <?php endif; ?>
-<?php if ($hasNcei): ?>
-  Station observations from NOAA NCEI GHCNd (public domain).
-<?php endif; ?>
+<?= $e($credit['after']) ?>
+<?php endforeach; ?>
 </p>

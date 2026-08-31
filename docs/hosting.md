@@ -190,7 +190,7 @@ public directory, removed afterwards.
 
 | Setting | Value | Relevance to scope |
 | --- | --- | --- |
-| `memory_limit` | 128M | Interacts with argon2id — see §8.4 |
+| `memory_limit` | 128M | Interacts with argon2id — see §8.4. **Annotation, Claude Code, Phase 4, 2026-08-31:** this limit is enforced by the Zend allocator and therefore does **not** cover GD. Five open 1920×1440 images move the process by 53 MB and move `memory_get_peak_usage()` by nothing. Budget anything that decodes images against the *process*, not against this number — `deploy.md` §0.7 |
 | `max_execution_time` | 30 s | Any import, export or report must finish well inside it, or be chunked |
 | `post_max_size` | 8M | |
 | `upload_max_filesize` | 2M | Fine for a CSV or an SVG; not for photo upload |

@@ -97,6 +97,50 @@ final class EventRepository extends Repository
         );
     }
 
+    /**
+     * The events of one planting as chart markers (handoff Section 13.1).
+     *
+     * One statement, no joins: a marker needs a date, a type and a note, and
+     * the five LEFT JOINs timeline() carries exist to name the fertiliser on
+     * a timeline row -- which a dot on a chart does not print. Ordered
+     * forwards, the direction a chart reads.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function seriesMarkers(int $plantingId): array
+    {
+        return $this->db->all(
+            'SELECT `id`, `event_type`, `event_date`, `narrative`, `source_garden_event_id`'
+            . ' FROM `plant_event`'
+            . ' WHERE `user_id` = :' . self::SCOPE . ' AND `planting_id` = :planting_id'
+            . ' ORDER BY `event_date`, `recorded_at`, `id`',
+            $this->bind(['planting_id' => $plantingId])
+        );
+    }
+
+    /**
+     * The same for a garden, from garden_event.
+     *
+     * Deliberately NOT the fanned-out plant_event copies: a zone watering
+     * writes one derived row per living plant (handoff Section 4.7), so
+     * reading plant_event here would draw one watering as forty markers on
+     * the same day. source_garden_event_id is what tells them apart, and this
+     * reads the side that has one row per thing that happened.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function gardenSeriesMarkers(int $gardenId): array
+    {
+        return $this->db->all(
+            'SELECT `id`, `event_type`, `event_date`, `narrative`, `fanout_count`,'
+            . ' NULL AS `source_garden_event_id`'
+            . ' FROM `garden_event`'
+            . ' WHERE `user_id` = :' . self::SCOPE . ' AND `garden_id` = :garden_id'
+            . ' ORDER BY `event_date`, `recorded_at`, `id`',
+            $this->bind(['garden_id' => $gardenId])
+        );
+    }
+
     /** @return list<array<string,mixed>> the most recent events across everything */
     public function recent(int $limit = 20): array
     {

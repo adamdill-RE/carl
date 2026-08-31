@@ -221,6 +221,22 @@ final class PlantingRepository extends Repository
         return \is_string($value) ? $value : null;
     }
 
+    /**
+     * The earliest start date of anything planted in one garden. A garden
+     * report covers the weather from when it was first used, not from when
+     * the row was created: an empty bed built in January for an April sowing
+     * has no April weather to answer for.
+     */
+    public function earliestStartDateInGarden(int $gardenId): ?string
+    {
+        $value = $this->db->value(
+            'SELECT MIN(`start_date`) FROM `planting`'
+            . ' WHERE `user_id` = :' . self::SCOPE . ' AND `garden_id` = :garden_id',
+            $this->bind(['garden_id' => $gardenId])
+        );
+        return \is_string($value) ? $value : null;
+    }
+
     /** @return list<array<string,mixed>> living plantings in the given rows */
     public function livingInRows(array $rowIds): array
     {

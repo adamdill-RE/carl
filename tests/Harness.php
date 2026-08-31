@@ -150,6 +150,57 @@ final class Harness
         return (string) \json_encode($value);
     }
 
+    /**
+     * Run a measurement script in a FRESH php process and read its JSON line.
+     *
+     * Some things cannot be measured from inside the process doing the
+     * measuring. Resident memory is a high-water mark that a long-lived
+     * process never gives back, so a delta taken around one operation in a
+     * suite that has already peaked higher reads zero -- and PHP's own
+     * counter cannot see GD's allocations at all. A child that boots, does
+     * the one thing and exits is where the number is real, and it is also
+     * what a web request actually is.
+     *
+     * Returns null when the platform will not spawn one, so a caller can say
+     * the measurement was skipped rather than quietly pass.
+     *
+     * @param list<string> $arguments script path first, then its arguments
+     * @return array<string,mixed>|null the decoded JSON line
+     */
+    public static function measureInChildProcess(array $arguments): ?array
+    {
+        if (!\function_exists('proc_open') || \PHP_BINARY === '') {
+            return null;
+        }
+
+        $command = \array_merge([\PHP_BINARY], $arguments);
+        $descriptors = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+        $pipes = [];
+
+        $process = @\proc_open($command, $descriptors, $pipes, \dirname(__DIR__));
+        if (!\is_resource($process)) {
+            return null;
+        }
+
+        $stdout = (string) \stream_get_contents($pipes[1]);
+        $stderr = (string) \stream_get_contents($pipes[2]);
+        \fclose($pipes[1]);
+        \fclose($pipes[2]);
+        $status = \proc_close($process);
+
+        if ($status !== 0) {
+            throw new \RuntimeException(
+                'measurement child exited ' . $status . ': ' . \trim($stderr !== '' ? $stderr : $stdout)
+            );
+        }
+
+        $decoded = \json_decode(\trim($stdout), true);
+        if (!\is_array($decoded)) {
+            throw new \RuntimeException('measurement child printed no JSON: ' . \trim($stdout));
+        }
+        return $decoded;
+    }
+
     public function report(): int
     {
         echo "\n";

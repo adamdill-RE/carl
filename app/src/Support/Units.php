@@ -27,13 +27,35 @@ final class Units
 
     public function temperature(int|float|string|null $celsius, int $decimals = 0): string
     {
+        $value = $this->temperatureValue($celsius);
+        return $value === null ? '--' : \number_format($value, $decimals) . $this->temperatureUnit();
+    }
+
+    /**
+     * The same conversion as temperature(), as a number rather than a label.
+     *
+     * A chart needs the value, not the string, and weather.md Section 6.3 puts
+     * the conversion in ONE helper -- so the endpoint that feeds Chart.js
+     * converts here and hands the browser display units, rather than shipping
+     * Celsius and a second copy of the formula written in JavaScript.
+     *
+     * $decimals is null by default and rounds nothing: temperature() formats
+     * the result itself, and rounding twice can move a value a whole degree
+     * (71.45 rounds to 71.5, which then formats as 72, not 71).
+     */
+    public function temperatureValue(int|float|string|null $celsius, ?int $decimals = null): ?float
+    {
         if ($celsius === null || $celsius === '') {
-            return '--';
+            return null;
         }
         $c = (float) $celsius;
-        return $this->isUs()
-            ? \number_format($c * 9 / 5 + 32, $decimals) . "\u{00B0}F"
-            : \number_format($c, $decimals) . "\u{00B0}C";
+        $converted = $this->isUs() ? $c * 9 / 5 + 32 : $c;
+        return $decimals === null ? $converted : \round($converted, $decimals);
+    }
+
+    public function temperatureUnit(): string
+    {
+        return "\u{00B0}" . ($this->isUs() ? 'F' : 'C');
     }
 
     public function temperatureRange(int|float|string|null $max, int|float|string|null $min): string
@@ -46,13 +68,29 @@ final class Units
 
     public function rain(int|float|string|null $mm, int $decimals = 2): string
     {
-        if ($mm === null || $mm === '') {
+        $value = $this->rainValue($mm);
+        if ($value === null) {
             return '--';
         }
+        // Millimetres keep one decimal whatever is asked: 0.01 mm is below
+        // what the model resolves, and printing it suggests otherwise.
+        return \number_format($value, $this->isUs() ? $decimals : 1) . ' ' . $this->rainUnit();
+    }
+
+    /** Depth as a number, for a chart axis. See temperatureValue(). */
+    public function rainValue(int|float|string|null $mm, ?int $decimals = null): ?float
+    {
+        if ($mm === null || $mm === '') {
+            return null;
+        }
         $value = (float) $mm;
-        return $this->isUs()
-            ? \number_format($value / 25.4, $decimals) . ' in'
-            : \number_format($value, 1) . ' mm';
+        $converted = $this->isUs() ? $value / 25.4 : $value;
+        return $decimals === null ? $converted : \round($converted, $decimals);
+    }
+
+    public function rainUnit(): string
+    {
+        return $this->isUs() ? 'in' : 'mm';
     }
 
     /** ET0 is small, so it keeps a decimal place the rain total does not. */

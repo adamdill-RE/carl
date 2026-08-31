@@ -413,8 +413,16 @@ $t->test('no template uses an inline event handler or inline script body',
         if (\preg_match('/<script(?![^>]*\ssrc=)[^>]*>\s*\S/i', $contents) === 1) {
             $offenders[] = \substr($path, \strlen($app->root()) + 1) . ' (inline script)';
         }
+        // The other half of script-src 'self', which nothing used to check:
+        // a CDN. Phase 4 vendors Chart.js as a file for exactly this reason,
+        // and a well-meant "just use the CDN, it is cached everywhere" would
+        // be refused by the policy and leave a report page with no chart and
+        // nothing in the server log to say why.
+        if (\preg_match('#(?:src|href)\s*=\s*"(?:https?:)?//#i', $contents) === 1) {
+            $offenders[] = \substr($path, \strlen($app->root()) + 1) . ' (off-site asset)';
+        }
     }
-    $t->same([], $offenders, 'put it in a file under public/assets/js/');
+    $t->same([], $offenders, 'put it in a file under public/assets/ and load it with $app->asset()');
 });
 
 $t->test('every script the templates load exists on disk', function ($t) use ($app): void {

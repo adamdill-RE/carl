@@ -1,9 +1,15 @@
 <?php
 /**
- * The plant report (handoff Section 4.5). Charts are Phase 4; this is the
- * research card, the full timeline, the photos in chronological order, the
- * yield summary, and the weather that actually happened over the plant's
- * in-ground period.
+ * The plant report (handoff Section 4.5): the research card, the full
+ * timeline, the photos in chronological order, the yield summary, and the
+ * weather that actually happened over the plant's in-ground period -- as
+ * totals, and from Phase 4 as charts beside them.
+ *
+ * The charts are drawn by assets/js/charts.js from /api/plant/<id>/series,
+ * NOT from a JSON island in this page: CSP is script-src 'self' with no
+ * inline script and no nonce (hosting Section 8.5), so the data arrives over
+ * fetch and the element below carries only its URL in a data- attribute.
+ * With JavaScript off the totals table is the whole report and still true.
  *
  * @var Carl\Core\App $app @var Carl\Core\View $view
  * @var array<string,mixed> $planting
@@ -11,8 +17,8 @@
  * @var list<array<string,mixed>> $events
  * @var list<array<string,mixed>> $photos
  * @var array{weight_g:float,count_qty:int,events:int,first:?string,last:?string} $yield
- * @var list<array<string,mixed>> $weather
- * @var int $weatherGaps
+ * @var array<string,mixed> $series
+ * @var string $seriesUrl @var string $pdfUrl
  * @var list<array{label:string,date:string,days:?int}> $countdowns
  */
 $e = $view->e(...);
@@ -85,40 +91,45 @@ $live = (int) $planting['quantity_live'];
 
 <?= $view->partial('plants/research_card', ['card' => $card, 'hasRegion' => $user->hasRegion()]) ?>
 
-<?php if ($weather !== [] || $weatherGaps > 0): ?>
+<?php
+$range = $series['range'];
+$totals = $series['totals'];
+$hasWeather = $series['days'] !== [];
+?>
+<?php if ($hasWeather || $range['days_missing'] > 0): ?>
 <section class="card">
   <h2>Weather while it was in the ground</h2>
-<?php if ($weatherGaps > 0): ?>
+<?php if ($range['days_missing'] > 0): ?>
   <p class="notice notice-info small">
-    <?= $e($weatherGaps) ?> day<?= $weatherGaps === 1 ? '' : 's' ?> in this range have not been
+    <?= $e($range['days_missing']) ?> day<?= $range['days_missing'] === 1 ? '' : 's' ?> in this range have not been
     fetched yet. The nightly sync fills gaps working backwards; they will appear here on their own.
   </p>
 <?php endif; ?>
-<?php if ($weather !== []): ?>
-<?php
-    $rain = 0.0; $et0 = 0.0; $hottest = null; $coldest = null;
-    foreach ($weather as $day) {
-        $rain += (float) ($day['precip_mm'] ?? 0);
-        $et0 += (float) ($day['et0_mm'] ?? 0);
-        if ($day['temp_max_c'] !== null && ($hottest === null || (float) $day['temp_max_c'] > $hottest)) {
-            $hottest = (float) $day['temp_max_c'];
-        }
-        if ($day['temp_min_c'] !== null && ($coldest === null || (float) $day['temp_min_c'] < $coldest)) {
-            $coldest = (float) $day['temp_min_c'];
-        }
-    }
-?>
+<?php if ($range['clamped']): ?>
+  <p class="notice notice-info small">
+    This plant has been in the ground longer than a chart can usefully show, so the
+    last <?= $e($range['max_days']) ?> days are drawn:
+    <?= $e($U::longDate($range['from'])) ?> onwards.
+  </p>
+<?php endif; ?>
+<?php if ($hasWeather): ?>
   <table class="data">
     <tbody>
-      <tr><th>Days covered</th><td><?= $e(\count($weather)) ?></td></tr>
-      <tr><th>Total rain</th><td><?= $e($units->rain($rain)) ?></td></tr>
-      <tr><th>Total ET&#8320;</th><td><?= $e($units->rain($et0)) ?></td></tr>
-      <tr><th>Water balance</th><td><?= $e($units->rain($rain - $et0)) ?>
+      <tr><th>Days covered</th><td><?= $e($range['days_held']) ?></td></tr>
+      <tr><th>Total rain</th><td><?= $e($totals['rain']) ?></td></tr>
+      <tr><th>Total ET&#8320;</th><td><?= $e($totals['et0']) ?></td></tr>
+      <tr><th>Water balance</th><td><?= $e($totals['balance']) ?>
         <span class="muted small">rain minus evapotranspiration</span></td></tr>
-      <tr><th>Hottest / coldest</th><td><?= $e($units->temperatureRange($hottest, $coldest)) ?></td></tr>
+      <tr><th>Hottest / coldest</th><td><?= $e($totals['temp_range']) ?></td></tr>
     </tbody>
   </table>
-  <p class="tiny muted">Charts arrive in a later phase; these are the totals behind them.</p>
+
+  <?= $view->partial('partials/charts', [
+        'seriesUrl' => $seriesUrl,
+        'pdfUrl'    => $pdfUrl,
+        'range'     => $range,
+        'csrf'      => $csrf,
+      ]) ?>
 <?php endif; ?>
 </section>
 <?php endif; ?>
@@ -144,4 +155,12 @@ $live = (int) $planting['quantity_live'];
 <?php endforeach; ?>
   </div>
 </section>
+<?php endif; ?>
+
+<?php /* Scripts last, as everywhere else. The vendored library first:
+       charts.js checks for window.Chart and does nothing without it, and
+       both are deferred so the order here is the execution order. */ ?>
+<?php if ($series['days'] !== []): ?>
+<script src="<?= $e($app->asset('assets/vendor/chart.umd.js')) ?>" defer></script>
+<script src="<?= $e($app->asset('assets/js/charts.js')) ?>" defer></script>
 <?php endif; ?>
