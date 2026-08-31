@@ -54,6 +54,19 @@ try {
     exit(1);
 }
 
+// An alert that arrives after this morning's digest has gone is no use
+// tomorrow morning (handoff Section 8.4). The digest decides who has already
+// had theirs; a user who has not gets it in the digest instead, because one
+// email beats two.
+$urgent = 0;
+if ($summary['new_ids'] !== []) {
+    try {
+        $urgent = (new Carl\Reminders\Digest($app))->sendUrgentAlerts($summary['new_ids']);
+    } catch (Throwable $e) {
+        \fwrite(\STDERR, 'alerts_poll: urgent mail not queued: ' . $e->getMessage() . "\n");
+    }
+}
+
 \printf(
     "alerts_poll: %d locations, %d active, %d new, %d closed, %d failures, %.1f s\n",
     $summary['locations'],
@@ -63,6 +76,10 @@ try {
     $summary['failures'],
     \microtime(true) - $started,
 );
+
+if ($urgent > 0) {
+    \printf("  %d urgent alert email%s queued\n", $urgent, $urgent === 1 ? '' : 's');
+}
 
 if ($verbose) {
     foreach ($summary['log'] as $line) {

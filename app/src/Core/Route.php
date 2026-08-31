@@ -14,6 +14,20 @@ final class Route
     public const KEY_ACCESS    = 'key';      // guarded by a config key, 404 without it
 
     /**
+     * No login, and no CSRF token: the credential is in the path.
+     *
+     * There is exactly one of these, the RFC 8058 One-Click unsubscribe. A
+     * mail client POSTs it with no session and no page having been rendered,
+     * so there is no token to carry -- and Gmail and Outlook now expect that
+     * of bulk mail. It is safe only because of what the route can do: turn
+     * one person's own email off. A forged request achieves precisely what
+     * the link it forged was for.
+     *
+     * Do not reuse this for anything that writes anything else.
+     */
+    public const TOKEN_ACCESS  = 'token';
+
+    /**
      * @param class-string $controller
      * @param list<string> $parameterNames
      */

@@ -8,6 +8,7 @@
  * @var Carl\Support\Units $units
  * @var array{recent:list<array<string,mixed>>,forecast:list<array<string,mixed>>} $weather
  * @var list<array<string,mixed>> $watering
+ * @var list<array<string,mixed>> $items
  * @var list<array<string,mixed>> $guidance
  * @var list<array<string,mixed>> $pests
  * @var list<array<string,mixed>> $alerts
@@ -16,6 +17,7 @@
  * @var array{living:int,plantings:int,gardens:int,events:int} $counts
  */
 $e = $view->e(...);
+$K = Carl\Domain\ReminderKind::class;
 $pageTitle = null;
 $hasWeather = $weather['recent'] !== [] || $weather['forecast'] !== [];
 ?>
@@ -145,6 +147,34 @@ $hasWeather = $weather['recent'] !== [] || $weather['forecast'] !== [];
     for your area is loaded.
   </p>
 <?php endif; ?>
+</section>
+<?php endif; ?>
+
+<?php if ($items !== []): ?>
+<section class="card">
+  <h2>Today</h2>
+  <p class="tiny muted flush">
+    The same items as your morning email. Computed overnight, not while you waited.
+  </p>
+  <ul class="list items">
+<?php foreach ($items as $item): ?>
+    <li>
+      <div class="grow">
+        <span class="topic kind-<?= $e($item['kind']) ?>"><?= $e($K::label((string) $item['kind'])) ?></span><br>
+        <strong><?= $e($item['title']) ?></strong>
+<?php if ((string) $item['body'] !== ''): ?>
+        <div class="small muted"><?= $e($item['body']) ?></div>
+<?php endif; ?>
+      </div>
+      <form method="post" action="<?= $e($app->url('reminders/dismiss')) ?>" class="flush">
+        <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+        <input type="hidden" name="reminder_id" value="<?= $e($item['id']) ?>">
+        <button type="submit" class="btn btn-secondary btn-small"
+                aria-label="Dismiss this item">&times;</button>
+      </form>
+    </li>
+<?php endforeach; ?>
+  </ul>
 </section>
 <?php endif; ?>
 

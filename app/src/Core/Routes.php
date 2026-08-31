@@ -6,6 +6,7 @@ namespace Carl\Core;
 
 use Carl\Controller\AdminController;
 use Carl\Controller\AuthController;
+use Carl\Controller\DigestController;
 use Carl\Controller\ExportController;
 use Carl\Controller\GardenController;
 use Carl\Controller\ListController;
@@ -53,6 +54,25 @@ final class Routes
         // -- Main menu -----------------------------------------------------
         $r->get('/', MenuController::class, 'index');
         $r->post('/motd/dismiss', MenuController::class, 'dismiss');
+        $r->post('/reminders/dismiss', DigestController::class, 'dismiss');
+
+        // -- Unsubscribe (handoff Section 12) -------------------------------
+        // Public on purpose: someone clicking a link in an email is not
+        // signed in, and making them sign in to stop the mail is exactly the
+        // pattern that gets a sender marked as spam. The POST is
+        // PUBLIC_ACCESS so RFC 8058 One-Click works, which needs no CSRF
+        // token and no session; the token in the path is the only credential
+        // and the only thing it can do is turn that person's own mail off.
+        // The constraint is [0-9a-f]+ rather than [0-9a-f]{64}: the router
+        // reads a constraint as everything up to the first '}', so a brace
+        // quantifier would cut the pattern in half. The exact length is
+        // enforced where the token is looked up.
+        $r->get('/unsubscribe/{token:[0-9a-f]+}',
+            DigestController::class, 'unsubscribe', Route::PUBLIC_ACCESS);
+        $r->post('/unsubscribe/{token:[0-9a-f]+}',
+            DigestController::class, 'confirmUnsubscribe', Route::TOKEN_ACCESS);
+        $r->post('/unsubscribe/{token:[0-9a-f]+}/resume',
+            DigestController::class, 'resubscribe', Route::TOKEN_ACCESS);
 
         // -- Start a New Plant ---------------------------------------------
         $r->get('/plants/new', PlantController::class, 'chooseKind');
@@ -130,6 +150,7 @@ final class Routes
         $r->get('/tasks/weather-sync', SystemController::class, 'weatherSync', Route::KEY_ACCESS, 'cron_key');
         $r->get('/tasks/mail-send', SystemController::class, 'mailSend', Route::KEY_ACCESS, 'cron_key');
         $r->get('/tasks/alerts-poll', SystemController::class, 'alertsPoll', Route::KEY_ACCESS, 'cron_key');
+        $r->get('/tasks/daily-digest', SystemController::class, 'dailyDigest', Route::KEY_ACCESS, 'cron_key');
         $r->get('/diag', SystemController::class, 'diag', Route::KEY_ACCESS, 'diag_key');
 
         return $r;

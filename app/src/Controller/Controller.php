@@ -16,6 +16,7 @@ use Carl\Repo\ListRepository;
 use Carl\Repo\PhotoRepository;
 use Carl\Repo\PlantingRepository;
 use Carl\Repo\ReferenceRepository;
+use Carl\Repo\ReminderRepository;
 use Carl\Repo\UserRepository;
 use Carl\Repo\WateringRepository;
 use Carl\Repo\WeatherRepository;
@@ -33,6 +34,7 @@ abstract class Controller
     private ?EventRepository $events = null;
     private ?PhotoRepository $photos = null;
     private ?ReferenceRepository $reference = null;
+    private ?ReminderRepository $reminders = null;
     private ?UserRepository $accounts = null;
     private ?WeatherRepository $weather = null;
     private ?WateringRepository $watering = null;
@@ -106,6 +108,15 @@ abstract class Controller
     protected function weather(): WeatherRepository
     {
         return $this->weather ??= new WeatherRepository($this->app->db());
+    }
+
+    /**
+     * Today's items, read only: the hourly digest job computes and stores
+     * them, and the menu shows what is stored (handoff Section 4.2).
+     */
+    protected function reminders(): ReminderRepository
+    {
+        return $this->reminders ??= new ReminderRepository($this->app->db(), $this->userId());
     }
 
     /**

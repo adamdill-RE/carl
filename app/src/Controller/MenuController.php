@@ -41,6 +41,12 @@ final class MenuController extends Controller
         // step and stores the row (handoff Section 11).
         $watering = $this->watering()->forDate($today);
 
+        // Today's items (handoff Section 4.2), the same content as the daily
+        // email. The hourly digest job computes and stores them; a menu that
+        // recomputed eleven rules over every planting would be the slowest
+        // page here and would disagree with the email that went out at six.
+        $items = $this->reminders()->forDate($today);
+
         $categories = $this->categoriesGrown();
         $guidance = $this->reference()->guidanceFor($user->regionId, $categories, $today);
         $pests = $this->reference()->activePests($user->regionId, $categories, $today);
@@ -59,6 +65,7 @@ final class MenuController extends Controller
         return $this->render('menu', [
             'weather'       => $weather,
             'watering'      => $watering,
+            'items'         => $items,
             'alerts'        => $alerts,
             'location'      => $location,
             'guidance'      => $guidance,
