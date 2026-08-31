@@ -6,6 +6,11 @@
  * page. Which actions appear is decided by state; for a batch it is the
  * intersection, so a batch can never half-apply.
  *
+ * Transplanted, Up-potted and Moved all ask HOW MANY and WHERE TO, and a
+ * quantity short of the live count makes the plants that move a planting of
+ * their own. That is the split, and the form never calls it one: the
+ * gardener's sentence is "I transplanted six of them".
+ *
  * @var Carl\Core\App $app @var Carl\Core\View $view
  * @var list<array<string,mixed>> $plantings
  * @var array<string,mixed>|null $single
@@ -15,6 +20,8 @@
  * @var array<string,list<array<string,mixed>>> $lists
  * @var list<array<string,mixed>> $schedules
  * @var array<int,array{living:int,plantings:int}> $occupancy
+ * @var array<int,list<array{family:string,last_date:string,plantings:int}>> $rotation
+ * @var int $rotationYears
  * @var list<array<string,mixed>> $timeline
  */
 $e = $view->e(...);
@@ -146,10 +153,26 @@ $action = $isBatch ? $app->url('log/batch') : $app->url('log/' . $single['id']);
     </div>
   </fieldset>
 
-  <fieldset class="event-fields" data-for="<?= $e($E::TRANSPLANTED) ?>">
+  <?php /* The three actions that move plants somewhere else share one block:
+         how many, and where to. A quantity smaller than the live count makes
+         the plants that move a planting of their own, because a planting has
+         exactly one location (docs/PLANTING-SPLIT-SPEC.md Section 4.1). The
+         user is never shown the word "split". */ ?>
+  <fieldset class="event-fields" data-for="<?= $e($E::TRANSPLANTED) ?> <?= $e($E::UP_POTTED) ?> <?= $e($E::MOVED) ?>">
+    <div class="field">
+      <label for="move_quantity">How many are moving</label>
+      <input type="number" id="move_quantity" name="move_quantity" min="1" max="100000"
+             <?= $isBatch ? '' : 'placeholder="' . $e((int) $single['quantity_live']) . ' (all of them)"' ?>>
+      <p class="help">
+        Leave blank for all of them. Move fewer and the ones that move are
+        tracked on their own from here on, with a link back to
+        <?= $isBatch ? 'the planting they came from' : 'this planting' ?>.
+      </p>
+    </div>
     <?= $view->partial('plants/placement', [
           'gardens' => $gardens, 'rowsByGarden' => $rowsByGarden,
-          'containers' => $containers, 'occupancy' => $occupancy, 'old' => []]) ?>
+          'containers' => $containers, 'occupancy' => $occupancy,
+          'rotation' => $rotation, 'rotationYears' => $rotationYears, 'old' => []]) ?>
   </fieldset>
 
   <fieldset class="event-fields" data-for="<?= $e($E::YIELDED) ?>">

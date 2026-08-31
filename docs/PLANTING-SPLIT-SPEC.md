@@ -1,8 +1,13 @@
 # Carl — splitting a planting
 
-**Status: proposal.** Written 2026-08-31, out of the QR tag work, which ran
-into this as §10 Q1 and could not answer it. Read `docs/hosting.md` first; it
-overrides this file.
+**Status: BUILT, Phase 7, 2026-08-31.** Written 2026-08-31, out of the QR tag
+work, which ran into this as §10 Q1 and could not answer it. Read
+`docs/hosting.md` first; it overrides this file.
+
+The design below stands as written and was built as written. **§9 records
+where the build diverged from it, and why** — five places, none of them a
+change of mind about the model. Read §9 before reading this file as a
+description of the code.
 
 ---
 
@@ -284,3 +289,108 @@ So: **splits, then QR.** And when QR lands, the transplant flow gains one line �
 - **No merge.** Two plantings cannot be recombined. Nothing asks for it, and
   the inverse of a split is a much worse problem: which parent's history wins.
 - **No change to anyone who never splits.** §4.2.
+
+---
+
+## 9. What the build did differently, and why
+
+The model of §2.3 was built exactly as proposed. Five details of §4 and §5
+came out differently, and each one is a fact this file could not have known.
+
+### 9.1 Migrations 019 and 020, not 017 — and two files, not one
+
+`017` and `018` were taken by the time this was built (invites, companions).
+Not interesting on its own; what is, is that **it had to be two files.**
+
+The migration as §4.2 describes it is `ALTER TABLE` plus a backfill `UPDATE`.
+MySQL commits implicitly on DDL, so a file that mixes the two cannot be rolled
+back and is never safe to retry — and `01_core_test.php` has a guard that
+refuses to pass on a migration that mixes them. **It caught this one.** That
+is the fourth existing guard to catch a real mistake in a new file (Phase 7
+handoff §2.5 lists the first three), and it is the same shape as all of them:
+the guard is not about the feature, it is about the class of mistake a new
+file makes.
+
+So: `019_planting_split.sql` is the DDL, `020_planting_root_backfill.sql` is
+the one `UPDATE`, and `deploy.md` says to run them together because between
+them every pre-existing planting says its root is 0.
+
+### 9.2 `quantity_lost` is a column, because the rate has nowhere else to come from
+
+§4.5 says rates must be computed as `quantity_initial + SUM(attrition deltas
+only)` and leaves where. The two places that print a survival rate —
+`PdfBuilder::plantFacts()` and `views/plants/show.php` — both hold a planting
+ROW and no events, so the sum has to be somewhere on the row or it is a
+statement per plant.
+
+It is `planting.quantity_lost`, a cache of the event log in the same sense
+that `quantity_live` is one, written by the **same single UPDATE** in
+`recomputeState()`. That was the point: §3 fact 1 says `quantity_live` has
+exactly one writer, and three caches kept by three statements would be three
+ways to disagree.
+
+Two corrections to §4.5 while we are here. It says "there is exactly one
+site today" — **there were two**, the PDF and the plant page, already
+carrying the same expression written twice. And the obvious substitute for
+`live / initial` is `(live + dispersed) / initial`, which is wrong: split a
+tray empty and then backdate a death before the split and it reads 100%
+survival for a tray that lost twenty. Counting attrition directly is the only
+form that survives §4.7.
+
+The helper is `PlantingState::survivalPercent(int $initial, int $lost)`.
+
+### 9.3 `split_planting_id` is a column on `plant_event`, not a payload key
+
+§4.3 says the `split_out` event carries the child's id and does not say how.
+`plant_event.payload` is JSON and would have meant decoding a row to draw a
+link, and a `JSON_EXTRACT` to join one. A nullable `INT UNSIGNED` with an FK
+makes the parent's timeline line — "6 moved out and are now tracked on their
+own: *Tomato · Cherokee Purple*" — one LEFT JOIN on a query that already had
+five.
+
+The FK is `ON DELETE SET NULL`, deliberately. Deleting the child must not
+delete the parent's record that the plants left: the event survives with its
+date and its `-6`, and only the link goes. `20_split_test.php` asserts that
+the parent still has seven of ten afterwards and not ten.
+
+### 9.4 The truth table is four rows, and one of them refuses
+
+§4.1's rule — "a split happens when, and only when, a subset moves to a
+different location" — is one sentence and four cases, and the fourth is not
+obvious:
+
+| how many | destination | what happens |
+| --- | --- | --- |
+| all, or blank | somewhere new | the planting moves, as before |
+| all, or blank | none, or where it is | one event, nothing moves |
+| some of them | somewhere new | **a split** |
+| some of them | none, or where it is | **refused, with a reason** |
+
+The last row could have been read as "record the event against six plants",
+but a transplant with no destination moves the whole planting — so a gardener
+who typed 6 would have moved a hundred. A silent hundred-for-six is exactly
+the failure this codebase writes tests against, so it asks instead.
+
+The second row is why up-potting could be added to the relocations safely: an
+up-pot logged with the soil and no container has not moved the plant, and
+must not blank the placement it had.
+
+### 9.5 The child inherits the label, and does not inherit the derived dates
+
+Not in the spec at all, and both are visible.
+
+**It inherits `start_method`, `start_date`, `label`, the seed source, the
+nursery and the trellis and collar flags.** An indoor seed start transplanted
+out is still an indoor seed start, and "day 62" in the plant list is counted
+from the sowing, which is the number a gardener means.
+
+**It does not inherit `germinated_at`, `hardening_started_at` or
+`in_ground_date`.** Those are functions of a planting's own log, and the
+child's log starts at the move. Copying them would be merging the timelines in
+a column — the thing §4.6 refuses to do in the open — and `recomputeState()`
+would overwrite them on the next event anyway, which is the worse failure:
+right until somebody logs something.
+
+The consequence to know about is the label: after a split there are two
+plantings called the same thing. The plant list badges the child *"moved out
+of another"*, and that is the only thing telling them apart at a glance.

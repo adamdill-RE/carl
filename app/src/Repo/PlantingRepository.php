@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace Carl\Repo;
 
+use Carl\Domain\EventType;
 use Carl\Domain\PlantingState;
 
 /**
  * Plantings (handoff Section 5.3). A planting is the asset; everything that
- * happens to it is a plant_event. state and quantity_live on this table are
- * caches of the event log, recomputed by recomputeState().
+ * happens to it is a plant_event. state, quantity_live, quantity_lost and
+ * ended_reason on this table are caches of the event log, recomputed by
+ * recomputeState() -- all four by the one UPDATE in it.
+ *
+ * A planting has exactly ONE location, and split() is what keeps that true
+ * when only part of a group moves (docs/PLANTING-SPLIT-SPEC.md).
  */
 final class PlantingRepository extends Repository
 {
@@ -21,9 +26,12 @@ final class PlantingRepository extends Repository
     protected function writable(): array
     {
         return [
-            'plant_type_id', 'garden_id', 'garden_row_id', 'container_id', 'label',
+            'plant_type_id', 'split_from_id', 'root_planting_id',
+            'garden_id', 'garden_row_id', 'container_id', 'label',
             'start_method', 'start_date', 'quantity_initial', 'quantity_live',
-            'state', 'state_changed_at', 'in_ground_date', 'ended_at', 'germinated_at',
+            'quantity_lost',
+            'state', 'state_changed_at', 'in_ground_date', 'ended_at', 'ended_reason',
+            'germinated_at',
             'hardening_started_at', 'hardening_days', 'hardening_schedule_id',
             'default_water_method_id', 'seed_source_id', 'nursery_id', 'trellis_used',
             'collar_used', 'seeds_per_collar', 'initial_height_in', 'initial_width_in', 'notes',
@@ -41,6 +49,35 @@ final class PlantingRepository extends Repository
         . ' LEFT JOIN `garden` g ON g.id = p.garden_id'
         . ' LEFT JOIN `garden_row` gr ON gr.id = p.garden_row_id'
         . ' LEFT JOIN `container` c ON c.id = p.container_id';
+
+    /**
+     * Every planting is its own root until it is split off something.
+     *
+     * root_planting_id is NOT NULL and has no default, so it cannot be left
+     * for later. An AUTO_INCREMENT id is not known until the row exists, so a
+     * sowing is inserted with a placeholder and pointed at itself in the same
+     * breath -- one extra statement on a write path that already costs five,
+     * in exchange for "everything descended from this sowing" being one
+     * indexed read forever after.
+     *
+     * A split passes its own root_planting_id and never reaches the UPDATE.
+     *
+     * @param array<string,mixed> $data
+     */
+    public function insert(array $data): int
+    {
+        $root = $data['root_planting_id'] ?? null;
+        $data['root_planting_id'] = $root ?? 0;
+        $id = parent::insert($data);
+
+        if ($root === null) {
+            $this->db->run(
+                'UPDATE `planting` SET `root_planting_id` = `id` WHERE ' . $this->scoped('`id` = :id'),
+                $this->bind(['id' => $id])
+            );
+        }
+        return $id;
+    }
 
     /**
      * @param array{category?:string,type?:string,state?:string,garden_id?:int,
@@ -186,9 +223,15 @@ final class PlantingRepository extends Repository
 
         $stateChanged = (string) $planting['state'] !== $derived['state'];
 
+        // Still ONE statement, and still the only writer of the derived
+        // quantities. quantity_lost and ended_reason ride along with
+        // quantity_live rather than getting a writer of their own, because
+        // three caches kept by three statements is three ways to disagree.
         $this->db->run(
             'UPDATE `planting` SET `state` = :state, `quantity_live` = :quantity_live,'
+            . ' `quantity_lost` = :quantity_lost,'
             . ' `in_ground_date` = :in_ground_date, `ended_at` = :ended_at,'
+            . ' `ended_reason` = :ended_reason,'
             . ' `germinated_at` = :germinated_at, `hardening_started_at` = :hardening_started_at,'
             . ' `state_changed_at` = ' . ($stateChanged ? 'UTC_TIMESTAMP()' : '`state_changed_at`') . ','
             . ' `updated_at` = UTC_TIMESTAMP()'
@@ -196,8 +239,10 @@ final class PlantingRepository extends Repository
             $this->bind([
                 'state'                => $derived['state'],
                 'quantity_live'        => $derived['quantity_live'],
+                'quantity_lost'        => $derived['quantity_lost'],
                 'in_ground_date'       => $derived['in_ground_date'],
                 'ended_at'             => $derived['ended_at'],
+                'ended_reason'         => $derived['ended_reason'],
                 'germinated_at'        => $derived['germinated_at'],
                 'hardening_started_at' => $derived['hardening_started_at'],
                 'id'                   => $plantingId,
@@ -205,6 +250,187 @@ final class PlantingRepository extends Repository
         );
 
         return $derived;
+    }
+
+    /**
+     * Move a subset of a planting somewhere else: the subset BECOMES a
+     * planting, descended from this one (spec Section 2.3).
+     *
+     * The user never sees the word "split". Their sentence is "I
+     * transplanted six of them", and this is what Carl does behind it:
+     *
+     *   1. a child planting, at the new location, with the subset as its
+     *      quantity_initial and every descriptive field copied across;
+     *   2. `split_out` on the PARENT, quantity_delta = -k, pointing at the
+     *      child;
+     *   3. the physical event -- transplanted, up_potted or moved -- on the
+     *      CHILD, because that is what happened to it;
+     *   4. both states re-derived.
+     *
+     * All of it in one transaction. A child with no parent event is a
+     * planting that came from nowhere and takes six plants with it; a parent
+     * event with no child is six plants that went nowhere. Neither is a state
+     * a gardener could be expected to unpick, and both are one failed
+     * statement away without this.
+     *
+     * The events repository is passed in rather than held: EventRepository
+     * already takes a PlantingRepository, and a field here would close the
+     * loop.
+     *
+     * @param array{garden_id?:?int,garden_row_id?:?int,container_id?:?int} $destination
+     * @param array<string,mixed> $eventData extra columns for the child's own event
+     * @return array{child_id:int,event_id:int,quantity:int}
+     */
+    public function split(
+        EventRepository $events,
+        int $parentId,
+        int $quantity,
+        string $eventType,
+        string $eventDate,
+        array $destination,
+        array $eventData = [],
+    ): array {
+        $parent = $this->findOrFail($parentId);
+
+        $live = (int) $parent['quantity_live'];
+        if ($live <= 0) {
+            throw new \Carl\Core\HttpException(
+                400, 'There is nothing living on that planting to move.'
+            );
+        }
+        $quantity = \max(1, \min($quantity, $live));
+
+        return $this->db->transaction(function () use (
+            $events, $parent, $parentId, $quantity, $eventType, $eventDate, $destination, $eventData
+        ): array {
+            $childId = $this->insert([
+                'plant_type_id'    => (int) $parent['plant_type_id'],
+                'split_from_id'    => $parentId,
+                // The chain is flattened as it is built: a split of a split
+                // carries the ORIGINAL sowing, not its immediate parent, so
+                // "everything from this tray" stays one indexed read however
+                // many generations deep it goes.
+                'root_planting_id' => (int) $parent['root_planting_id'],
+                'garden_id'        => $destination['garden_id'] ?? null,
+                'garden_row_id'    => $destination['garden_row_id'] ?? null,
+                'container_id'     => $destination['container_id'] ?? null,
+                'label'            => $parent['label'],
+                // The child inherits the parent's start_method and start_date
+                // rather than being born on the day it moved. An indoor seed
+                // start that is transplanted out is still an indoor seed
+                // start, and "day 62" in the plant list is counted from the
+                // sowing -- which is the number a gardener means.
+                'start_method'     => (string) $parent['start_method'],
+                'start_date'       => (string) $parent['start_date'],
+                'quantity_initial' => $quantity,
+                'quantity_live'    => $quantity,
+                // Corrected by recomputeState() the moment the child's own
+                // event lands; it is here because the column is NOT NULL and
+                // a row has to be insertable before it can be derived.
+                'state'            => (string) $parent['state'],
+                'state_changed_at' => \gmdate('Y-m-d H:i:s'),
+                // The DERIVED dates are deliberately not copied.
+                // germinated_at, hardening_started_at and in_ground_date are
+                // functions of a planting's OWN log, and the child's log
+                // starts at the move. The tray germinated; these six did not
+                // germinate again on their way to the bed. The lineage link
+                // is what carries that history, and merging it in would be
+                // the thing Section 4.6 rejects, done quietly in a column.
+                'default_water_method_id' => $parent['default_water_method_id'],
+                'seed_source_id'   => $parent['seed_source_id'],
+                'nursery_id'       => $parent['nursery_id'],
+                'trellis_used'     => (int) $parent['trellis_used'],
+                'collar_used'      => (int) $parent['collar_used'],
+                'seeds_per_collar' => $parent['seeds_per_collar'],
+                'notes'            => $parent['notes'],
+            ]);
+
+            // On the parent: they left, and where they went.
+            $events->record($parentId, EventType::SPLIT_OUT, $eventDate, [
+                'quantity_delta'    => -$quantity,
+                'count_qty'         => $quantity,
+                'split_planting_id' => $childId,
+                'garden_id'         => $destination['garden_id'] ?? null,
+                'garden_row_id'     => $destination['garden_row_id'] ?? null,
+                'container_id'      => $destination['container_id'] ?? null,
+            ]);
+
+            // On the child: what physically happened to it. This one carries
+            // the narrative, the reference lists and the duration, because it
+            // is the event the gardener thinks they are logging.
+            $eventId = $events->record($childId, $eventType, $eventDate, $eventData + [
+                'garden_id'     => $destination['garden_id'] ?? null,
+                'garden_row_id' => $destination['garden_row_id'] ?? null,
+                'container_id'  => $destination['container_id'] ?? null,
+            ]);
+
+            return ['child_id' => $childId, 'event_id' => $eventId, 'quantity' => $quantity];
+        });
+    }
+
+    /**
+     * The lineage line at the head of a child's history, and the children a
+     * parent sent out. ONE statement, whichever end is asked about.
+     *
+     * The two timelines are deliberately NOT merged. Walking the ancestor
+     * chain on every plant page costs a statement per generation and breaks
+     * the assertions in 11_reports_test.php that a 200-day planting costs the
+     * same three statements as a two-day one. The link costs nothing, and it
+     * is also more honest: those events happened to the tray, not to these
+     * six (spec Section 4.6).
+     *
+     * @return array{parent:?array<string,mixed>,children:list<array<string,mixed>>}
+     */
+    public function lineage(int $plantingId, ?int $splitFromId): array
+    {
+        $rows = $this->db->all(
+            'SELECT p.id, p.split_from_id, p.quantity_initial, p.quantity_live, p.state,'
+            . ' p.start_date, p.label, pt.category, pt.type,'
+            . ' g.name AS garden_name, gr.name AS row_name, c.name AS container_name,'
+            . ' e.event_date AS moved_on, e.event_type AS moved_by'
+            . ' FROM `planting` p'
+            . ' JOIN `plant_type` pt ON pt.id = p.plant_type_id'
+            . ' LEFT JOIN `garden` g ON g.id = p.garden_id'
+            . ' LEFT JOIN `garden_row` gr ON gr.id = p.garden_row_id'
+            . ' LEFT JOIN `container` c ON c.id = p.container_id'
+            // The split_out row on the PARENT is what dates a move, so a
+            // child reads its own date from the event that sent it and a
+            // parent reads each child's from the event that named it.
+            . ' LEFT JOIN `plant_event` e ON e.split_planting_id = p.id AND e.user_id = p.user_id'
+            . "     AND e.event_type = '" . EventType::SPLIT_OUT . "'"
+            . ' WHERE p.user_id = :' . self::SCOPE
+            . '   AND (p.id = :parent_id OR p.split_from_id = :child_of)'
+            . ' ORDER BY p.start_date, p.id',
+            $this->bind(['parent_id' => $splitFromId ?? 0, 'child_of' => $plantingId])
+        );
+
+        $parent = null;
+        $children = [];
+        foreach ($rows as $row) {
+            if ($splitFromId !== null && (int) $row['id'] === $splitFromId) {
+                $parent = $row;
+                continue;
+            }
+            $children[] = $row;
+        }
+        return ['parent' => $parent, 'children' => $children];
+    }
+
+    /**
+     * Everything descended from one sowing, the sowing included.
+     *
+     * This is what root_planting_id exists for: one indexed statement rather
+     * than a walk up a chain of unknown depth.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function wholeSowing(int $rootPlantingId): array
+    {
+        return $this->db->all(
+            self::LIST_SELECT . ' WHERE p.user_id = :' . self::SCOPE
+            . ' AND p.root_planting_id = :root ORDER BY p.start_date, p.id',
+            $this->bind(['root' => $rootPlantingId])
+        );
     }
 
     /**

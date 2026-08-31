@@ -12,6 +12,13 @@ namespace Carl\Domain;
  * germinated has delta 0 but sets a marker; germination_failed, died and
  * culled carry negative deltas. Germination rate, survival rate and cull rate
  * are derived from these, never stored.
+ *
+ * split_out also carries a negative delta and is NOT attrition. The plants it
+ * takes off a planting are alive and somewhere else; counting them as losses
+ * makes six tomatoes transplanted into a bed read as six tomatoes dying. The
+ * sign is the same and the meaning is opposite, so the two are told apart by
+ * name -- isAttrition() and isDispersal() -- and never by the sign
+ * (docs/PLANTING-SPLIT-SPEC.md Section 4.3).
  */
 final class EventType
 {
@@ -36,6 +43,7 @@ final class EventType
     public const PHOTO_ADDED         = 'photo_added';
     public const NOTE                = 'note';
     public const MOVED               = 'moved';
+    public const SPLIT_OUT           = 'split_out';
 
     private const LABELS = [
         self::SEED_STARTED           => 'Seed started',
@@ -59,13 +67,38 @@ final class EventType
         self::PHOTO_ADDED            => 'Photo added',
         self::NOTE                   => 'Note',
         self::MOVED                  => 'Moved',
+        self::SPLIT_OUT              => 'Split out',
     ];
 
-    /** Types whose quantity_delta is negative: they take life off a planting. */
+    /** Types that take life off a planting: the plants are gone. */
     private const ATTRITION = [
         self::GERMINATION_FAILED,
         self::DIED,
         self::CULLED,
+    ];
+
+    /**
+     * Types that take plants off a planting WITHOUT losing them: they went
+     * somewhere else and are somebody else's row now.
+     */
+    private const DISPERSAL = [
+        self::SPLIT_OUT,
+    ];
+
+    /**
+     * The actions that move plants to a different place, and so are the only
+     * ones a split can come out of.
+     *
+     * The rule is one line and it is the whole of when Carl splits: a split
+     * happens when, and only when, a subset moves to a DIFFERENT location.
+     * Watering, fertilising, dying, culling and yielding all apply to a
+     * quantity within one location -- the plants do not go anywhere -- and
+     * must never split (spec Section 4.1).
+     */
+    private const RELOCATION = [
+        self::TRANSPLANTED,
+        self::UP_POTTED,
+        self::MOVED,
     ];
 
     /** @return list<string> */
@@ -87,6 +120,24 @@ final class EventType
     public static function isAttrition(string $type): bool
     {
         return \in_array($type, self::ATTRITION, true);
+    }
+
+    /** A negative delta that is not a loss: the plants moved out. */
+    public static function isDispersal(string $type): bool
+    {
+        return \in_array($type, self::DISPERSAL, true);
+    }
+
+    /** Does this action put the plants somewhere else? */
+    public static function isRelocation(string $type): bool
+    {
+        return \in_array($type, self::RELOCATION, true);
+    }
+
+    /** @return list<string> */
+    public static function relocations(): array
+    {
+        return self::RELOCATION;
     }
 
     /** The event types that put a planting in the ground for the first time. */

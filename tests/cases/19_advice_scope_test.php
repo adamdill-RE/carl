@@ -21,6 +21,7 @@ use Carl\Analysis\Document;
 use Carl\Analysis\Scope;
 use Carl\Auth\Password;
 use Carl\Auth\User;
+use Carl\Repo\PlantingRepository;
 use Carl\Repo\ReferenceRepository;
 use Carl\Repo\UserRepository;
 use Carl\Tests\Client;
@@ -94,16 +95,23 @@ $gardens = $db->all(
 );
 $types = $db->all('SELECT id FROM `plant_type` ORDER BY id LIMIT 2');
 
+// Through the repository rather than raw SQL: planting.root_planting_id is
+// NOT NULL with no default, and the repository is the one writer that knows
+// to point a fresh sowing at itself (migration 019).
+$plantings = new PlantingRepository($db, $userId);
+
 foreach ($gardens as $i => $garden) {
-    $db->run(
-        'INSERT INTO `planting` (user_id, plant_type_id, garden_id, label, start_method,'
-        . ' start_date, quantity_initial, quantity_live, state, state_changed_at,'
-        . ' created_at, updated_at)'
-        . " VALUES (:u, :pt, :g, :label, 'direct_sow', '2026-05-01', 4, 4, 'planted',"
-        . '  UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP())',
-        ['u' => $userId, 'pt' => (int) $types[$i % \count($types)]['id'],
-         'g' => (int) $garden['id'], 'label' => 'Scoped ' . $i]
-    );
+    $plantings->insert([
+        'plant_type_id'    => (int) $types[$i % \count($types)]['id'],
+        'garden_id'        => (int) $garden['id'],
+        'label'            => 'Scoped ' . $i,
+        'start_method'     => 'direct_sow',
+        'start_date'       => '2026-05-01',
+        'quantity_initial' => 4,
+        'quantity_live'    => 4,
+        'state'            => 'planted',
+        'state_changed_at' => \gmdate('Y-m-d H:i:s'),
+    ]);
 }
 
 $user = User::fromRow($db->one('SELECT * FROM `user` WHERE id = :id', ['id' => $userId]));

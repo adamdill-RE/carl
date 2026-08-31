@@ -64,6 +64,12 @@ $U = Carl\Support\Units::class;
         <span class="meta">
           <span class="badge<?= (string) $planting['state'] === $S::ENDED ? ' badge-muted' : '' ?>">
             <?= $e($S::label((string) $planting['state'])) ?></span>
+<?php if ($planting['split_from_id'] !== null): ?>
+          <?php /* A split child looks exactly like a sowing of six in this
+                 list, which is how somebody comes to wonder why they have two
+                 tomato plantings started the same day. */ ?>
+          <span class="badge badge-muted">moved out of another</span>
+<?php endif; ?>
           <?= $e((int) $planting['quantity_live']) ?> of <?= $e((int) $planting['quantity_initial']) ?> living
 <?php if ($where !== ''): ?>
           &middot; <?= $e($where) ?>

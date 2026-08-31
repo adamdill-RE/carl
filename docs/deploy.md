@@ -931,6 +931,37 @@ openssl rand -hex 24
 Push, then **Deploy HEAD Commit**. There is no build and no restart; the next
 request picks the files up, because there is no OPcache on this host.
 
+### The Phase 7 deploy adds TWO migrations, and they are a PAIR
+
+Migrations **019** (`planting_split`, DDL) and **020**
+(`planting_root_backfill`, DML). Run them together, in order, and do not stop
+between the two.
+
+They are two files because they have to be: MySQL commits implicitly on DDL,
+so a file mixing schema and data cannot be rolled back and is never safe to
+retry (hosting §7). `01_core_test.php` refuses to pass on a migration that
+mixes them, and it caught this one when it was a single file.
+
+**The window between them is the thing to know about.** 019 adds
+`planting.root_planting_id` as `NOT NULL DEFAULT 0`, so between 019 and 020
+every planting that already existed says its root is 0 and is invisible to a
+whole-sowing query. Nothing in the application reads that column yet — the
+whole-sowing report is a later feature — so the window is harmless. It is
+still a window, and `/setup?key=` runs both in one pass, which is the reason
+to use it rather than running them one at a time.
+
+The usual trap applies to 019 in full: it adds four columns to `planting` and
+one to `plant_event`, and between the deploy and the migration **every plant
+page, the plant list, the log screen, both CSV exports and the PDFs return
+500** — the code selects columns the schema does not have yet. That is more of
+the application than any previous migration has taken down. Run them
+immediately, in the order the Phase 5 section below gives, and check
+`/status?key=` first.
+
+Nothing else in Phase 7 needs a deploy step. No new cron job, no new
+directory, no new vendored file, no template version change: a research zip
+that imported yesterday imports today.
+
 ### The Phase 6 deploy adds ONE migration — the same trap as Phase 5
 
 Migration **018** (`plant_companion`), pure DDL, one new table. Between the

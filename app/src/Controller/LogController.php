@@ -19,6 +19,14 @@ use Carl\Support\Clock;
  * several for a batch -- opens the actions its state allows. Each action
  * writes exactly one plant_event, all backdatable, all able to carry a
  * narrative and photos.
+ *
+ * ONE action does not write exactly one event: a relocation of PART of a
+ * planting (docs/PLANTING-SPLIT-SPEC.md). The user's sentence is "I
+ * transplanted six of them", never "I split the planting and then
+ * transplanted the child", so the form asks how many and where to and Carl
+ * splits behind it -- a `split_out` on the parent and the physical event on
+ * the child it just made. See relocate() below for the whole truth table;
+ * everything else on this screen still writes one row and must keep to it.
  */
 final class LogController extends Controller
 {
@@ -80,6 +88,19 @@ final class LogController extends Controller
         $eventDate = $this->eventDate($request);
         $data = $this->eventData($request, $eventType, $planting);
 
+        if (EventType::isRelocation($eventType)) {
+            $moved = $this->relocate($planting, $eventType, $eventDate, $data, $request);
+            if ($moved !== null) {
+                // A split: the gardener's photos and notes belong to the
+                // event they thought they were logging, which is the child's.
+                $this->afterRecord($request, $eventType, $moved['child_id'],
+                    $moved['event_id'], $eventDate, $data);
+                $this->flash($moved['quantity'] . ' of the ' . $planting['category'] . ' '
+                    . $planting['type'] . ' moved out and are now tracked on their own.');
+                return $this->redirect('plants/' . $moved['child_id']);
+            }
+        }
+
         $eventId = $this->events()->record($plantingId, $eventType, $eventDate, $data);
         $this->afterRecord($request, $eventType, $plantingId, $eventId, $eventDate, $data);
 
@@ -120,6 +141,14 @@ final class LogController extends Controller
 
         $eventDate = $this->eventDate($request);
         $data = $this->eventData($request, $eventType, $plantings[0]);
+
+        // A relocation cannot go through recordBatch(): each planting decides
+        // for itself whether it is moving whole or splitting, because the
+        // quantity asked for is measured against ITS live count and not the
+        // first one's.
+        if (EventType::isRelocation($eventType)) {
+            return $this->relocateBatch($plantings, $eventType, $eventDate, $data, $request);
+        }
 
         // Quantities default to each planting's own live count, so "all of
         // them" means each plant's own remainder (handoff Section 4.4).
@@ -162,6 +191,9 @@ final class LogController extends Controller
         // being fetched twice to build the same two values.
         $gardens = $this->gardens()->activeGardens();
 
+        $rotationYears = \max(1, $this->app->config()->int('rotation.years', 3));
+        $rotationSince = (string) Clock::addDays($this->today(), -($rotationYears * 365));
+
         return [
             'plantings' => $plantings,
             'single'    => \count($plantings) === 1 ? $first : null,
@@ -175,8 +207,15 @@ final class LogController extends Controller
             ),
             'containers' => $this->gardens()->containers(),
             // The occupancy hint follows the Transplant action's row select
-            // too, not only the new-plant forms (handoff Section 4.3).
+            // too, not only the new-plant forms (handoff Section 4.3), and so
+            // does the crop rotation history (Phase 5 handoff Section 3.4).
+            // Transplanting into a bed is the moment the warning is about;
+            // before the split this screen was the one place it did not
+            // appear, because it was the one place a plant chose a row
+            // without going through Start a New Plant.
             'occupancy'  => $this->gardens()->livingCountByRow(),
+            'rotation'      => $this->plantings()->familyHistoryByRow($rotationSince),
+            'rotationYears' => $rotationYears,
             'schedules'  => $this->hardeningSchedules(),
             'lists'      => $this->lists()->manyTypes([
                 ListType::WATER_METHOD, ListType::UP_POT_SOIL, ListType::UP_POT_CONTAINER,
@@ -187,6 +226,170 @@ final class LogController extends Controller
                 ? $this->events()->timeline((int) $first['id'])
                 : [],
         ];
+    }
+
+    /**
+     * A relocation: transplanted, up-potted or moved.
+     *
+     * The whole truth table, in one place, because getting it wrong is the
+     * kind of mistake that shows as a plausible number:
+     *
+     * | how many        | destination            | what happens              |
+     * | --------------- | ---------------------- | ------------------------- |
+     * | all, or blank   | somewhere new          | the planting moves, as before |
+     * | all, or blank   | none, or where it is   | one event, nothing moves  |
+     * | some of them    | somewhere new          | **a split**               |
+     * | some of them    | none, or where it is   | refused, with a reason    |
+     *
+     * The last row is the one worth arguing about. "Six of them, no
+     * destination" could be read as recording an event against six plants,
+     * but a transplant that does not say where to would then move all
+     * hundred, and the gardener has just told us it was six -- a silent
+     * hundred-for-six is exactly the failure this codebase writes tests
+     * against. So it asks.
+     *
+     * Returns null when nothing was split, and the caller records the plain
+     * event it would have recorded anyway.
+     *
+     * @param array<string,mixed> $planting
+     * @param array<string,mixed> $data
+     * @return array{child_id:int,event_id:int,quantity:int}|null
+     */
+    private function relocate(
+        array $planting,
+        string $eventType,
+        string $eventDate,
+        array $data,
+        Request $request,
+    ): ?array {
+        if (!$this->splits($planting, $data, $request)) {
+            return null;
+        }
+
+        $destination = [
+            'garden_id'     => $data['garden_id'] ?? null,
+            'garden_row_id' => $data['garden_row_id'] ?? null,
+            'container_id'  => $data['container_id'] ?? null,
+        ];
+
+        // The narrative, the reference lists and the duration go on the
+        // child's event; only the placement is shared.
+        $eventData = $data;
+        unset($eventData['garden_id'], $eventData['garden_row_id'], $eventData['container_id']);
+
+        return $this->plantings()->split(
+            $this->events(), (int) $planting['id'], (int) $request->intInput('move_quantity'),
+            $eventType, $eventDate, $destination, $eventData
+        );
+    }
+
+    /**
+     * Does this planting split, given what was asked for? Rows three and four
+     * of the table above, and the refusal is row four.
+     *
+     * Separated from the doing so that a BATCH can decide about every planting
+     * before it writes anything about any of them: a batch that half-applies
+     * is the failure `batch()` already goes out of its way to avoid.
+     *
+     * @param array<string,mixed> $planting
+     * @param array<string,mixed> $data
+     */
+    private function splits(array $planting, array $data, Request $request): bool
+    {
+        $live = (int) $planting['quantity_live'];
+        $quantity = $request->intInput('move_quantity');
+
+        if ($quantity === null || $quantity <= 0 || $quantity >= $live) {
+            return false;
+        }
+
+        $destination = [
+            'garden_id'     => $data['garden_id'] ?? null,
+            'garden_row_id' => $data['garden_row_id'] ?? null,
+            'container_id'  => $data['container_id'] ?? null,
+        ];
+        if (!self::isElsewhere($planting, $destination)) {
+            throw HttpException::badRequest(
+                'Moving ' . $quantity . ' of ' . $live . ' needs somewhere for them to go'
+                . ' that is not where they already are. Say which garden row or container'
+                . ' the ' . $quantity . ' are moving to, or move all of them.'
+            );
+        }
+        return true;
+    }
+
+    /**
+     * The same, for a batch. Each planting is measured against its own live
+     * count: "six of them" applied to a tray of 100 and a pot of 4 splits the
+     * tray and moves the pot whole.
+     *
+     * @param list<array<string,mixed>> $plantings
+     * @param array<string,mixed> $data
+     */
+    private function relocateBatch(
+        array $plantings,
+        string $eventType,
+        string $eventDate,
+        array $data,
+        Request $request,
+    ): Response {
+        // Decide about all of them first. splits() throws on a partial move
+        // with nowhere to go, and it must throw before the first write, not
+        // after the third.
+        foreach ($plantings as $planting) {
+            $this->splits($planting, $data, $request);
+        }
+
+        $split = 0;
+        $movedWhole = 0;
+
+        foreach ($plantings as $planting) {
+            $moved = $this->relocate($planting, $eventType, $eventDate, $data, $request);
+            if ($moved !== null) {
+                $split++;
+                continue;
+            }
+            $plantingId = (int) $planting['id'];
+            $eventId = $this->events()->record($plantingId, $eventType, $eventDate, $data);
+            $this->afterRecord($request, $eventType, $plantingId, $eventId, $eventDate, $data);
+            $movedWhole++;
+        }
+
+        $said = [];
+        if ($movedWhole > 0) {
+            $said[] = $movedWhole . ' moved whole';
+        }
+        if ($split > 0) {
+            $said[] = $split . ' split, and the plants that moved are now tracked on their own';
+        }
+        $this->flash(EventType::label($eventType) . ': ' . \implode('; ', $said) . '.');
+        return $this->redirect('log');
+    }
+
+    /**
+     * Is this destination somewhere other than where the planting already is?
+     *
+     * A destination with nothing in it is not somewhere: an up-pot logged
+     * without a container has not moved the plant, and must not blank the
+     * placement it had.
+     *
+     * @param array<string,mixed> $planting
+     * @param array{garden_id:?int,garden_row_id:?int,container_id:?int} $destination
+     */
+    private static function isElsewhere(array $planting, array $destination): bool
+    {
+        if ($destination['garden_id'] === null
+            && $destination['garden_row_id'] === null
+            && $destination['container_id'] === null) {
+            return false;
+        }
+        foreach (['garden_id', 'garden_row_id', 'container_id'] as $column) {
+            $now = $planting[$column] === null ? null : (int) $planting[$column];
+            if ($now !== $destination[$column]) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -234,6 +437,7 @@ final class LogController extends Controller
                     ListType::UP_POT_SOIL, $request->input('soil_id'), $request->input('soil_new'));
                 $data['ref_list_item_id_2'] = $this->lists()->resolveChoice(
                     ListType::UP_POT_CONTAINER, $request->input('container_type_id'), $request->input('container_type_new'));
+                $data += $this->destination($request);
                 break;
 
             case EventType::HARDENING_STARTED:
@@ -243,21 +447,8 @@ final class LogController extends Controller
                 break;
 
             case EventType::TRANSPLANTED:
-                $gardenId = $request->intInput('garden_id');
-                $rowId = $request->intInput('garden_row_id');
-                $containerId = $request->intInput('container_id');
-                if ($gardenId !== null && !$this->gardens()->exists($gardenId)) {
-                    throw HttpException::badRequest('That garden is not one of yours.');
-                }
-                if ($rowId !== null && $this->gardens()->findRow($rowId) === null) {
-                    throw HttpException::badRequest('That row is not one of yours.');
-                }
-                if ($containerId !== null && $this->gardens()->findContainer($containerId) === null) {
-                    throw HttpException::badRequest('That container is not one of yours.');
-                }
-                $data['garden_id'] = $gardenId;
-                $data['garden_row_id'] = $rowId;
-                $data['container_id'] = $containerId;
+            case EventType::MOVED:
+                $data += $this->destination($request);
                 break;
 
             case EventType::YIELDED:
@@ -299,6 +490,38 @@ final class LogController extends Controller
     }
 
     /**
+     * Where a relocation is going, checked against what this account owns.
+     *
+     * The three relocations read the same three fields, and they are read in
+     * one place so that a fourth cannot arrive with two of the three checks.
+     * A posted id is not evidence of anything (handoff Section 5).
+     *
+     * @return array{garden_id:?int,garden_row_id:?int,container_id:?int}
+     */
+    private function destination(Request $request): array
+    {
+        $gardenId = $request->intInput('garden_id');
+        $rowId = $request->intInput('garden_row_id');
+        $containerId = $request->intInput('container_id');
+
+        if ($gardenId !== null && !$this->gardens()->exists($gardenId)) {
+            throw HttpException::badRequest('That garden is not one of yours.');
+        }
+        if ($rowId !== null && $this->gardens()->findRow($rowId) === null) {
+            throw HttpException::badRequest('That row is not one of yours.');
+        }
+        if ($containerId !== null && $this->gardens()->findContainer($containerId) === null) {
+            throw HttpException::badRequest('That container is not one of yours.');
+        }
+
+        return [
+            'garden_id'     => $gardenId,
+            'garden_row_id' => $rowId,
+            'container_id'  => $containerId,
+        ];
+    }
+
+    /**
      * Side effects that belong with an event but are not the event itself.
      *
      * @param array<string,mixed> $data
@@ -329,12 +552,19 @@ final class LogController extends Controller
             ]);
         }
 
-        if ($eventType === EventType::TRANSPLANTED) {
-            $this->plantings()->update($plantingId, [
-                'garden_id'     => $data['garden_id'] ?? null,
-                'garden_row_id' => $data['garden_row_id'] ?? null,
-                'container_id'  => $data['container_id'] ?? null,
-            ]);
+        // A relocation moves the planting it was logged against -- but only
+        // when it was actually given somewhere to go. An up-pot recorded with
+        // the soil and no container has not moved the plant, and blanking its
+        // placement would take it out of its bed on the strength of a field
+        // nobody filled in.
+        $destination = [
+            'garden_id'     => $data['garden_id'] ?? null,
+            'garden_row_id' => $data['garden_row_id'] ?? null,
+            'container_id'  => $data['container_id'] ?? null,
+        ];
+        $somewhere = \array_filter($destination, static fn (mixed $v): bool => $v !== null) !== [];
+        if (EventType::isRelocation($eventType) && $somewhere) {
+            $this->plantings()->update($plantingId, $destination);
         }
 
         // Treating a pest with no observation on record offers to log the

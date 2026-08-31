@@ -27,6 +27,7 @@ use Carl\Auth\Password;
 use Carl\Domain\ReminderKind;
 use Carl\Reminders\Digest;
 use Carl\Reminders\ReminderBuilder;
+use Carl\Repo\PlantingRepository;
 use Carl\Support\Clock;
 use Carl\Repo\UserRepository;
 use Carl\Tests\Client;
@@ -109,13 +110,19 @@ $squashType = $db->one(
 );
 $plantCategory = (string) ($squashType['category'] ?? 'Squash (summer)');
 
-$db->run(
-    'INSERT INTO `planting` (user_id, plant_type_id, label, start_method, start_date,'
-    . ' quantity_initial, quantity_live, state, state_changed_at, created_at, updated_at)'
-    . " VALUES (:u, :pt, 'GDD Squash', 'direct_sow', '2026-03-01', 3, 3, 'planted',"
-    . '  UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP())',
-    ['u' => $userId, 'pt' => (int) $squashType['id']]
-);
+// Through the repository, not raw SQL: planting.root_planting_id is NOT NULL
+// with no default, and the repository is the one writer that knows to point a
+// fresh sowing at itself (migration 019).
+(new PlantingRepository($db, $userId))->insert([
+    'plant_type_id'    => (int) $squashType['id'],
+    'label'            => 'GDD Squash',
+    'start_method'     => 'direct_sow',
+    'start_date'       => '2026-03-01',
+    'quantity_initial' => 3,
+    'quantity_live'    => 3,
+    'state'            => 'planted',
+    'state_changed_at' => \gmdate('Y-m-d H:i:s'),
+]);
 
 /**
  * Lay down a run of identical days. Each contributes a known, hand-checkable

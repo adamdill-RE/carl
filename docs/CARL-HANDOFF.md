@@ -753,6 +753,21 @@ thirteen reminder kinds, not eleven. **v2 is complete.** See
 Season~~; ~~crop rotation warnings by plant family~~; ~~GDD pest reminders~~;
 ~~succession planting~~; ~~companion planting reference~~.
 
+### Phase 7 — splitting a planting
+
+The first phase with no scope document behind it in this file. It is
+`docs/PLANTING-SPLIT-SPEC.md`, written at the end of Phase 6 out of the QR tag
+work, and it fixes a hole in Section 5.3 rather than adding a feature: a
+`planting` is a group with ONE location, so a hundred tomatoes started in one
+tray could not be moved out to two beds six at a time. Moving a subset now
+makes a planting, descended from the first.
+
+**Built 2026-08-31.** Migrations 019 (DDL) and 020 (the backfill); a
+twenty-second event type, `split_out`; `moved`, in the vocabulary since the
+first design and implemented nowhere, finally means something. Nothing changes
+for an account that never splits, and `20_split_test.php` asserts that rather
+than trusting it. See `docs/PHASE-8-HANDOFF.md`.
+
 ---
 
 ## 15. Explicitly deferred or dropped
@@ -761,7 +776,8 @@ Season~~; ~~crop rotation warnings by plant family~~; ~~GDD pest reminders~~;
 | --- | --- | --- |
 | Seed inventory (packet counts) | Dropped | Chore nobody keeps up; germination rate comes from the event log anyway |
 | Expense / cost tracking | Dropped v1 | Market-farm feature; revisit if testers ask |
-| QR / plant labels, multi-user sharing | Dropped | Scale mismatch; sharing contradicts data isolation |
+| QR / plant labels, multi-user sharing | Sharing dropped; QR **specified, Phase 7** | Sharing still contradicts data isolation. The label half was re-opened by `docs/QR-TAGS-SPEC.md`, and that spec's Section 10 Q1 -- may twelve tags point at one planting? -- is what produced the split spec. With splits built the question dissolves: a planting is location-singular by construction, so one tag per planting is simply correct |
+| Splitting a planting | **Built, Phase 7** | A planting is a group in one place, and moving part of it somewhere else makes a planting. The two rejected models are in `docs/PLANTING-SPLIT-SPEC.md` Section 2 and should not be re-proposed: a placement table needs a quantity-weighted join in five features, and a row per physical plant reintroduces the group it removes |
 | Offline / PWA | Deferred | Paper field sheet is the answer for now; service worker only caches the shell |
 | Succession planting | **Built, Phase 6** | Both shapes, sharing one calculator: `/succession` lays the season out, and a digest reminder is the one line of it true today. No accepted-plan table — a plan in its own table is a second answer to "when should I sow" |
 | Task calendar UI | Deferred | Still the digest's job. The succession planner is the nearest thing and it proposes rather than schedules |

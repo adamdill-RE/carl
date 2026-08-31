@@ -160,6 +160,10 @@ final class Document
                     . ' the id up before quoting a source.',
                 'A research value carries a confidence: verified, approx or generic. A generic'
                     . ' value is a catalogue default, not a measurement for this county.',
+                'A planting is a group in ONE place. split_from names the planting a group was'
+                    . ' moved out of, and the two are the same plants: read their histories'
+                    . ' together. quantity.lost is attrition only, so survival is'
+                    . ' (initial - lost) / initial and plants that moved are not losses.',
             ],
             'gardener' => [
                 'name'          => $user->name,
@@ -393,6 +397,8 @@ final class Document
         $out = [];
         foreach ($plantings as $planting) {
             $id = (int) $planting['id'];
+            $splitFrom = $planting['split_from_id'] === null ? null : (int) $planting['split_from_id'];
+            $root = (int) $planting['root_planting_id'];
             $out[] = \array_filter([
                 'id'            => $id,
                 'category'      => $planting['category'],
@@ -404,8 +410,26 @@ final class Document
                 'in_ground'     => $planting['in_ground_date'],
                 'ended'         => $planting['ended_at'],
                 'state'         => $planting['state'],
-                'quantity'      => ['initial' => (int) $planting['quantity_initial'],
-                                    'live'    => (int) $planting['quantity_live']],
+                // 'lost' is attrition only -- plants moved to another
+                // planting are not losses (spec Section 4.5) -- and is absent
+                // rather than zero, like every other empty value here.
+                'quantity'      => \array_filter(
+                    ['initial' => (int) $planting['quantity_initial'],
+                     'live'    => (int) $planting['quantity_live'],
+                     'lost'    => (int) $planting['quantity_lost']],
+                    static fn (int $v, string $k): bool => $k !== 'lost' || $v > 0,
+                    \ARRAY_FILTER_USE_BOTH
+                ),
+                // Free: both columns are already on the rows this section
+                // walks, so the lineage costs no statement and the twelve of
+                // Phase 6 handoff Section 4.4 still holds.
+                'split_from'    => $splitFrom,
+                // Only when it says something the two above do not: for a
+                // planting that never split it is its own id, and for a
+                // first-generation child it is split_from again. Phase 6
+                // measured that this section's bytes go on repetition
+                // (deploy.md Section 0.10) and this is repetition.
+                'from_sowing'   => $root !== $id && $root !== $splitFrom ? $root : null,
                 'garden'        => $planting['garden_name'],
                 'row'           => $planting['row_name'],
                 'container'     => $planting['container_name'],
