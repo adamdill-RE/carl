@@ -496,6 +496,35 @@ $t->test('the menu shows the stored items, not a recomputation',
     $t->notContains('style="', $response->body);
 });
 
+$t->test('the watering advice is not printed twice on one screen',
+    function ($t) use ($client, $app, $db, $userId, $today): void {
+    // The MOTD carries the watering recommendation a few centimetres up the
+    // page, with its numbers. Repeating the same sentence verbatim in Today
+    // is how a reader learns to skim both.
+    $watering = $db->one(
+        'SELECT * FROM `watering_recommendation` WHERE `user_id` = :u AND `for_date` = :d LIMIT 1',
+        ['u' => $userId, 'd' => $today]
+    );
+    if ($watering === null) {
+        $t->ok(true, 'no watering row today to duplicate');
+        return;
+    }
+
+    $reason = (string) $watering['reason_text'];
+    $body = $client->get('/')->body;
+    $t->same(1, \substr_count($body, \htmlspecialchars($reason, \ENT_QUOTES, 'UTF-8')),
+        'the reason text appears once, in the MOTD');
+
+    // Dismissed, it comes back in Today -- because then it is the only place
+    // the advice appears at all.
+    $client->post('/motd/dismiss', ['forecast_hash' => 'whatever']);
+    $after = $client->get('/')->body;
+    $t->same(1, \substr_count($after, \htmlspecialchars($reason, \ENT_QUOTES, 'UTF-8')),
+        'still once, now in Today');
+    $t->notContains('<h2>Weather</h2>', $after, 'the weather box really is dismissed');
+    $t->contains('<h2>Today</h2>', $after);
+});
+
 $t->test('dismissing one takes it off the menu and out of the next email',
     function ($t) use ($client, $db, $userId, $today): void {
     $items = (new ReminderRepository($db, $userId))->forDate($today);

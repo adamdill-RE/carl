@@ -57,6 +57,19 @@ final class MenuController extends Controller
         $forecastHash = self::forecastHash($weather['forecast']);
         $dismissed = $this->isDismissed($today, $forecastHash);
 
+        // The MOTD already carries the watering recommendation, with its
+        // numbers, a few centimetres up the page. Repeating the same sentence
+        // verbatim in Today is how a reader learns to skim both. It comes
+        // back the moment the weather box is dismissed, because then it is
+        // the only place the advice appears.
+        if (!$dismissed && $watering !== []) {
+            $items = \array_values(\array_filter(
+                $items,
+                static fn (array $item): bool
+                    => (string) $item['kind'] !== \Carl\Domain\ReminderKind::WATERING
+            ));
+        }
+
         $models = [];
         foreach ($weather['recent'] as $day) {
             $models[(string) $day['source_model']] = true;
