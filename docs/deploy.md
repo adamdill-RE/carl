@@ -16,7 +16,7 @@ which existed only while `diag_key` was configured and has since been closed.
 | 1 | Outbound HTTPS to the five hosts the app talks to | **Pass.** All five HTTP 200. Egress is open; no rescope needed |
 | 2 | PHP CLI binary path for cron | **Pass.** All five candidates exist and are executable |
 | 3 | A real cron execution writing a `weather_sync_run` row | **Pass.** Ran 2026-08-31, 28 rows in 1.0 s. Also revealed the OS timezone — see §0.6 |
-| 4 | SMTP-AUTH send, and one Brevo API send | Phase 3; needs the §12.1 mailbox first |
+| 4 | SMTP-AUTH send, and one Brevo API send | **SMTP half passed**, 2026-08-31: `spf=pass dkim=pass dmarc=pass`, both aligned, to a Gmail account. Brevo not attempted — nothing found that needs it (§7.5) |
 | 5 | Upsert timing and RTT to the database host | **Pass.** RTT 0.81 ms; 200 rows 1.9 ms, 2,000 rows 19.9 ms |
 
 ### 0.1 Outbound HTTPS — the blocking spike
@@ -124,8 +124,28 @@ Untested, and worth one line to settle. Add it to the one-off cron in §7:
 
 - Prints **the account's dedicated IP** → the quota is genuinely private, and
   the only traffic against it is RESM, RERM and Carl.
-- Prints **152.160.208.75, or any other address** → outbound is leaving by the
-  server's shared address and weather.md §8.1 stands as written.
+- Prints **the server's primary IP, or any other address** → outbound is
+  leaving by the shared address and weather.md §8.1 stands as written.
+
+**Evidence from the mail test, 2026-08-31, and it points the other way to
+what this section originally guessed.** The received headers of the §7.5 test
+carry two hops with two different addresses: PHP's socket reached Exim from
+`152.160.208.75`, and Exim then delivered to Google from `152.160.193.193`,
+which is `sh193.sameservers.com` — the server's own primary address, the one
+the PTR and the alternate HELO match.
+
+So `152.160.208.75` is **not** the server's primary, which is what this
+section had assumed when it named that address as the "leaving by the shared
+address" outcome. Two addresses, and the server's own is the other one. On an
+account the owner reports as having a dedicated IP, `152.160.208.75` is
+almost certainly it — which would make the Open-Meteo quota private after
+all.
+
+Short of proof, because the destination of that connection was on the same
+box and the kernel may pick a source address differently for a route that
+leaves the building. The `curl https://api.ipify.org` line still settles it,
+and now has a sharper question to answer: **does it print `152.160.208.75`?**
+If it does, the quota is the owner's alone.
 
 Either answer leaves the design alone. Carl needs single-digit calls a day
 against a 10,000/day ceiling, so the daily limit was never the exposure — the
@@ -533,9 +553,29 @@ both say which state it is in.
    `spf=pass` and `dkim=pass`. If either says `fail` or `none`, step 2 or 3 has
    not propagated yet — DNS takes up to an hour. Note whether it arrived in
    the inbox or in spam.
+
+   **Confirmed 2026-08-31**, `smtp` driver to a Gmail account:
+
+   ```
+   Authentication-Results: mx.google.com;
+     dkim=pass header.i=@reshiftmanager.com header.s=default
+     spf=pass (... designates 152.160.193.193 as permitted sender)
+             smtp.mailfrom=carl@reshiftmanager.com
+     dmarc=pass (p=NONE sp=NONE dis=NONE) header.from=reshiftmanager.com
+   ```
+
+   All three, and **aligned**: DKIM signed `d=reshiftmanager.com`, the
+   envelope sender is `carl@reshiftmanager.com` and `header.from` is the same
+   domain. DMARC passes on either leg rather than on one of them, which is
+   what stops a single record change from silently costing you delivery.
 8. **Spike 4** (handoff §6.2) is steps 4 to 7 done once with `driver = smtp`
    and once with `driver = api`, noting which lands in the inbox rather than
    in spam. Record the answer in this file.
+
+   **The `smtp` half is done and it passes.** No reason found to reach for
+   Brevo: cPanel's own mail authenticates cleanly from this domain, and the
+   `api` driver stays built and unused until something makes it necessary —
+   a volume ceiling, or a provider that starts filtering this IP.
 
 ### Two things about this host that look like they need configuring, and do not
 
@@ -547,6 +587,23 @@ reports VALID. `SmtpMailer` sends `EHLO reshiftmanager.com` on a different
 hop: an authenticated submission to `mail.reshiftmanager.com:465` from the
 same box. Nothing on the internet sees that name, and no receiver checks it.
 Leave both alone.
+
+The received headers of the 2026-08-31 test show both hops, and settle it:
+
+```
+Received: from [152.160.208.75] (port=51110 helo=reshiftmanager.com)
+        by sh193.sameservers.com with esmtpsa (TLS1.3) ...   <- Carl submitting
+Received: from sh193.sameservers.com ([152.160.193.193])
+        by mx.google.com with ESMTPS ...                     <- Exim delivering
+```
+
+Two hops, two IPs, two HELO names. Google evaluated SPF against the second
+one only, and passed it. Note which IP is which: `152.160.208.75` is the
+shared outbound address weather.md §8.1 tracks for the Open-Meteo quota and
+is what the *application* talks out of; mail *leaves* on `152.160.193.193`.
+The submission hop is `esmtpsa` over TLS 1.3 with
+`X-Authenticated-Sender: carl@reshiftmanager.com`, so the mailbox password
+never crosses in the clear.
 
 **`mail.reshiftmanager.com` is a CNAME to the domain.** That is normal cPanel,
 and the certificate is served by SNI for whatever name is asked for. It only
@@ -668,8 +725,12 @@ file is refused rather than silently re-run.
 1. Settle spike 0.5 — which IP Open-Meteo sees — whenever convenient. One
    line of curl; nothing depends on the answer. Spikes 1, 2, 3 and 5 are done
    and recorded in §0.
-2. The §12.1 mailbox and DNS steps, written out in §7.5. That is also spike 4.
-   Nothing else waits on it: mail queues until it is done.
+2. ~~The §12.1 mailbox and DNS steps.~~ **Done 2026-08-31**, and spike 4's
+   SMTP half with it — mailbox, SPF, DKIM, DMARC with `rua=`, credentials in
+   `local.php`, and a Gmail-authenticated send. §7.5 records the headers.
+   What is left there is small: the DMARC `rua=` reports start arriving at
+   `carl@reshiftmanager.com`, and moving `p=none` to `p=quarantine` is worth
+   doing once a few weeks of them look clean.
 3. Ask Ahosting whether `ea-php82-php-opcache` can be enabled. If it is,
    `opcache.validate_timestamps` becomes a deploy concern — a file-copy deploy
    may not take effect until revalidation.

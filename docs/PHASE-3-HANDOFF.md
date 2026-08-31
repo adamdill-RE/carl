@@ -428,17 +428,20 @@ constant's docblock says not to reuse it, and nothing does.
 
 ## 10. Still outstanding
 
+**Superseded — see `docs/PHASE-4-HANDOFF.md` §5 for the current list.** Kept
+here so the phase reads as it was written, with what changed marked.
+
 Nothing in §3 or §4 is unbuilt. What remains is not code:
 
-1. **§6.1, the mailbox.** Until it exists, mail queues and waits. `/status`
-   and `/admin/mail-test` both say so in as many words. Nothing is lost and
-   nothing sends twice when the credentials arrive.
-2. **§6.2, spike 4.** `/admin/mail-test` queues a message with whichever
-   driver is configured; switch `mail.driver` in `config/local.php`, queue one
-   of each, and note which lands in a Gmail inbox with `spf=pass dkim=pass`.
-3. **§3.3's live half.** The chain is tested end to end against a stub;
-   `deploy.md` §7 now carries the checklist for seeing it once against the
-   real archive.
+1. ~~**§6.1, the mailbox.**~~ **Done 2026-08-31.** Mailbox, SPF, DKIM, DMARC
+   with `rua=`, and SMTP credentials in `config/local.php`. Mail is live.
+2. ~~**§6.2, spike 4.**~~ **SMTP half done and passed**: `spf=pass dkim=pass
+   dmarc=pass`, all aligned, to a Gmail account. The headers are recorded in
+   `deploy.md` §7.5. Brevo was not attempted and is not needed — nothing was
+   found that the cPanel mailbox does not do.
+3. **§3.3's live half.** Still outstanding. The chain is tested end to end
+   against a stub; `deploy.md` §7 carries the checklist for seeing it once
+   against the real archive.
 4. **§6.3, §6.4, §6.5** — unchanged, and nothing depends on them.
 5. **§7, Claude Design.** `tokens.css` is still the one-file palette swap, and
    §3.4's field sheet is still blocked on the PDF.
