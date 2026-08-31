@@ -53,6 +53,7 @@ Every fact carries its provenance:
 | Server timezone | UTC | **Measured** 2026-08-23 |
 | TLS | `HTTPS=on`, port 443, valid cert on the domain | **Measured** 2026-08-23 |
 | Shared IP | 152.160.208.75 | Reported 2026-08-23 |
+| Account IP | Dedicated to this account, shared only with the owner's own projects | Owner, 2026-08-31. Note the row above is cPanel's *server* shared IP, which it reports regardless; and an account's dedicated IP is inbound — outbound curl may still leave by the server's primary address |
 | Shell access | **None.** No SSH, no cPanel Terminal | **Measured** — the account has neither |
 | Host capacity (point-in-time) | load 2.03 / 40 CPUs, memory 20% used, `/` 10% full | Reported 2026-08-23 |
 

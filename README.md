@@ -117,8 +117,10 @@ accounts — and smoke-tests every GET route by enumerating the router, so a
 template that only breaks on an unusual value cannot slip through.
 
 Weather is tested against a stub provider rather than the live API: the free
-tier is shared-IP rate limited (weather.md §8.1), so a suite that called it
-would be flaky *and* would spend the quota the nightly job depends on.
+tier is rate limited per IP, both daily and hourly, so a suite that called it
+would be flaky *and* would spend the quota the nightly job depends on. The
+hourly limit is easy to hit — two full syncs in one hour did it during
+development.
 
 ## Deploying
 

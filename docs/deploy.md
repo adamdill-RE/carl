@@ -78,6 +78,37 @@ Note that 2,000 rows cost 10× the time of 200 rather than being free — the
 cost here is real work, not round trips. Raising the research chunk size would
 buy nothing.
 
+### 0.5 The Open-Meteo quota — whose traffic shares it
+
+weather.md §8.1 assumes the account is on the server's shared IP and that the
+10,000/day per-IP limit is therefore shared with strangers. **The account has
+a dedicated IP**, shared only with the owner's own projects (owner, 2026-08-31).
+
+That is not quite the end of it. A cPanel dedicated IP is an **inbound**
+address — what DNS points at and what the vhost binds. **Outbound** requests
+that PHP opens with curl leave by the server's routing table, which on a stock
+cPanel box is the server's primary IP, not the account's. So Open-Meteo may
+still be counting this account's calls alongside every other account on sh193.
+
+Untested, and worth one line to settle. Add it to the one-off cron in §7:
+
+```
+/usr/bin/curl -s https://api.ipify.org
+```
+
+- Prints **the account's dedicated IP** → the quota is genuinely private, and
+  the only traffic against it is RESM, RERM and Carl.
+- Prints **152.160.208.75, or any other address** → outbound is leaving by the
+  server's shared address and weather.md §8.1 stands as written.
+
+Either answer leaves the design alone. Carl needs single-digit calls a day
+against a 10,000/day ceiling, so the daily limit was never the exposure — the
+**hourly** one is, and it was hit during development simply by running the
+sync twice in an hour. The client recognises a quota by its reason text and
+declines to retry it, weather never touches the request path, failures are
+silent to the user and loud on `/status`, and the NCEI fallback exists. None
+of that is worth removing for a limit this comfortable.
+
 ### 0.4 What was measured off-host beforehand
 
 From a development container on the same day. It proved the request shapes
@@ -88,9 +119,11 @@ were right; the table above is what proves the host allows them.
 - Forecast with `forecast_days=7&past_days=7`: all nine daily arrays and all
   four hourly soil arrays present.
 - A second full sync inside the same hour returned
-  `{"error":true,"reason":"Hourly API request limit exceeded..."}` — the
-  shared-IP risk of weather.md §8.1, arriving as an error envelope rather than
-  a bare 429. The client recognises a quota by its reason text and does not
+  `{"error":true,"reason":"Hourly API request limit exceeded..."}` — an
+  **hourly** limit, arriving as an error envelope rather than a bare 429.
+  Note this is a different exposure from the daily quota of weather.md §8.1
+  and applies however private the IP turns out to be (§0.5): two runs in one
+  hour is enough to hit it. The client recognises a quota by its reason text and does not
   spend thirty seconds retrying it.
 
 ---
@@ -363,7 +396,7 @@ checksum is recorded and a changed file is refused rather than silently re-run.
 | Every page 500s right after editing config | The bootstrap prints the file and line. A missing trailing comma is the usual cause. |
 | A file you can see in File Manager 404s | The directory's mode. 0700 inside the document root produces a 404, not a 403. |
 | `Plugin 'unix_socket' is not loaded` | `db.host` is pointing at `localhost`. It must be the Remote MySQL address. |
-| Weather stopped | `/status?key=` — newest observation, last successful run, last bad status. A 429 is somebody else's traffic on the shared IP; it heals on its own. |
+| Weather stopped | `/status?key=` — newest observation, last successful run, last bad status. A 429 is the Open-Meteo per-IP quota, most likely another of your own projects, or another account on sh193 if outbound leaves by the server address (§0.5). Either way it heals on its own. |
 | `apache_php_fpm` shows down in cPanel | Correct. It is not in use; the server is LiteSpeed over LSAPI. |
 
 ## Still open for the owner

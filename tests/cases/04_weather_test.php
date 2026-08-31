@@ -2,8 +2,8 @@
 
 /**
  * The weather sync's own rules, tested against a stub provider so the suite
- * neither flakes on a third party nor spends the shared-IP quota the nightly
- * job depends on (weather.md Section 8.1).
+ * neither flakes on a third party nor spends the per-IP quota the nightly job
+ * depends on -- hourly as well as daily (weather.md Section 8.1).
  *
  * @var Carl\Tests\Harness $t
  * @var Carl\Core\App $app

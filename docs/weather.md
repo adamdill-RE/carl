@@ -472,6 +472,23 @@ Your account sits on **shared IP 152.160.208.75** (hosting §1). The 10,000/day
 Open-Meteo limit is per IP, and you share it with every other account on sh193.
 You cannot see or control their usage.
 
+> **Owner correction, 2026-08-31.** The account has a *dedicated* IP, shared
+> only with the owner's own projects (RESM, RERM, Carl) — not with strangers.
+>
+> One caveat before treating the quota as private, because it is the kind of
+> thing that reads as settled and is not. A cPanel dedicated IP is an
+> **inbound** address: it is what the site's DNS points at and what the vhost
+> binds. **Outbound** connections that PHP opens with curl leave by the
+> server's routing table, which on a stock cPanel box means the server's
+> primary IP — not the account's. Unless Ahosting has configured per-account
+> source binding, Open-Meteo may still see an address shared with every other
+> account on sh193.
+>
+> This is testable in one line and has not been tested. Until it is, the
+> defensive design below stays either way: single-digit calls a day, nothing
+> on the request path, bounded retries, and quota recognised by its reason
+> text. See `docs/deploy.md` §0.5.
+
 This is survivable — the design needs single-digit calls per day — but only if:
 
 - **No API call ever happens on a page render.** A 429 must never be able to
