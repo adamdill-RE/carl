@@ -180,6 +180,7 @@ final class WateringModel
         $written = 0;
         $cursor = $startDate;
         $tier = self::TIER_SKIP;
+        $rows = [];
 
         while ($cursor <= $today) {
             // The balance carried into today is yesterday's water, which is
@@ -209,10 +210,17 @@ final class WateringModel
             $reason = $this->reason($tier, $deficit, $mad, $etLoss, $rainEff, $applied, $mulched,
                 $tomorrow, $irrigation[$yesterday]['basis'] ?? null, $et0 === null);
 
-            $this->store($place, $cursor, $tier, $deficit, $taw, $mad, $kc, $et0, $rainEff, $applied, $reason);
+            $rows[] = $this->row($place, $cursor, $tier, $deficit, $taw, $mad, $kc,
+                $et0, $rainEff, $applied, $reason);
             $written++;
             $cursor = (string) Clock::addDays($cursor, 1);
         }
+
+        // One statement, not one per day. A normal night writes a single row
+        // anyway, but a first run seeds thirty and a caught-up cron can write
+        // more -- and at 0.81 ms a round trip that is latency spent on
+        // nothing (hosting Section 9, Phase 3 handoff Section 1.4).
+        $this->store($rows);
 
         $this->note(\sprintf('%s (%s): %s, deficit %.1f of %.0f mm',
             $place['name'], $place['key'], $tier ?? 'skip', $deficit, $taw));
@@ -603,8 +611,18 @@ final class WateringModel
 
     // -- Writes ------------------------------------------------------------
 
-    /** @param array<string,mixed> $place */
-    private function store(
+    /** The columns of a watering_recommendation row, in order. */
+    private const COLUMNS = [
+        'user_id', 'garden_id', 'container_id', 'place_key', 'for_date', 'tier',
+        'deficit_mm', 'taw_mm', 'mad_mm', 'kc', 'et0_mm', 'rain_eff_mm',
+        'irrigation_mm', 'reason_text', 'computed_at',
+    ];
+
+    /**
+     * @param array<string,mixed> $place
+     * @return list<mixed> positional, matching self::COLUMNS
+     */
+    private function row(
         array $place,
         string $forDate,
         string $tier,
@@ -616,35 +634,42 @@ final class WateringModel
         float $rainEff,
         float $irrigation,
         string $reason,
-    ): void {
-        $this->db->run(
-            'INSERT INTO `watering_recommendation`'
-            . ' (user_id, garden_id, container_id, place_key, for_date, tier, deficit_mm,'
-            . '  taw_mm, mad_mm, kc, et0_mm, rain_eff_mm, irrigation_mm, reason_text, computed_at)'
-            . ' VALUES (:user_id, :garden_id, :container_id, :place_key, :for_date, :tier,'
-            . '  :deficit, :taw, :mad, :kc, :et0, :rain_eff, :irrigation, :reason, UTC_TIMESTAMP())'
-            . ' ON DUPLICATE KEY UPDATE `tier` = VALUES(`tier`), `deficit_mm` = VALUES(`deficit_mm`),'
-            . ' `taw_mm` = VALUES(`taw_mm`), `mad_mm` = VALUES(`mad_mm`), `kc` = VALUES(`kc`),'
-            . ' `et0_mm` = VALUES(`et0_mm`), `rain_eff_mm` = VALUES(`rain_eff_mm`),'
-            . ' `irrigation_mm` = VALUES(`irrigation_mm`), `reason_text` = VALUES(`reason_text`),'
-            . ' `computed_at` = UTC_TIMESTAMP()',
-            [
-                'user_id'      => (int) $place['user_id'],
-                'garden_id'    => $place['kind'] === 'garden' ? (int) $place['place_id'] : null,
-                'container_id' => $place['kind'] === 'container' ? (int) $place['place_id'] : null,
-                'place_key'    => (string) $place['key'],
-                'for_date'     => $forDate,
-                'tier'         => $tier,
-                'deficit'      => \round($deficit, 2),
-                'taw'          => (int) \round($taw),
-                'mad'          => (int) \round($mad),
-                'kc'           => \round($kc, 2),
-                'et0'          => $et0,
-                'rain_eff'     => \round($rainEff, 2),
-                'irrigation'   => \round($irrigation, 2),
-                'reason'       => $reason,
-            ]
-        );
+    ): array {
+        return [
+            (int) $place['user_id'],
+            $place['kind'] === 'garden' ? (int) $place['place_id'] : null,
+            $place['kind'] === 'container' ? (int) $place['place_id'] : null,
+            (string) $place['key'],
+            $forDate,
+            $tier,
+            \round($deficit, 2),
+            (int) \round($taw),
+            (int) \round($mad),
+            \round($kc, 2),
+            $et0,
+            \round($rainEff, 2),
+            \round($irrigation, 2),
+            $reason,
+            $this->app->clock()->utcStamp(),
+        ];
+    }
+
+    /** @param list<list<mixed>> $rows */
+    private function store(array $rows): void
+    {
+        if ($rows === []) {
+            return;
+        }
+        foreach (\array_chunk($rows, $this->app->config()->int('weather.upsert_chunk_rows', 200)) as $chunk) {
+            $this->db->upsertChunk(
+                'watering_recommendation',
+                self::COLUMNS,
+                $chunk,
+                // Everything but the identity: a re-run for a day already
+                // computed replaces the answer rather than adding a row.
+                \array_slice(self::COLUMNS, 5)
+            );
+        }
     }
 
     private function recordRun(string $startedAt, int $places, int $rows, int $failures): void

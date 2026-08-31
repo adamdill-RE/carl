@@ -68,8 +68,9 @@ if ($summary['new_ids'] !== []) {
 }
 
 \printf(
-    "alerts_poll: %d locations, %d active, %d new, %d closed, %d failures, %.1f s\n",
+    "alerts_poll: %d locations, %d polled, %d active, %d new, %d closed, %d failures, %.1f s\n",
     $summary['locations'],
+    $summary['polled'],
     $summary['stored'],
     $summary['new'],
     $summary['closed'],

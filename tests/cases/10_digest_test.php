@@ -265,8 +265,11 @@ $t->test('the digest email carries List-Unsubscribe and its One-Click twin',
         ['id' => $userId]
     );
     $t->ok($row !== null);
-    $t->contains('Carl: ', (string) $row['subject']);
-    $t->contains('items for today', (string) $row['subject']);
+    // "Carl: N items for today" (handoff Section 12), singular when N is 1 --
+    // which is what a fresh database produces, so the assertion cannot
+    // assume the plural.
+    $t->ok(\preg_match('/^Carl: \d+ items? for today$/', (string) $row['subject']) === 1,
+        'subject was: ' . $row['subject']);
 
     $headers = \json_decode((string) $row['headers'], true);
     $t->contains('/unsubscribe/', (string) $headers['List-Unsubscribe']);

@@ -490,8 +490,13 @@ final class SystemController extends Controller
         $started = \microtime(true);
 
         $poller = new \Carl\Weather\AlertPoller($this->app);
+        // This runs under the web SAPI, so it inherits the 30 s ceiling. One
+        // request per location at about a second each outlasts that once
+        // there are a few dozen; the poller orders by least-recently-polled,
+        // so a bounded run makes progress and the next one continues.
         $summary = $poller->run(
-            $locationId !== null && \ctype_digit($locationId) ? (int) $locationId : null
+            $locationId !== null && \ctype_digit($locationId) ? (int) $locationId : null,
+            20.0
         );
 
         // An alert that arrives after this morning's digest has gone is no
@@ -502,8 +507,8 @@ final class SystemController extends Controller
 
         $lines = [
             'nws alerts',
-            \sprintf('locations %d, active %d, new %d, closed %d, failures %d, %.1f s',
-                $summary['locations'], $summary['stored'], $summary['new'],
+            \sprintf('locations %d, polled %d, active %d, new %d, closed %d, failures %d, %.1f s',
+                $summary['locations'], $summary['polled'], $summary['stored'], $summary['new'],
                 $summary['closed'], $summary['failures'], \microtime(true) - $started),
             '',
         ];

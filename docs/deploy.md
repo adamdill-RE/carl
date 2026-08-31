@@ -487,7 +487,7 @@ take `?key=<cron_key>`, and a wrong or absent key is 404:
 | Route | What it runs |
 | --- | --- |
 | `/tasks/weather-sync` | The nightly sync. `&kind=archive`, `&kind=forecast` or `&kind=recommend` to run one part. |
-| `/tasks/alerts-poll` | The NWS alerts poll. |
+| `/tasks/alerts-poll` | The NWS alerts poll. It stops after 20 s and says how far it got; it polls least-recently-polled first, so calling it again continues rather than repeating. |
 | `/tasks/daily-digest` | The digest. `&force=1` ignores the 06:00-local rule; the once-a-day key still holds, so forcing it cannot send two. |
 | `/tasks/mail-send` | The outbox drain. |
 

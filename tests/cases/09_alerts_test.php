@@ -278,6 +278,42 @@ $t->test('every poll writes a run row, success or failure',
     $t->same(0, (int) $run['rows_upserted']);
 });
 
+$t->test('a time budget stops the run, and the next one carries on',
+    function ($t) use ($app, $db, $makeLocation): void {
+    // The browser fallback inherits max_execution_time (30 s) and each
+    // location is one HTTP call. Eighty-five test locations took 69 seconds
+    // against the real service during development, so a bounded run has to
+    // make progress rather than redo the same first locations.
+    $ids = [$makeLocation(), $makeLocation(), $makeLocation()];
+
+    $slow = new class implements AlertProvider {
+        public int $calls = 0;
+        public function activeAt(float $latitude, float $longitude): HttpResult
+        {
+            $this->calls++;
+            \usleep(120000);
+            return (new HttpResult('stub://alerts', 200, '{}', 0.12, null))
+                ->withJson(['features' => []]);
+        }
+    };
+
+    $first = (new AlertPoller($app, $slow))->run(null, 0.15);
+    $t->ok($first['polled'] < $first['locations'], 'it stopped early');
+    $t->ok($first['polled'] >= 1, 'and it got through at least one');
+    $t->contains('run it again to continue', \implode(' | ', $first['log']));
+
+    // The ones it did poll now have a run row, so the ordering puts them
+    // last and the next call reaches different locations.
+    $polledFirst = $db->column(
+        "SELECT DISTINCT location_id FROM `weather_sync_run` WHERE kind = 'alerts'"
+        . ' AND started_at >= (UTC_TIMESTAMP() - INTERVAL 1 MINUTE)'
+    );
+    $t->ok(\count($polledFirst) >= 1);
+
+    $second = (new AlertPoller($app, $slow))->run(null, 0.15);
+    $t->ok($second['polled'] >= 1, 'the second call polls too, rather than stalling');
+});
+
 $t->group('Showing it');
 
 $t->test('the MOTD sees the active alert and not the expired one',

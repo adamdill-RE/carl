@@ -94,15 +94,29 @@ final class AlertPoller
     }
 
     /**
-     * @return array{locations:int,stored:int,new:int,closed:int,failures:int,
-     *               new_ids:list<int>,log:list<string>}
+     * @param float|null $budgetSeconds stop after roughly this long, for the
+     *        browser fallback, which inherits max_execution_time (30 s). One
+     *        call per location at ~1 s each means a few dozen locations
+     *        outlast the ceiling, and a run that dies halfway would otherwise
+     *        redo the same first locations every time. Ordering by
+     *        least-recently-polled is what makes a bounded run make progress.
+     * @return array{locations:int,polled:int,stored:int,new:int,closed:int,
+     *               failures:int,new_ids:list<int>,log:list<string>}
      */
-    public function run(?int $onlyLocationId = null): array
+    public function run(?int $onlyLocationId = null, ?float $budgetSeconds = null): array
     {
+        $started = \microtime(true);
+
         $locations = $this->db->all(
-            'SELECT * FROM `weather_location` WHERE `is_active` = 1'
-            . ($onlyLocationId !== null ? ' AND `id` = :id' : '')
-            . ' ORDER BY `id`',
+            'SELECT l.*, ('
+            . '  SELECT MAX(r.started_at) FROM `weather_sync_run` r'
+            . "  WHERE r.location_id = l.id AND r.kind = 'alerts'"
+            . ') AS last_polled'
+            . ' FROM `weather_location` l WHERE l.is_active = 1'
+            . ($onlyLocationId !== null ? ' AND l.id = :id' : '')
+            // Never polled first, then oldest first, so a run cut short by a
+            // time budget picks up where it left off rather than repeating.
+            . ' ORDER BY last_polled IS NOT NULL, last_polled, l.id',
             $onlyLocationId !== null ? ['id' => $onlyLocationId] : []
         );
 
@@ -110,9 +124,17 @@ final class AlertPoller
         $new = 0;
         $closed = 0;
         $failures = 0;
+        $polled = 0;
         $newIds = [];
 
         foreach ($locations as $location) {
+            if ($budgetSeconds !== null && (\microtime(true) - $started) >= $budgetSeconds) {
+                $this->note(\sprintf('stopped after %d of %d locations (time budget);'
+                    . ' run it again to continue with the rest',
+                    $polled, \count($locations)));
+                break;
+            }
+            $polled++;
             try {
                 $result = $this->pollOne($location);
                 $stored += $result['stored'];
@@ -132,9 +154,9 @@ final class AlertPoller
             }
         }
 
-        return ['locations' => \count($locations), 'stored' => $stored, 'new' => $new,
-                'closed' => $closed, 'failures' => $failures, 'new_ids' => $newIds,
-                'log' => $this->log];
+        return ['locations' => \count($locations), 'polled' => $polled, 'stored' => $stored,
+                'new' => $new, 'closed' => $closed, 'failures' => $failures,
+                'new_ids' => $newIds, 'log' => $this->log];
     }
 
     /**
