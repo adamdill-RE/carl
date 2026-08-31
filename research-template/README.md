@@ -150,7 +150,54 @@ that promise has a file behind it rather than a sentence here.
 
 ## Provenance of the datasets
 
-### `research_US-48217_2026-08-31.1.zip` (Phase 6, current)
+### `research_US-48217_2026-08-31.2.zip` (Phase 7, current)
+
+Takes the catalogue from 35 plant types to 103 and `plant_region` from 64 rows
+to 139, from the 2026-08-30 Hill County cultivar research. Fifteen categories
+are new — Radish, Carrot, Pumpkin, Cilantro, Chives, Kale, Asian greens,
+Brussels sprouts, Chinese cabbage, Watermelon, Tomatillo, Zinnia, Snapdragon,
+Viola and Gomphrena — alongside new cultivars under Tomato, Pepper, Bean,
+Lettuce, Cabbage, Cauliflower, Broccoli, Spinach, Basil, Dill, Southern pea
+and Squash (winter). Windows are anchored to the AgriLife North Central Texas
+(Region III) dates already in `regions.csv`; Kc comes from FAO-56 Table 12
+where the crop is in it, UF/IFAS AE456 for okra, and the FAO-56 small-vegetable
+group for the ornamentals and the tomatillo, named per row.
+
+Four cultivars in the research were already in the catalogue from the AgriLife
+recommended-cultivar list — **Okra Clemson Spineless, Pepper Cayenne, Pepper
+Serrano and Tomato Roma**. They are deliberately **not** restated. `plant_type`
+upserts on `(category, type)` and `plant_region` on `(region_key, category,
+type, season)`, so restating them would have replaced a `verified` extension
+row and its AgriLife window with a seed-catalogue estimate, without the preview
+showing anything more alarming than "4 updated". Their existing rows stand; the
+new file only adds.
+
+Three conventions in the source research did not survive contact with this
+template, and the differences are worth naming because the next dataset will
+hit them too:
+
+- The research packed the crop into `type` ("Tomato, Sun Gold F1") and put a
+  life-form word in `category` ("Vegetable", "Herb", "Flower"). This template
+  is the other way round — `category` is the crop the user picks first, `type`
+  is the cultivar — so they were split. Imported literally it would have made
+  three categories holding sixty-odd cultivars between them.
+- `lifecycle` here is `annual|perennial`. Carrots, cabbage, kale, cauliflower
+  and Brussels sprouts arrived as `biennial`, which is true botanically and
+  wrong for a planting calendar; they are stored as annuals and each note says
+  so.
+- Napa cabbage (Minuet F1, *Brassica rapa*) is its own category rather than a
+  type under Cabbage (*B. oleracea*), so the `plant_family` rotation warning
+  keeps telling the truth.
+
+Confidence is mapped from the research's own high/medium/low: `verified` where
+a named catalogue or extension source gave a value for that cultivar, `approx`
+where a crop-type norm was used, `generic` for the five Johnny's hybrids whose
+numeric DTM is not published (Arriba F1, SVPB8862 F1, Lavender F1, Clarissa F1,
+Ginfiz F1) and the Costa Rose II snapdragon. Those six are the rows to confirm
+first, because DTM is what the harvest countdown and the seed-start reminder
+are both computed from.
+
+### `research_US-48217_2026-08-31.1.zip` (Phase 6, kept)
 
 Adds `companions.csv` — 20 pairings, of which 4 are `verified`, 7 `approx`
 and 9 `generic`, which is roughly the honest ratio for this subject. Sources

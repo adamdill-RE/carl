@@ -288,7 +288,7 @@ In priority order. Items 1–3 have been outstanding since Phase 3.
    (`deploy.md` §7). Without it the queue never drains.
 5. **An Anthropic API key** in `config/local.php`, if Recommendations is
    wanted. Optional: with no key the feature queues and waits.
-6. **Import the Phase 6 dataset** (`research_US-48217_2026-08-31.1.zip`).
+6. **Import the current dataset** (`research_US-48217_2026-08-31.2.zip`).
    Without it `/companions` is an empty page that explains itself and the GDD
    reminder runs off the unvalidated `approx` row.
 7. **Add a cPanel forwarder** `carl@reshiftmanager.com` → a real inbox.

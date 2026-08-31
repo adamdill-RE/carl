@@ -1,7 +1,7 @@
 key,value
 template_version,2
-dataset_version,2026-08-31.1
+dataset_version,2026-08-31.2
 region_keys,US-48217
 produced_on,2026-08-31
-produced_by,"Claude Code, Phase 6"
-notes,"Phase 6. Adds companions.csv (template_version 2) and the five companion crops it needs -- basil, French marigold, nasturtium, dill and Blue Hubbard squash. Also promotes the squash vine borer GDD row to confidence=verified: 1000 DD50 from 01-01 was measured against 2019-2025 Hillsboro weather and lands 18 Apr - 6 May, matching the April/May emergence AgriLife reports. confidence=verified means read from an extension source or measured; approx means a reasonable regional estimate to be confirmed; generic means a non-regional reference value, or -- in companions.csv -- a pairing that is traditional rather than tested."
+produced_by,"Claude Code, Phase 7"
+notes,"Phase 7. Adds 68 cultivars from the 2026-08-30 Hill County research report, taking the catalogue from 35 to 103 plant types and plant_region from 64 to 139 rows. New categories: Radish, Carrot, Pumpkin, Cilantro, Chives, Kale, Asian greens, Brussels sprouts, Chinese cabbage, Watermelon, Tomatillo, Zinnia, Snapdragon, Viola, Gomphrena. Four cultivars in the report were already in the catalogue from the AgriLife recommended-cultivar list (Okra Clemson Spineless, Pepper Cayenne, Pepper Serrano, Tomato Roma) and are NOT restated here, so their verified AgriLife rows and windows stand. Kc for the ornamentals and the tomatillo are FAO-56 group analogues, named per row; DTM for the coded Johnny's hybrids is a type norm and carries confidence=generic."

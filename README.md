@@ -163,7 +163,7 @@ php -S 127.0.0.1:8088 -t public dev-router.php -c dev/php.ini
 ```
 
 Then `http://127.0.0.1:8088/carl/` — sign in as `admin` / `1234`, which forces
-a reset. Import `research-template/populated/research_US-48217_2026-08-31.1.zip`
+a reset. Import `research-template/populated/research_US-48217_2026-08-31.2.zip`
 from Admin → Research import before starting plants; without it there is no
 plant catalog.
 
