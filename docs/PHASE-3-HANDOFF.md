@@ -1,8 +1,14 @@
 # Carl — handoff for Phase 3
 
 **Phase 1 is live at `https://www.reshiftmanager.com/carl/` and logging real
-data.** This document is the scope for what comes next: the Phase 2 remnants,
+data.** This document was the scope for what came next: the Phase 2 remnants,
 then Phase 3 in full — reminders, email, the watering model and NWS alerts.
+
+> **Status, 2026-08-31: §3 and §4 are built.** 238 tests, 942 assertions,
+> `--strict`. §9 below records what was built differently from what this
+> document specified, and why, as §8 requires. The owner actions in §6 are
+> still outstanding — §4.1 was built to work correctly while its mailbox does
+> not exist, and to start sending the day it does.
 
 It **extends** `docs/CARL-HANDOFF.md` rather than replacing it. That document
 is still the authority on what Carl is, the screens, the data model and the
@@ -332,3 +338,106 @@ Unchanged from `CARL-HANDOFF.md` §17, with two additions Phase 1 earned:
   who corrected it.** It happened twice in Phase 1, both times because a
   reading described PHP rather than the platform. `hosting.md` and `weather.md`
   are copied-in authorities; annotate them, do not silently rewrite them.
+
+---
+
+## 9. What was built differently, and why
+
+§8 asks that a documented fact found to be wrong be corrected rather than
+silently worked around. Six things.
+
+### 9.1 `reminder`'s unique key, and `watering_recommendation`'s
+
+`CARL-HANDOFF.md` §5.8 gives `reminder` a unique key of
+`(user_id, planting_id, kind, due_date)` and `watering_recommendation` one of
+`(garden_id, for_date)`.
+
+Neither can be built as written. `planting_id` is NULL on five of the eleven
+reminder kinds, `garden_id` is NULL for every container, and **MySQL permits
+any number of NULLs in a unique index** — so both keys would have enforced
+nothing on exactly the rows that need them. Every watering reminder would have
+been written again on every run.
+
+Both tables carry an extra NOT NULL column that the index is built on instead:
+`reminder.subject_key` (`p:123`, `pt:7`, `pest:4`, or `-`) and
+`watering_recommendation.place_key` (`g:12` or `c:7`). The foreign keys are
+still there for the cascade; the key column is what the database can actually
+enforce. Same meaning, in a column an index can hold.
+
+### 9.2 `/admin/mail-test` is admin-guarded, not key-guarded
+
+`CARL-HANDOFF.md` §12.1 step 7 says `/admin/mail-test?key=`. A key-guarded
+route that mails an address from the query string is an open relay to anyone
+who ever sees the key — and a key travels in a URL, so it has been through a
+browser address bar and the account's raw access log (`deploy.md` §8 makes the
+same point about `setup_key`).
+
+It is `Route::ADMIN_ACCESS` instead, and the destination is fixed to the
+signed-in admin's own address. It also **queues rather than sends**, because
+§5 forbids a third-party call on the request path; the drain sends it, and the
+page shows the outcome on the next load.
+
+### 9.3 The migration 009 alert key was wrong
+
+`weather_alert` had `UNIQUE KEY (nws_id)`. Two users a few ZIPs apart share a
+county and get the same alert id from `api.weather.gov`, so the second
+upsert moved the one row from the first user's location to the second's and
+one of them silently stopped seeing a freeze warning that was genuinely over
+their garden.
+
+Migration 014 replaces it with `(location_id, nws_id)`. 009 is unchanged —
+migrations are immutable once applied (hosting §7).
+
+### 9.4 The temporary password still goes to a screen, and now also to a mailbox
+
+§4.1 says the on-screen path should be supplemented, not removed, and it is.
+A temporary password in an inbox is a real exposure: it sits there until the
+account is first used. It is bounded by `must_reset_password`, so the window
+is one sign-in long.
+
+**The better answer is a tokenised set-password link**, which removes the
+password from the mail entirely. That is a change to the auth flow larger than
+§4.10 asks for, and it is the Phase 4 improvement to make here.
+
+### 9.5 One CSRF exemption, for One-Click unsubscribe
+
+`Route::TOKEN_ACCESS` is new: no login, and no CSRF token, because the
+credential is in the path. There is exactly one route with it, the RFC 8058
+One-Click unsubscribe, which a mail client POSTs with no session and no page
+having been rendered — and which Gmail and Outlook now expect of bulk mail.
+
+It is safe only because of what the route can do: turn one person's own email
+off. A forged request achieves precisely what the link it forged was for. The
+constant's docblock says not to reuse it, and nothing does.
+
+### 9.6 Two rules Section 12 left to judgement
+
+- **`start_seeds_by`** is scoped to the types the region marks
+  `recommended`. Every type in the catalog would be a wall of text nobody
+  reads, and "recommended" is the research's own answer to what is worth
+  growing there.
+- **Irrigation depth from a logged watering** counts each `garden_event` as
+  one application, and all directly-logged plant waterings on a day as one
+  more (the deepest of them). Watering six plants in a bed by hand is one
+  irrigation of the bed, not six. Every assumption the model makes about
+  depth is stated in the reason text, which is the part §11 is emphatic
+  about.
+
+---
+
+## 10. Still outstanding
+
+Nothing in §3 or §4 is unbuilt. What remains is not code:
+
+1. **§6.1, the mailbox.** Until it exists, mail queues and waits. `/status`
+   and `/admin/mail-test` both say so in as many words. Nothing is lost and
+   nothing sends twice when the credentials arrive.
+2. **§6.2, spike 4.** `/admin/mail-test` queues a message with whichever
+   driver is configured; switch `mail.driver` in `config/local.php`, queue one
+   of each, and note which lands in a Gmail inbox with `spf=pass dkim=pass`.
+3. **§3.3's live half.** The chain is tested end to end against a stub;
+   `deploy.md` §7 now carries the checklist for seeing it once against the
+   real archive.
+4. **§6.3, §6.4, §6.5** — unchanged, and nothing depends on them.
+5. **§7, Claude Design.** `tokens.css` is still the one-file palette swap, and
+   §3.4's field sheet is still blocked on the PDF.

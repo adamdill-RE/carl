@@ -27,25 +27,35 @@ anything that looks unusual.
 
 ## What is built
 
-Phase 1, the alpha cut (handoff §14): accounts can log real data. Reports,
-PDFs, email, watering recommendations and reminders come after data starts
-flowing.
+Phases 1, 2 and 3 (handoff §14). Accounts log real data; the nightly jobs turn
+it into advice.
 
 - Login, forced first reset, onboarding wizard, ZIP → county → region.
 - Start a New Plant (indoor seed start, direct sow, transplant), each with the
-  research card for that plant and region.
+  research card for that plant and region, and the row occupancy hint.
 - Log Plant Activity: every action the plant's state allows, all backdatable,
   all able to carry a narrative and photos, single or batched.
 - Build Garden, Garden Actions (including zone watering that fans out to every
   living plant in the zone's rows), View Garden.
 - Lists — the user's own seed sources, soils, fertilisers and the rest, with
   inline "+ Add new…" on every dropdown.
-- Admin: create user, research import, regions needing research.
+- Admin: create user, research import, regions needing research, mail health.
 - Weather: nightly archive and forecast sync, and the MOTD matrix.
+- **Watering recommendation** (§11): FAO-56's checkbook, computed nightly per
+  garden and container, shown on the MOTD with the numbers behind it.
+- **NWS alerts** (§8.4): polled every three hours; only the classes that
+  matter to a garden.
+- **Reminders and the daily digest** (§12): eleven kinds, computed hourly and
+  sent at each user's own 06:00, with a tokenised One-Click unsubscribe.
+- **Mail**: an outbox drained by cron, with an SMTP and a Brevo driver. Until
+  the mailbox exists (§12.1, an owner action) mail queues and waits — nothing
+  is lost, and the temporary password for a new account is still shown on
+  screen.
+- **CSV export** (§13.3): plants, events and weather, formula-injection
+  guarded and streamed.
 
-Not built yet, by design: reports and charts (Phase 4), PDFs (Phase 4), email
-and reminders (Phase 3), the watering model (Phase 3), NWS alerts (Phase 3),
-CSV export (Phase 2).
+Not built yet, by design: reports and charts (Phase 4), PDFs (Phase 4), the
+field-recording sheet and the palette (both Claude Design).
 
 ## Layout
 
@@ -59,9 +69,11 @@ carl/
   research-template/        the research dataset contract and the first dataset
   db/migrations/            numbered, immutable once applied
   db/seed/zcta.csv          33,791 ZIP rows, public-domain Census data
-  bin/                      migrate.php, weather_sync.php
+  bin/                      migrate.php, weather_sync.php, alerts_poll.php,
+                            daily_digest.php, mail_send.php
   app/bootstrap.php         autoloader, config, the parse-error guard
-  app/src/                  Core, Auth, Repo, Domain, Controller, Research, Weather, Support
+  app/src/                  Core, Auth, Repo, Domain, Controller, Research,
+                            Weather, Mail, Reminders, Support
   app/views/                plain PHP templates
   public/                   the ONLY directory the web reaches
   tests/                    run.php --strict, plus the CI lint scripts
@@ -98,6 +110,19 @@ plant catalog.
 
 `http://127.0.0.1:8088/carl/status?key=dev-status` is the health page.
 
+The nightly and hourly jobs can all be run by hand:
+
+```bash
+php bin/weather_sync.php --verbose         # archive + forecast
+php bin/weather_sync.php --recommend -v    # the watering model; calls no API
+php bin/alerts_poll.php --verbose          # NWS alerts
+php bin/daily_digest.php --force --verbose # ignore the 06:00-local rule
+php bin/mail_send.php --status             # what is queued, and with what driver
+```
+
+Each has a key-guarded browser twin under `/tasks/`, because the production
+account has no shell.
+
 Every configuration value can be overridden by an environment variable with a
 `CARL_` prefix and underscores for the path: `CARL_DB_HOST`, `CARL_BASE_PATH`,
 `CARL_WEATHER_RETRY_DELAY`.
@@ -105,7 +130,7 @@ Every configuration value can be overridden by an environment variable with a
 ## Tests
 
 ```bash
-php tests/run.php --strict          # 116 cases; needs a database
+php tests/run.php --strict          # 238 cases; needs a database
 php tests/lint_cpanel_yml.php       # the host's parser rules
 php tests/check_collation.php       # utf8mb4_unicode_ci on every table
 php tests/check_asset_budget.php    # the client shell against 150 KB gzipped
@@ -117,11 +142,27 @@ plant, every action type, the zone fan-out, photos, data isolation between two
 accounts — and smoke-tests every GET route by enumerating the router, so a
 template that only breaks on an unusual value cannot slip through.
 
-Weather is tested against a stub provider rather than the live API: the free
-tier is rate limited per IP, both daily and hourly, so a suite that called it
-would be flaky *and* would spend the quota the nightly job depends on. The
-hourly limit is easy to hit — two full syncs in one hour did it during
-development.
+Weather and NWS alerts are tested against stub providers rather than the live
+APIs: Open-Meteo's free tier is rate limited per IP, both daily and hourly, so
+a suite that called it would be flaky *and* would spend the quota the nightly
+job depends on. The hourly limit is easy to hit — two full syncs in one hour
+did it during development. `api.weather.gov` cannot be asked for a freeze
+warning in August, and should not be asked at all by a test.
+
+Both were driven against the real services once, by hand, and what they
+returned is recorded in the tests that stand in for them.
+
+The SMTP driver is the exception: it is exercised against a real socket, a
+forked listener that speaks enough SMTP to accept or refuse a message. A
+hand-rolled SMTP client that has only ever met a mock is a client whose
+multi-line reply handling has never actually been tried.
+
+The digest's two hardest cases are both about time and both silent — sending
+at the server's morning instead of the user's, and sending the same thing
+twice — so they are tested with a frozen clock and two accounts eleven hours
+apart. The eight reminder kinds that fire on one or two days of the year are
+tested the same way; without it, a rule that never fires would stay
+undiscovered for a season.
 
 ## Deploying
 

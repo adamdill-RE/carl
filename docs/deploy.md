@@ -442,6 +442,58 @@ the hourly quota rather than a failure — the run is not retried inside the
 same hour on purpose, and the next night's run picks the gap up, because the
 fetch plan is derived from what is missing rather than from a cursor.
 
+## 7.5 Mail (handoff §12.1)
+
+Nothing here is needed for the app to run. Until it is done, Carl **queues its
+mail and waits**: nothing is lost, nothing sends twice when the credentials
+arrive, and the temporary password for a new account is still shown on screen,
+which is the path that has always worked. `/admin/mail-test` and `/status?key=`
+both say which state it is in.
+
+1. **cPanel → Email Accounts → Create.** `carl@reshiftmanager.com`, a strong
+   password, 250 MB quota. Open **Connect Devices** and note the outgoing
+   server, the port, and the username — it is the full address, not the local
+   part.
+2. **cPanel → Email Deliverability → `reshiftmanager.com` → Manage.** Install
+   the suggested SPF record and the suggested DKIM record. If Brevo is adopted
+   later, merge SPF into one record —
+   `v=spf1 +mx +a include:spf.brevo.com ~all` — because a domain with two SPF
+   records has none.
+3. **Zone Editor.** Add TXT `_dmarc.reshiftmanager.com` =
+   `v=DMARC1; p=none; rua=mailto:carl@reshiftmanager.com`. `p=none` first:
+   it reports without rejecting, so a misconfiguration is visible rather than
+   silent.
+4. **File Manager → `carl-app/config/local.php`,** and add the `mail` block.
+   `config/local.php.example` carries it commented out, for both drivers. Set
+   `driver` to `smtp` **or** `api`, never both. Mode stays 0600.
+5. **Sign in as an admin → Admin → Mail.** It should now say
+   `smtp mail.reshiftmanager.com:465 (tls) as carl@reshiftmanager.com` rather
+   than "no driver". Press **Queue a test**.
+6. The drain sends it within ten minutes. To not wait:
+   `/tasks/mail-send?key=<cron_key>`. Reload the Mail page: the message reads
+   `sent`, or `failed` with the reason on the row.
+7. In the received message, **View original** (Gmail) and look for
+   `spf=pass` and `dkim=pass`. If either says `fail` or `none`, step 2 or 3 has
+   not propagated yet — DNS takes up to an hour.
+8. **Spike 4** (handoff §6.2) is steps 4 to 7 done once with `driver = smtp`
+   and once with `driver = api`, noting which lands in the inbox rather than
+   in spam. Record the answer in this file.
+
+### The key-guarded task routes
+
+Every cron job has a browser twin, because the account has no shell. All four
+take `?key=<cron_key>`, and a wrong or absent key is 404:
+
+| Route | What it runs |
+| --- | --- |
+| `/tasks/weather-sync` | The nightly sync. `&kind=archive`, `&kind=forecast` or `&kind=recommend` to run one part. |
+| `/tasks/alerts-poll` | The NWS alerts poll. |
+| `/tasks/daily-digest` | The digest. `&force=1` ignores the 06:00-local rule; the once-a-day key still holds, so forcing it cannot send two. |
+| `/tasks/mail-send` | The outbox drain. |
+
+These run under the web SAPI and inherit the 30 s ceiling, so each chunks its
+work the same way the CLI form does and the two stay interchangeable.
+
 ## 8. Close the door
 
 Two keys were only ever meant to be temporary.
@@ -484,6 +536,10 @@ checksum is recorded and a changed file is refused rather than silently re-run.
 | A file you can see in File Manager 404s | The directory's mode. 0700 inside the document root produces a 404, not a 403. |
 | `Plugin 'unix_socket' is not loaded` | `db.host` is pointing at `localhost`. It must be the Remote MySQL address. |
 | Weather stopped | `/status?key=` — newest observation, last successful run, last bad status. A 429 is the Open-Meteo per-IP quota, most likely another of your own projects, or another account on sh193 if outbound leaves by the server address (§0.5). Either way it heals on its own. |
+| No watering advice on the MOTD | `/status?key=` — "watering rows today". The model needs the weather in first, so it runs at 05:45, half an hour after the sync. An indoor garden never gets one on purpose: ET₀ is an outdoor number. |
+| No morning email | `/status?key=` — the DIGEST block. "last run NEVER" means the hourly cron entry is missing. "0 due" every hour means nobody's local clock has hit 06:00 during a run. Then the MAIL block: with no driver, mail queues and waits, which is the expected state until §7.5 is done. |
+| A message stuck in the outbox | Admin → Mail lists the last fifteen with the reason on each. `failed` after five attempts is a real refusal and the row says which; `queued` with attempts above zero is a backoff and will go by itself. |
+| Alerts never appear | `/status?key=` — "active nws alerts" per location. Zero is usually correct; most days have none. `/tasks/alerts-poll?key=` runs it on demand and prints what it found. |
 | `apache_php_fpm` shows down in cPanel | Correct. It is not in use; the server is LiteSpeed over LSAPI. |
 
 ## Still open for the owner
@@ -491,8 +547,8 @@ checksum is recorded and a changed file is refused rather than silently re-run.
 1. Settle spike 0.5 — which IP Open-Meteo sees — whenever convenient. One
    line of curl; nothing depends on the answer. Spikes 1, 2, 3 and 5 are done
    and recorded in §0.
-2. The §12.1 mailbox and DNS steps, before any Phase 3 email work. That is
-   also spike 4.
+2. The §12.1 mailbox and DNS steps, written out in §7.5. That is also spike 4.
+   Nothing else waits on it: mail queues until it is done.
 3. Ask Ahosting whether `ea-php82-php-opcache` can be enabled. If it is,
    `opcache.validate_timestamps` becomes a deploy concern — a file-copy deploy
    may not take effect until revalidation.
