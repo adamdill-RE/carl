@@ -735,12 +735,17 @@ JavaScript.
 
 ## 10. Open questions for the owner
 
-1. **Does a planting ever need to split?** A planting is a *group* —
-   `quantity_initial` / `quantity_live` — and there is no split operation. If
-   twelve seedlings from one tray go into two different beds, that is one
-   planting today, and one tag cannot be in two places. Either accept one tag
-   per planting, or add a split, which is a real change to the domain and
-   should be decided before the tag tables are written rather than after.
+1. ~~**Does a planting ever need to split?**~~ **Answered, and it became its
+   own proposal: [`PLANTING-SPLIT-SPEC.md`](PLANTING-SPLIT-SPEC.md).** A
+   planting is a group with *one location*, so a hundred seedlings that go to
+   two gardens over three weekends cannot be described at all today. The
+   answer is a split that produces a real planting, which keeps every planting
+   location-singular — and that dissolves the tag question rather than
+   answering it: one tag per planting becomes correct by construction.
+   **That proposal sequences before this one** (its §7): building tags against
+   a unit about to change shape means designing the rules twice, and the
+   moment to bind a tag to the six plants you are moving is the transplant
+   screen the split rebuilds.
 2. **Laser or inkjet?** Decides §1.3 outright.
 3. **Is a short domain worth $10 a year?** §2.3 lever 1. It is the only
    change that makes the code meaningfully bigger on the same tag, and it is
