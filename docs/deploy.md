@@ -523,16 +523,51 @@ openssl rand -hex 24
 Push, then **Deploy HEAD Commit**. There is no build and no restart; the next
 request picks the files up, because there is no OPcache on this host.
 
-If a deploy adds a migration, `/status?key=` will say so and `/setup?key=`
-applies it — which means re-adding `setup_key` for the length of the migration
-and removing it again afterwards. Migrations are immutable once applied: the
-checksum is recorded and a changed file is refused rather than silently re-run.
+### If the deploy added a migration, the site is down until you run it
+
+**Check `/status?key=` immediately after every deploy.** The deploy copies code
+and never touches the database (hosting §6.3), so between the deploy finishing
+and `/setup?key=` running, the code is ahead of the schema and **every page that
+touches a new table returns a 500**. That is not a subtle degradation; the main
+menu is one of those pages.
+
+This bit on the Phase 3 deploy, which added four migrations.
+
+```
+  migrations applied 11
+  migrations pending 4
+    - 012_mail.sql (ddl)
+    ...
+    run them at /carl/setup?key=<setup_key>
+```
+
+To run them:
+
+1. **File Manager → `carl-app/config/local.php`** → add
+   `'setup_key' => '<paste a fresh random string>',`
+   Generate one with `openssl rand -hex 24` anywhere, or use any long random
+   string. Save.
+2. Open `https://www.reshiftmanager.com/carl/setup?key=<that string>`.
+3. Apply the pending migrations from that page.
+4. Reload `/status?key=` — pending should read 0.
+5. **Remove the `setup_key` line from `local.php`.** Whoever holds it can take
+   the master admin account. Paste a *fresh* value next time rather than
+   reusing this one: it has been in a URL, so it is in a browser bar and the
+   account's raw access log.
+
+Signed in as an admin, a 500 caused by this now says so on the page itself
+rather than leaving you guessing. A user gets the generic message; the schema
+is not their business.
+
+Migrations are immutable once applied: the checksum is recorded and a changed
+file is refused rather than silently re-run.
 
 ## When something is wrong
 
 | Symptom | Look at |
 | --- | --- |
 | Every page 500s right after editing config | The bootstrap prints the file and line. A missing trailing comma is the usual cause. |
+| Every page 500s right after a **deploy** | Pending migrations. `/status?key=` names them; see "Redeploying" for how to apply them. Signed in as an admin, the error page says so itself. |
 | A file you can see in File Manager 404s | The directory's mode. 0700 inside the document root produces a 404, not a 403. |
 | `Plugin 'unix_socket' is not loaded` | `db.host` is pointing at `localhost`. It must be the Remote MySQL address. |
 | Weather stopped | `/status?key=` — newest observation, last successful run, last bad status. A 429 is the Open-Meteo per-IP quota, most likely another of your own projects, or another account on sh193 if outbound leaves by the server address (§0.5). Either way it heals on its own. |

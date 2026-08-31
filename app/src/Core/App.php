@@ -251,7 +251,10 @@ final class App
         } catch (Throwable $e) {
             \error_log('[carl] ' . $e::class . ': ' . $e->getMessage()
                 . ' at ' . $e->getFile() . ':' . $e->getLine());
-            return $this->decorate($this->errorResponse(500, '', $request), null);
+            return $this->decorate(
+                $this->errorResponse(500, '', $request, self::operatorHint($e)),
+                null
+            );
         }
     }
 
@@ -305,8 +308,38 @@ final class App
         return null;
     }
 
-    private function errorResponse(int $status, string $message, Request $request): Response
+    /**
+     * A deploy copies code but never runs migrations (hosting Section 6.3),
+     * so there is always a window in which the code is ahead of the schema
+     * and every page touching a new table returns 500. The generic error page
+     * sends whoever is diagnosing it looking for a routing or code fault --
+     * which is exactly what happened on the Phase 3 deploy, when four pending
+     * migrations presented as "there is nothing at that address".
+     *
+     * Naming the real cause turns that into a thirty-second fix. It is shown
+     * to an ADMIN only: the table name and the schema state are not a user's
+     * business, and /status already carries the detail.
+     */
+    private static function operatorHint(Throwable $e): string
     {
+        // 42S02 is SQLSTATE "base table or view not found". PDO puts the
+        // SQLSTATE in the exception's code, and repeats it in the message.
+        $missingTable = $e instanceof \PDOException
+            && ((string) $e->getCode() === '42S02' || \str_contains($e->getMessage(), '42S02'));
+
+        return $missingTable
+            ? 'The database is missing a table this page needs. That almost always means a '
+              . 'deploy added migrations that have not been run yet: open /status to see which '
+              . 'are pending, then apply them at /setup.'
+            : '';
+    }
+
+    private function errorResponse(
+        int $status,
+        string $message,
+        Request $request,
+        string $adminHint = '',
+    ): Response {
         if ($request->isAjax()) {
             return Response::json([
                 'error'   => $status,
@@ -316,9 +349,10 @@ final class App
 
         try {
             $body = $this->view()->render('error', [
-                'status'  => $status,
-                'message' => $message,
-                'user'    => $this->auth()->userOrNull(),
+                'status'    => $status,
+                'message'   => $message,
+                'adminHint' => $adminHint,
+                'user'      => $this->auth()->userOrNull(),
             ]);
             return Response::html($body, $status);
         } catch (Throwable) {
