@@ -19,6 +19,7 @@ use Carl\Domain\ReminderKind;
 use Carl\Reminders\Digest;
 use Carl\Reminders\DigestMessage;
 use Carl\Reminders\ReminderBuilder;
+use Carl\Repo\PlantingRepository;
 use Carl\Repo\ReminderRepository;
 use Carl\Repo\UserRepository;
 use Carl\Support\Clock;
@@ -365,13 +366,16 @@ $t->test('first_harvest_expected fires a week out and again on the day',
     $min = (int) $type['dtm_days_min'];
     // Sown so that maturity falls on 2026-10-01.
     $sown = (string) Clock::addDays('2026-10-01', -$min);
-    $db->run(
-        'INSERT INTO `planting` (user_id, plant_type_id, label, start_method, start_date,'
-        . ' quantity_initial, quantity_live, state, state_changed_at, created_at, updated_at)'
-        . " VALUES (:u, :pt, 'Harvest Test', 'direct_sow', :d, 1, 1, 'planted',"
-        . '  UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP())',
-        ['u' => $userId, 'pt' => (int) $type['id'], 'd' => $sown]
-    );
+    (new PlantingRepository($db, $userId))->insert([
+        'plant_type_id'    => (int) $type['id'],
+        'label'            => 'Harvest Test',
+        'start_method'     => 'direct_sow',
+        'start_date'       => $sown,
+        'quantity_initial' => 1,
+        'quantity_live'    => 1,
+        'state'            => 'planted',
+        'state_changed_at' => \gmdate('Y-m-d H:i:s'),
+    ]);
 
     $fires($t, $app, $db, $userId, '2026-09-24 12:00:00', 'should be ready in a week');
     $fires($t, $app, $db, $userId, '2026-10-01 12:00:00', 'should be ready about now');
@@ -425,14 +429,15 @@ $t->test('inactivity nudges once, and then stops until something is logged',
 
     // A planting with one event, ten days ago.
     $typeId = (int) $db->value('SELECT id FROM `plant_type` ORDER BY id LIMIT 1');
-    $db->run(
-        'INSERT INTO `planting` (user_id, plant_type_id, start_method, start_date,'
-        . ' quantity_initial, quantity_live, state, state_changed_at, created_at, updated_at)'
-        . " VALUES (:u, :pt, 'direct_sow', '2026-06-05', 1, 1, 'planted',"
-        . '  UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP())',
-        ['u' => $idleId, 'pt' => $typeId]
-    );
-    $plantingId = $db->insertId();
+    $plantingId = (new PlantingRepository($db, $idleId))->insert([
+        'plant_type_id'    => $typeId,
+        'start_method'     => 'direct_sow',
+        'start_date'       => '2026-06-05',
+        'quantity_initial' => 1,
+        'quantity_live'    => 1,
+        'state'            => 'planted',
+        'state_changed_at' => \gmdate('Y-m-d H:i:s'),
+    ]);
     $db->run(
         'INSERT INTO `plant_event` (user_id, planting_id, event_type, event_date, recorded_at, created_at)'
         . " VALUES (:u, :p, 'direct_sown', '2026-06-05', UTC_TIMESTAMP(), UTC_TIMESTAMP())",

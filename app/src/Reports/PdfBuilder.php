@@ -176,6 +176,13 @@ final class PdfBuilder
     {
         $initial = (int) $planting['quantity_initial'];
         $live = (int) $planting['quantity_live'];
+        $lost = (int) $planting['quantity_lost'];
+        // Attrition, not absence. Plants transplanted out of this planting are
+        // alive in another bed, and dividing by what is left on THIS row would
+        // print six plants moving as six plants dying
+        // (docs/PLANTING-SPLIT-SPEC.md Section 4.5). One expression, shared
+        // with the plant page, so the PDF and the screen cannot drift.
+        $survival = PlantingState::survivalPercent($initial, $lost);
 
         $facts = [
             'Started' => Units::longDate((string) $planting['start_date'])
@@ -184,10 +191,12 @@ final class PdfBuilder
                 ? Units::longDate((string) $planting['in_ground_date']) : null,
             'Germinated' => $planting['germinated_at'] !== null
                 ? Units::longDate((string) $planting['germinated_at']) : null,
-            'Ended' => $planting['ended_at'] !== null
+            PlantingState::endedLabel($planting['ended_reason'] ?? null) => $planting['ended_at'] !== null
                 ? Units::longDate((string) $planting['ended_at']) : null,
             'Living' => $live . ' of ' . $initial
-                . ($initial > 0 ? ' (' . \round($live / $initial * 100) . '% survival)' : ''),
+                . ($survival === null ? '' : ' (' . $survival . '% survival)')
+                . ($initial - $lost - $live > 0
+                    ? ', ' . ($initial - $lost - $live) . ' moved out to another planting' : ''),
         ];
 
         if ($yield['events'] > 0) {

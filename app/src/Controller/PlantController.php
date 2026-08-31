@@ -227,6 +227,12 @@ final class PlantController extends Controller
 
         return $this->render('plants/show', [
             'planting'      => $planting,
+            // ONE statement, and only for a page that can show something: a
+            // planting that was never split off anything and never sent
+            // anything out has no lineage to draw, and asking costs a
+            // statement on every plant page in the app to answer "no" for
+            // almost all of them (docs/PLANTING-SPLIT-SPEC.md Section 4.6).
+            'lineage'       => $this->lineageFor($planting),
             'card'          => $card,
             'events'        => $events,
             'photos'        => $photos,
@@ -237,6 +243,32 @@ final class PlantController extends Controller
             'pdfUrl'        => $this->app->url('report/plant/' . $plantingId . '/pdf'),
             'countdowns'    => $this->countdowns($planting, $card),
         ]);
+    }
+
+    /**
+     * The lineage panel's data, or an empty one without asking.
+     *
+     * A planting knows from its own row whether it came out of something:
+     * split_from_id is right there. What it cannot know without asking is
+     * whether anything came out of IT -- but a planting that has never been
+     * split has quantity_live + quantity_lost = quantity_initial, because
+     * dispersal is the only other thing that takes plants off a row. So the
+     * question is answered from the row in hand, and the statement is spent
+     * only by the pages that have something to show for it.
+     *
+     * @param array<string,mixed> $planting
+     * @return array{parent:?array<string,mixed>,children:list<array<string,mixed>>}
+     */
+    private function lineageFor(array $planting): array
+    {
+        $splitFrom = $planting['split_from_id'] === null ? null : (int) $planting['split_from_id'];
+        $dispersed = (int) $planting['quantity_initial']
+            - (int) $planting['quantity_lost'] - (int) $planting['quantity_live'];
+
+        if ($splitFrom === null && $dispersed <= 0) {
+            return ['parent' => null, 'children' => []];
+        }
+        return $this->plantings()->lineage((int) $planting['id'], $splitFrom);
     }
 
     /** The research card, fetched when a plant type is chosen on a form. */

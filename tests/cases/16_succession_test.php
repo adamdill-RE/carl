@@ -23,6 +23,7 @@ use Carl\Auth\Password;
 use Carl\Domain\ReminderKind;
 use Carl\Planting\Succession;
 use Carl\Reminders\Digest;
+use Carl\Repo\PlantingRepository;
 use Carl\Repo\UserRepository;
 use Carl\Support\Clock;
 use Carl\Tests\Client;
@@ -277,13 +278,16 @@ if ($sowable !== null) {
         function ($t) use ($db, $userId, $sowable, $sownOn, $readOn, $atUtc): void {
         $db->run('DELETE FROM `planting` WHERE `user_id` = :u', ['u' => $userId]);
         $db->run('DELETE FROM `reminder` WHERE `user_id` = :u', ['u' => $userId]);
-        $db->run(
-            'INSERT INTO `planting` (user_id, plant_type_id, label, start_method, start_date,'
-            . ' quantity_initial, quantity_live, state, state_changed_at, created_at, updated_at)'
-            . " VALUES (:u, :pt, 'Round one', 'direct_sow', :d, 6, 6, 'planted',"
-            . '  UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP())',
-            ['u' => $userId, 'pt' => (int) $sowable['id'], 'd' => $sownOn]
-        );
+        (new PlantingRepository($db, $userId))->insert([
+            'plant_type_id'    => (int) $sowable['id'],
+            'label'            => 'Round one',
+            'start_method'     => 'direct_sow',
+            'start_date'       => $sownOn,
+            'quantity_initial' => 6,
+            'quantity_live'    => 6,
+            'state'            => 'planted',
+            'state_changed_at' => \gmdate('Y-m-d H:i:s'),
+        ]);
 
         (new Digest($atUtc($readOn . ' 12:00:00')))->run($userId, true);
 
@@ -321,17 +325,17 @@ if ($sowable !== null) {
         $db->run('DELETE FROM `reminder` WHERE `user_id` = :u', ['u' => $userId]);
         // Buying a tomato start says nothing about whether there is seed
         // left in the packet.
-        $db->run(
-            'INSERT INTO `planting` (user_id, plant_type_id, label, start_method, start_date,'
-            . ' in_ground_date, quantity_initial, quantity_live, state, state_changed_at,'
-            . ' created_at, updated_at)'
-            // Two names for one value: with ATTR_EMULATE_PREPARES off a
-            // named placeholder cannot be reused (hosting Section 7), and
-            // the error says only "Invalid parameter number".
-            . " VALUES (:u, :pt, 'Bought in', 'nursery_transplant', :d, :d_in, 2, 2, 'planted',"
-            . '  UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP())',
-            ['u' => $userId, 'pt' => (int) $sowable['id'], 'd' => $sownOn, 'd_in' => $sownOn]
-        );
+        (new PlantingRepository($db, $userId))->insert([
+            'plant_type_id'    => (int) $sowable['id'],
+            'label'            => 'Bought in',
+            'start_method'     => 'nursery_transplant',
+            'start_date'       => $sownOn,
+            'in_ground_date'   => $sownOn,
+            'quantity_initial' => 2,
+            'quantity_live'    => 2,
+            'state'            => 'planted',
+            'state_changed_at' => \gmdate('Y-m-d H:i:s'),
+        ]);
 
         (new Digest($atUtc($readOn . ' 12:00:00')))->run($userId, true);
 
@@ -345,13 +349,16 @@ if ($sowable !== null) {
         function ($t) use ($db, $userId, $sowable, $sownOn, $atUtc): void {
         $db->run('DELETE FROM `planting` WHERE `user_id` = :u', ['u' => $userId]);
         $db->run('DELETE FROM `reminder` WHERE `user_id` = :u', ['u' => $userId]);
-        $db->run(
-            'INSERT INTO `planting` (user_id, plant_type_id, label, start_method, start_date,'
-            . ' quantity_initial, quantity_live, state, state_changed_at, created_at, updated_at)'
-            . " VALUES (:u, :pt, 'Round one', 'direct_sow', :d, 6, 6, 'planted',"
-            . '  UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP())',
-            ['u' => $userId, 'pt' => (int) $sowable['id'], 'd' => $sownOn]
-        );
+        (new PlantingRepository($db, $userId))->insert([
+            'plant_type_id'    => (int) $sowable['id'],
+            'label'            => 'Round one',
+            'start_method'     => 'direct_sow',
+            'start_date'       => $sownOn,
+            'quantity_initial' => 6,
+            'quantity_live'    => 6,
+            'state'            => 'planted',
+            'state_changed_at' => \gmdate('Y-m-d H:i:s'),
+        ]);
 
         (new Digest($atUtc((string) Clock::addDays($sownOn, 9) . ' 12:00:00')))
             ->run($userId, true);

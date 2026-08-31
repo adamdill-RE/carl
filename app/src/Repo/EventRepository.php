@@ -34,7 +34,7 @@ final class EventRepository extends Repository
         return ['planting_id', 'event_type', 'event_date', 'recorded_at', 'quantity_delta',
                 'duration_min', 'weight_g', 'count_qty', 'unit', 'narrative',
                 'ref_list_item_id', 'ref_list_item_id_2', 'garden_id', 'garden_row_id',
-                'container_id', 'source_garden_event_id', 'payload'];
+                'container_id', 'split_planting_id', 'source_garden_event_id', 'payload'];
     }
 
     protected function hasUpdatedAt(): bool
@@ -84,13 +84,19 @@ final class EventRepository extends Repository
         return $this->db->all(
             'SELECT e.*, l1.name AS ref_name, l1.list_type AS ref_type,'
             . ' l2.name AS ref_name_2, l2.list_type AS ref_type_2,'
-            . ' g.name AS garden_name, gr.name AS row_name, c.name AS container_name'
+            . ' g.name AS garden_name, gr.name AS row_name, c.name AS container_name,'
+            // A sixth LEFT JOIN and not a sixth statement: the split_out row
+            // is the only one that carries a split_planting_id, and without
+            // its category the timeline can only say "6 went somewhere".
+            . ' spt.category AS split_category, spt.type AS split_type'
             . ' FROM `plant_event` e'
             . ' LEFT JOIN `user_list_item` l1 ON l1.id = e.ref_list_item_id'
             . ' LEFT JOIN `user_list_item` l2 ON l2.id = e.ref_list_item_id_2'
             . ' LEFT JOIN `garden` g ON g.id = e.garden_id'
             . ' LEFT JOIN `garden_row` gr ON gr.id = e.garden_row_id'
             . ' LEFT JOIN `container` c ON c.id = e.container_id'
+            . ' LEFT JOIN `planting` sp ON sp.id = e.split_planting_id AND sp.user_id = e.user_id'
+            . ' LEFT JOIN `plant_type` spt ON spt.id = sp.plant_type_id'
             . ' WHERE e.user_id = :' . self::SCOPE . ' AND e.planting_id = :planting_id'
             . ' ORDER BY e.event_date DESC, e.recorded_at DESC, e.id DESC',
             $this->bind(['planting_id' => $plantingId])
@@ -196,7 +202,7 @@ final class EventRepository extends Repository
         return $this->db->all(
             'SELECT e.id, e.event_type, e.event_date, e.recorded_at, e.planting_id,'
             . ' e.quantity_delta, e.duration_min, e.weight_g, e.count_qty, e.unit,'
-            . ' e.narrative, e.source_garden_event_id,'
+            . ' e.narrative, e.source_garden_event_id, e.split_planting_id,'
             . ' pt.category, pt.type, p.label AS plant_label,'
             . ' g.name AS garden_name, gr.name AS row_name, c.name AS container_name,'
             . ' l1.name AS ref_name, l2.name AS ref_name_2'

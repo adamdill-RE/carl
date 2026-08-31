@@ -45,8 +45,10 @@ final class ExportController extends Controller
         return $this->csv('carl-plants-' . $this->today() . '.csv', static function () use ($plantings): iterable {
             yield Csv::BOM . Csv::line([
                 'planting_id', 'category', 'type', 'plant_family', 'latin_name', 'label',
-                'start_method', 'start_date', 'in_ground_date', 'ended_at', 'state',
-                'quantity_initial', 'quantity_live', 'garden', 'row', 'container',
+                'start_method', 'start_date', 'in_ground_date', 'ended_at', 'ended_reason', 'state',
+                'quantity_initial', 'quantity_live', 'quantity_lost',
+                'split_from_planting_id', 'root_planting_id',
+                'garden', 'row', 'container',
                 'seed_source', 'nursery', 'default_water_method', 'hardening_schedule',
                 'germinated_at', 'hardening_started_at', 'hardening_days',
                 'trellis_used', 'collar_used', 'seeds_per_collar',
@@ -64,8 +66,9 @@ final class ExportController extends Controller
                         $row['id'], $row['category'], $row['type'], $row['plant_family'],
                         $row['latin_name'], $row['label'],
                         $row['start_method'], $row['start_date'], $row['in_ground_date'],
-                        $row['ended_at'], $row['state'],
-                        $row['quantity_initial'], $row['quantity_live'],
+                        $row['ended_at'], $row['ended_reason'], $row['state'],
+                        $row['quantity_initial'], $row['quantity_live'], $row['quantity_lost'],
+                        $row['split_from_id'], $row['root_planting_id'],
                         $row['garden_name'], $row['row_name'], $row['container_name'],
                         $row['seed_source_name'], $row['nursery_name'],
                         $row['water_method_name'], $row['hardening_schedule_name'],
@@ -100,7 +103,7 @@ final class ExportController extends Controller
                 'garden', 'row', 'container', 'water_zone',
                 'quantity_delta', 'duration_min', 'weight_g', 'count_qty', 'unit',
                 'reference', 'reference_2', 'derived_from_garden_event',
-                'fanned_out_to_plants', 'narrative',
+                'moved_to_planting_id', 'fanned_out_to_plants', 'narrative',
             ]);
 
             $afterId = 0;
@@ -116,7 +119,7 @@ final class ExportController extends Controller
                         $row['quantity_delta'], $row['duration_min'], $row['weight_g'],
                         $row['count_qty'], $row['unit'],
                         $row['ref_name'], $row['ref_name_2'], $row['source_garden_event_id'],
-                        null, $row['narrative'],
+                        $row['split_planting_id'], null, $row['narrative'],
                     ]);
                 }
             } while (\count($rows) === self::CHUNK);
@@ -132,7 +135,7 @@ final class ExportController extends Controller
                         $row['garden_name'], $row['row_names'], null, $row['zone_name'],
                         null, $row['duration_min'], null, null, null,
                         $row['ref_name'], $row['ref_name_2'], null,
-                        $row['fanout_count'], $row['narrative'],
+                        null, $row['fanout_count'], $row['narrative'],
                     ]);
                 }
             } while (\count($rows) === self::CHUNK);
@@ -256,6 +259,14 @@ final class ExportController extends Controller
                         'An event with a source_garden_event_id was derived from a garden-wide'
                             . ' action, not logged against that plant on its own. Counting both'
                             . ' is double counting.',
+                        'A planting has exactly one location. When part of a group is moved'
+                            . ' somewhere else it becomes a planting of its own, with'
+                            . ' split_from_planting_id pointing at the one it left and'
+                            . ' root_planting_id at the original sowing; the planting it left'
+                            . ' carries a split_out event for the same count. quantity_lost is'
+                            . ' ATTRITION only -- plants that died, failed or were culled -- so'
+                            . ' survival is (quantity_initial - quantity_lost) / quantity_initial'
+                            . ' and plants that merely moved are not losses.',
                         'Decimal columns arrive as JSON strings ("14.02"), which is how the'
                             . ' database returns them. They are exact; ZIP and FIPS codes are'
                             . ' strings for a different reason and must stay that way.',
