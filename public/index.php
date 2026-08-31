@@ -43,5 +43,11 @@ if ($root === null) {
 /** @var Carl\Core\App $app */
 $app = require $root . '/app/bootstrap.php';
 
+// This file IS the public directory, and on the server that directory is a
+// sibling of the app root rather than a child of it. Telling the app where it
+// is keeps the ?v=<mtime> asset stamp working there (hosting Section 9);
+// without it, a one-year Expires would freeze a changed stylesheet.
+$app->setPublicPath(__DIR__);
+
 $request = Carl\Core\Request::fromGlobals($app->basePath());
 $app->send($app->handle($request));

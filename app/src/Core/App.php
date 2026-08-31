@@ -27,6 +27,7 @@ final class App
     private ?Clock $clock = null;
     private ?Units $units = null;
     private ?Request $request = null;
+    private ?string $publicPath = null;
 
     public function __construct(private Config $config, private string $root)
     {
@@ -102,17 +103,32 @@ final class App
     }
 
     /**
-     * Where public/ actually lives. Locally it is a sibling of app/; on the
-     * server it is public_html/carl, which is not under the app root at all.
+     * Where public/ actually lives.
+     *
+     * Locally it is a sibling of app/. On the server it is
+     * public_html/carl, which is NOT under the app root -- the two
+     * directories are siblings of each other, not nested (hosting Section
+     * 5.1). Guessing $root/public there silently costs every asset its
+     * ?v=<mtime> stamp, and with a one-year Expires in .htaccess a changed
+     * stylesheet would then not reach a browser for a year (hosting Section
+     * 9). So the front controller, which is IN that directory, tells us.
      */
     public function publicPath(): string
     {
-        $local = $this->root . '/public';
-        if (\is_dir($local)) {
-            return $local;
+        if ($this->publicPath !== null) {
+            return $this->publicPath;
         }
         $configured = $this->config->get('public_path');
-        return \is_string($configured) ? $configured : $local;
+        if (\is_string($configured) && \is_dir($configured)) {
+            return $this->publicPath = $configured;
+        }
+        return $this->publicPath = $this->root . '/public';
+    }
+
+    /** Called by the front controller with its own directory. */
+    public function setPublicPath(string $path): void
+    {
+        $this->publicPath = $path;
     }
 
     public function session(): Session

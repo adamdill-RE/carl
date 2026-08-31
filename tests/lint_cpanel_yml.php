@@ -104,6 +104,36 @@ foreach (['app', 'db', 'bin'] as $directory) {
     }
 }
 
+// Every path the deploy copies must exist in a clean checkout. Git does not
+// track empty directories, so a source directory holding only gitignored
+// files is present locally and absent on the server -- where the cp fails,
+// and a failing task fails the WHOLE deployment (hosting Section 6.2).
+$tracked = [];
+$listing = [];
+\exec('git -C ' . \escapeshellarg(\dirname(__DIR__)) . ' ls-files', $listing);
+foreach ($listing as $file) {
+    $tracked[$file] = true;
+    $parts = \explode('/', $file);
+    \array_pop($parts);
+    $prefix = '';
+    foreach ($parts as $part) {
+        $prefix = $prefix === '' ? $part : $prefix . '/' . $part;
+        $tracked[$prefix] = true;
+    }
+}
+
+\preg_match_all('/cp -R ([^\s]+)/', $raw, $copies);
+foreach ($copies[1] as $source) {
+    $path = \rtrim(\str_replace('/.', '', $source), '/');
+    if ($path === '' || \str_starts_with($path, '$')) {
+        continue;
+    }
+    if (!isset($tracked[$path])) {
+        $errors[] = 'the deploy copies "' . $source . '", which no tracked file lives under; '
+            . 'it will not exist in a fresh clone and the task will fail the deployment';
+    }
+}
+
 if ($errors !== []) {
     \fwrite(\STDERR, ".cpanel.yml would be rejected by the host parser:\n");
     foreach ($errors as $error) {

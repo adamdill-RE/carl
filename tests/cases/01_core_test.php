@@ -339,3 +339,50 @@ $t->test('every script the templates load exists on disk', function ($t) use ($a
     }
     $t->same([], $missing);
 });
+
+$t->group('The deployed layout, where public/ is a sibling not a child');
+
+$t->test('assets keep their ?v= stamp when public/ is not under the app root',
+    function ($t) use ($app): void {
+    // On the server the app root is ~/carl-app and the public directory is
+    // ~/public_html/carl -- siblings, not nested (hosting Section 5.1).
+    // Without the stamp the one-year Expires in .htaccess would freeze a
+    // changed stylesheet in every browser that had already loaded it
+    // (hosting Section 9).
+    $elsewhere = \sys_get_temp_dir() . '/carl_public_' . \bin2hex(\random_bytes(4));
+    \mkdir($elsewhere . '/assets/css', 0755, true);
+    \file_put_contents($elsewhere . '/assets/css/carl.css', 'body{}');
+
+    try {
+        $isolated = new Carl\Core\App(
+            Carl\Core\Config::fromArray(['base_path' => '/carl/']),
+            '/nowhere/carl-app'
+        );
+        $isolated->setPublicPath($elsewhere);
+
+        $url = $isolated->asset('assets/css/carl.css');
+        $t->contains('?v=', $url);
+        $t->contains('/carl/assets/css/carl.css', $url);
+    } finally {
+        @\unlink($elsewhere . '/assets/css/carl.css');
+        @\rmdir($elsewhere . '/assets/css');
+        @\rmdir($elsewhere . '/assets');
+        @\rmdir($elsewhere);
+    }
+});
+
+$t->test('an asset that does not exist still produces a usable URL', function ($t): void {
+    $isolated = new Carl\Core\App(
+        Carl\Core\Config::fromArray(['base_path' => '/carl/']),
+        '/nowhere/carl-app'
+    );
+    $t->same('/carl/assets/css/missing.css', $isolated->asset('assets/css/missing.css'));
+});
+
+$t->test('the front controller tells the app where the public directory is',
+    function ($t) use ($app): void {
+    // If this call is ever dropped, the stamp silently disappears on the
+    // server and nowhere else -- which is the hardest kind of bug to notice.
+    $contents = (string) \file_get_contents($app->root() . '/public/index.php');
+    $t->contains('setPublicPath(__DIR__)', $contents);
+});
