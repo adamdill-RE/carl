@@ -21,6 +21,8 @@ use Carl\Repo\UserRepository;
 use Carl\Repo\WateringRepository;
 use Carl\Repo\WeatherRepository;
 use Carl\Repo\ZctaRepository;
+use Carl\Reports\Series;
+use Carl\Support\Photos;
 
 /**
  * Base controller: the repositories, the current user, and the two things
@@ -39,6 +41,8 @@ abstract class Controller
     private ?WeatherRepository $weather = null;
     private ?WateringRepository $watering = null;
     private ?ZctaRepository $zcta = null;
+    private ?Series $series = null;
+    private ?Photos $photoService = null;
 
     public function __construct(protected App $app)
     {
@@ -126,6 +130,44 @@ abstract class Controller
     protected function watering(): WateringRepository
     {
         return $this->watering ??= new WateringRepository($this->app->db(), $this->userId());
+    }
+
+    /**
+     * The data behind a report (handoff Section 13.1): the weather over a
+     * subject's covered dates and the subject's own events, in one statement
+     * each. The plant page, the JSON endpoint and the PDF all read it, which
+     * is what stops the three disagreeing about which days a plant covers.
+     */
+    protected function series(): Series
+    {
+        return $this->series ??= new Series(
+            $this->plantings(),
+            $this->events(),
+            $this->gardens(),
+            $this->weather(),
+            $this->app->units(),
+        );
+    }
+
+    /**
+     * Server-side photo handling (handoff Section 10). Not a repository: it
+     * owns the files under var/photos, which is the half of a photograph the
+     * database does not hold.
+     */
+    protected function photoService(): Photos
+    {
+        if ($this->photoService !== null) {
+            return $this->photoService;
+        }
+        $config = $this->app->config();
+        return $this->photoService = new Photos(
+            $this->app->varPath('photos'),
+            $config->int('photos.max_bytes', 2097152),
+            $config->int('photos.max_megapixels', 40),
+            $config->int('photos.long_edge', 1920),
+            $config->int('photos.thumb_edge', 320),
+            $config->int('photos.jpeg_quality', 85),
+        );
     }
 
     protected function zcta(): ZctaRepository

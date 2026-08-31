@@ -7,7 +7,6 @@ namespace Carl\Controller;
 use Carl\Core\HttpException;
 use Carl\Core\Request;
 use Carl\Core\Response;
-use Carl\Support\Photos;
 use Throwable;
 
 /**
@@ -40,7 +39,7 @@ final class PhotoController extends Controller
         }
 
         try {
-            $stored = $this->photos_service()->store($file, $this->userId());
+            $stored = $this->photoService()->store($file, $this->userId());
         } catch (Throwable $e) {
             return Response::json(['ok' => false, 'message' => $e->getMessage()], 400);
         }
@@ -91,7 +90,7 @@ final class PhotoController extends Controller
             ? (string) $photo['thumb_name']
             : (string) $photo['stored_name'];
 
-        $path = $this->photos_service()->path($this->userId(), $name);
+        $path = $this->photoService()->path($this->userId(), $name);
         if (!\is_file($path)) {
             throw HttpException::notFound('That photo file is missing.');
         }
@@ -105,18 +104,5 @@ final class PhotoController extends Controller
         return Response::binary($body, 'image/jpeg')
             ->withHeader('Cache-Control', 'private, max-age=86400')
             ->withHeader('Content-Disposition', 'inline');
-    }
-
-    private function photos_service(): Photos
-    {
-        $config = $this->app->config();
-        return new Photos(
-            $this->app->varPath('photos'),
-            $config->int('photos.max_bytes', 2097152),
-            $config->int('photos.max_megapixels', 40),
-            $config->int('photos.long_edge', 1920),
-            $config->int('photos.thumb_edge', 320),
-            $config->int('photos.jpeg_quality', 85),
-        );
     }
 }

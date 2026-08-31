@@ -13,9 +13,10 @@ weather that actually happened.
 | Document | Authority over |
 | --- | --- |
 | [`docs/CARL-HANDOFF.md`](docs/CARL-HANDOFF.md) | Scope. What Carl is, the screens, the data model, the phasing. |
-| [`docs/PHASE-3-HANDOFF.md`](docs/PHASE-3-HANDOFF.md) | What to build next, and the facts Phase 1 measured that the original scope could only assume. |
+| [`docs/PHASE-5-HANDOFF.md`](docs/PHASE-5-HANDOFF.md) | What to build next, and the facts each phase measured that the original scope could only assume. The earlier phase handoffs are kept as they were written. |
 | [`docs/hosting.md`](docs/hosting.md) | Every platform constraint. Overrides the handoff where they conflict. |
 | [`docs/weather.md`](docs/weather.md) | Weather ingestion. Overrides the handoff where they conflict. |
+| [`docs/deploy.md`](docs/deploy.md) | The runbook, and §0 is every measurement taken on the live host. |
 
 Read hosting.md before writing code. Roughly a third of its facts *remove* an
 option, and three of them — which server the database is on, which engine it
@@ -27,8 +28,8 @@ anything that looks unusual.
 
 ## What is built
 
-Phases 1, 2 and 3 (handoff §14). Accounts log real data; the nightly jobs turn
-it into advice.
+Phases 1 through 4 (handoff §14). Accounts log real data, the nightly jobs turn
+it into advice, and the reports turn a season into something you can read.
 
 - Login, forced first reset, onboarding wizard, ZIP → county → region.
 - Start a New Plant (indoor seed start, direct sow, transplant), each with the
@@ -53,9 +54,22 @@ it into advice.
   screen.
 - **CSV export** (§13.3): plants, events and weather, formula-injection
   guarded and streamed.
+- **Reports and charts** (§13.1): the plant and garden pages draw the weather
+  that actually happened over the dates they cover — a temperature band,
+  rainfall, ET₀, and the logged actions as markers on top of it. Chart.js is a
+  vendored file; the data comes from `/api/plant/<id>/series`, which costs one
+  statement for the weather and one for the events however long the season was.
+- **PDF reports** (§13.2): "Download PDF" posts the charts back up and gets a
+  document with the research card, the full event table, the photographs and
+  the citations. Measured at 1.9 s and 16 MB on a twenty-photo report against a
+  10 s / 64 MB budget (`deploy.md` §0.8).
+- **`/export/claude.json`** (§13.3): the same records as one document, with the
+  research values in force for your region, shaped for pasting into a
+  conversation with Claude. The bridge to the v2 Recommendations feature.
 
-Not built yet, by design: reports and charts (Phase 4), PDFs (Phase 4), the
-field-recording sheet and the palette (both Claude Design).
+Not built yet, by design: the per-garden prefilled field sheet (blocked on the
+static sheet, a Claude Design deliverable), the palette (also Claude Design),
+and everything in v2.
 
 ## Layout
 

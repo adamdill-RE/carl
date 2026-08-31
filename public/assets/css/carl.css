@@ -289,6 +289,47 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
 .tickbox        { width: 20px; height: 20px; margin-top: 4px; flex: none; }
 .credential     { font-size: 18px; letter-spacing: .05em; }
 
+/* ---------- Report charts (handoff Section 13.1) ---------- */
+
+/*
+ * One weather series visible at a time (weather.md Section 7.3): four
+ * overlaid weather variables are unreadable at 380px. The other two panels
+ * are NOT display:none -- a canvas with no layout box has no pixels, and
+ * toDataURL() on it returns a blank image, which is what the PDF would then
+ * carry. They are laid out on top of the active one and hidden with
+ * visibility, so all three are really painted.
+ *
+ * The active panel is the one in flow, so it gives .chart-stack its height
+ * and the absolute ones inherit that box.
+ */
+.chart-tabs { display: flex; gap: 6px; margin: 10px 0 8px; flex-wrap: wrap; }
+.chart-tab {
+  min-height: 34px; padding: 5px 12px; font-size: 13px;
+  font-family: inherit; cursor: pointer;
+  color: var(--carl-text); background: var(--carl-surface);
+  border: 1px solid var(--carl-border-strong); border-radius: var(--carl-radius);
+}
+.chart-tab.is-active {
+  color: var(--carl-text-inverse); background: var(--carl-primary);
+  border-color: var(--carl-primary);
+}
+
+.chart-stack { position: relative; }
+.chart-panel { position: absolute; inset: 0; visibility: hidden; height: 240px; }
+.chart-panel.is-active { position: relative; visibility: visible; }
+.chart-panel > canvas { display: block; width: 100%; height: 100%; }
+
+/* The tabs and the button are chrome; before the script has run there is
+ * nothing to toggle and nothing to download. */
+.charts .chart-tabs,
+.charts [data-chart-pdf] { display: none; }
+.charts.is-ready .chart-tabs { display: flex; }
+.charts.is-ready [data-chart-pdf] { display: block; }
+
+@media (min-width: 560px) {
+  .chart-panel { height: 300px; }
+}
+
 /* ---------- Footer ---------- */
 
 .foot { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--carl-border);
@@ -299,7 +340,7 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
 .skip-link:focus { left: 8px; top: 8px; z-index: 50; padding: 8px; background: var(--carl-surface); }
 
 @media print {
-  .topbar, .menu, .btn, .dismiss { display: none !important; }
+  .topbar, .menu, .btn, .dismiss, .chart-tabs { display: none !important; }
   body { background: #fff; }
   .card { border: none; box-shadow: none; padding: 0; }
 }

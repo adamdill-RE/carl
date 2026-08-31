@@ -15,6 +15,7 @@ use Carl\Controller\MenuController;
 use Carl\Controller\OnboardingController;
 use Carl\Controller\PhotoController;
 use Carl\Controller\PlantController;
+use Carl\Controller\ReportController;
 use Carl\Controller\SystemController;
 
 /**
@@ -116,6 +117,22 @@ final class Routes
         $r->get('/export/plants.csv', ExportController::class, 'plantsCsv');
         $r->get('/export/events.csv', ExportController::class, 'eventsCsv');
         $r->get('/export/weather.csv', ExportController::class, 'weatherCsv');
+        // The v2 "Recommendations" bridge: the same data, shaped for pasting
+        // into a Claude conversation. Deliberately NOT formula-guarded --
+        // see the docblock, which says why and says not to "fix" it.
+        $r->get('/export/claude.json', ExportController::class, 'claudeJson');
+
+        // -- Reports: the chart data and the PDF (handoff Section 13) -------
+        // The report PAGES are /plants/<id> and /gardens/<id>, server-rendered
+        // and readable with JavaScript off. These two add the series a chart
+        // reads and the download at the bottom of it.
+        //
+        // The PDF is a POST because the browser sends the chart canvases up
+        // as PNGs (Section 13.2); it is not a write, and it changes nothing.
+        $r->get('/api/plant/{id:\d+}/series', ReportController::class, 'plantSeries');
+        $r->get('/api/garden/{id:\d+}/series', ReportController::class, 'gardenSeries');
+        $r->post('/report/plant/{id:\d+}/pdf', ReportController::class, 'plantPdf');
+        $r->post('/report/garden/{id:\d+}/pdf', ReportController::class, 'gardenPdf');
 
         // -- Photos (never a direct URL -- handoff Section 5.3) -------------
         $r->post('/photos', PhotoController::class, 'upload');

@@ -10,7 +10,7 @@ $e = $view->e(...);
 $pageTitle = 'Export your data';
 ?>
 <h1 class="page-title">Export your data</h1>
-<p class="page-sub">Three CSV files, covering everything you have recorded. Yours only.</p>
+<p class="page-sub">Everything you have recorded, in four files. Yours only.</p>
 
 <section class="card">
   <ul class="list">
@@ -40,6 +40,15 @@ $pageTitle = 'Export your data';
         Nothing yet -- finish onboarding so Carl knows where your garden is, and the
         nightly sync will start filling this in.
 <?php endif; ?>
+      </div>
+    </li>
+    <li>
+      <a href="<?= $e($app->url('export/claude.json')) ?>">for-claude.json</a>
+      <div class="small muted">
+        The same records as one JSON document, with your gardens, the weather for the
+        dates they cover, and the research values in force for your region -- shaped so
+        you can paste it into a conversation with Claude and ask it about your season.
+        It is not a spreadsheet file, so nothing in it is quoted for Excel.
       </div>
     </li>
   </ul>

@@ -115,6 +115,61 @@ final class ReferenceRepository
     }
 
     /** @return array<string,mixed>|null */
+    /**
+     * The research rows for a given set of plant types, and the regional
+     * overrides in force for one region -- "the research values in force"
+     * of handoff Section 13.3, for the plants a user actually grows rather
+     * than for the whole catalogue.
+     *
+     * Two statements whatever the number of plant types, which is what keeps
+     * the JSON export from costing one round trip per planting.
+     *
+     * @param list<int> $plantTypeIds
+     * @return array{plants:list<array<string,mixed>>,regions:list<array<string,mixed>>}
+     */
+    public function researchFor(array $plantTypeIds, ?int $regionId): array
+    {
+        if ($plantTypeIds === []) {
+            return ['plants' => [], 'regions' => []];
+        }
+
+        $names = [];
+        $params = [];
+        foreach (\array_values(\array_unique($plantTypeIds)) as $i => $id) {
+            $names[] = ':t' . $i;
+            $params['t' . $i] = $id;
+        }
+        $in = '(' . \implode(', ', $names) . ')';
+
+        $plants = $this->db->all(
+            'SELECT * FROM `plant_type` WHERE `id` IN ' . $in . ' ORDER BY `category`, `type`',
+            $params
+        );
+
+        if ($regionId === null) {
+            return ['plants' => $plants, 'regions' => []];
+        }
+
+        // The placeholders cannot be reused across two statements' worth of
+        // binding either -- these are fresh names for the second (hosting
+        // Section 7).
+        $names = [];
+        $regionParams = ['region_id' => $regionId];
+        foreach (\array_values(\array_unique($plantTypeIds)) as $i => $id) {
+            $names[] = ':r' . $i;
+            $regionParams['r' . $i] = $id;
+        }
+
+        $regions = $this->db->all(
+            'SELECT * FROM `plant_region`'
+            . ' WHERE `region_id` = :region_id AND `plant_type_id` IN (' . \implode(', ', $names) . ')'
+            . " ORDER BY `plant_type_id`, FIELD(`season`, 'spring', 'summer', 'fall', 'winter')",
+            $regionParams
+        );
+
+        return ['plants' => $plants, 'regions' => $regions];
+    }
+
     public function findPlantType(int $id): ?array
     {
         return $this->db->one('SELECT * FROM `plant_type` WHERE `id` = :id', ['id' => $id]);

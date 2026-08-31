@@ -197,6 +197,83 @@ $t->test('the chunked walk returns every row, not just the first chunk',
     $t->same($total, \count($seen), 'every planting came back exactly once');
 });
 
+$t->group('/export/claude.json (handoff Section 13.3)');
+
+$t->test('the document is valid JSON, streamed, and carries every section',
+    function ($t) use ($client, $db, $owner): void {
+    $response = $client->get('/export/claude.json');
+    $t->same(200, $response->status);
+    $t->same('application/json; charset=utf-8', $response->headers()['Content-Type']);
+    $t->contains('attachment; filename="carl-for-claude-', $response->headers()['Content-Disposition']);
+    $t->ok($response->isStreamed(), 'built in pieces, not assembled and encoded once');
+
+    $body = $response->collect();
+    $document = \json_decode($body, true);
+    $t->ok(\is_array($document), 'the stream really is one valid JSON document');
+
+    foreach (['carl', 'gardener', 'gardens', 'containers', 'lists', 'plantings',
+              'plant_events', 'garden_events', 'weather', 'research', 'attribution'] as $section) {
+        $t->ok(\array_key_exists($section, $document), 'section: ' . $section);
+    }
+
+    $t->same('carl-export', $document['carl']['document']);
+    $t->ok($document['carl']['read_me'] !== [], 'and it says how to read itself');
+    $t->ok(\count($document['plantings']) > 0, 'with the plantings in it');
+});
+
+$t->test('it is NOT formula-injection guarded, and that is the point',
+    function ($t) use ($client): void {
+    // Csv::field() prefixes a leading '=' so a spreadsheet does not run the
+    // cell. JSON has no formulas, and running these values through the guard
+    // would rewrite every negative number in the file -- quantity_delta is
+    // negative on every cull. The absence is deliberate; this is the test
+    // that stops someone "fixing" it.
+    $document = \json_decode($client->get('/export/claude.json')->collect(), true);
+
+    $labels = \array_column($document['plantings'], 'label');
+    $t->ok(\in_array('=cmd|\' /C calc\'!A0', $labels, true),
+        'the nickname comes back exactly as it was typed');
+    foreach ($labels as $label) {
+        $t->notContains("'=cmd", (string) $label, 'and is never apostrophe-prefixed');
+    }
+});
+
+$t->test('no user_id rides along on any row', function ($t) use ($client): void {
+    $body = $client->get('/export/claude.json')->collect();
+    $t->notContains('"user_id"', $body, 'it is this user own id on every row: noise, not data');
+});
+
+$t->test('the weather carries its credit, generated from the rows in it',
+    function ($t) use ($client): void {
+    // weather.md Section 10: attribution is required and non-optional, and
+    // generated from source_model rather than hard-coded.
+    $document = \json_decode($client->get('/export/claude.json')->collect(), true);
+    if ($document['weather']['days'] === []) {
+        $t->same([], $document['attribution'], 'no rows, no credit');
+        return;
+    }
+    $t->contains('Open-Meteo.com', $document['attribution'][0]);
+});
+
+$t->test('the document does not cost a statement per row',
+    function ($t) use ($client, $db, $owner): void {
+    // The three unbounded tables are walked in keyset chunks; everything else
+    // is bounded by what a person builds by hand. Either way the count must
+    // not track the number of rows.
+    $before = $db->statementCount();
+    $client->get('/export/claude.json')->collect();
+    $spent = $db->statementCount() - $before;
+
+    $rows = (int) $db->value(
+        'SELECT (SELECT COUNT(*) FROM `planting` WHERE user_id = :u1)'
+        . ' + (SELECT COUNT(*) FROM `plant_event` WHERE user_id = :u2)',
+        ['u1' => $owner['id'], 'u2' => $owner['id']],
+        0
+    );
+    $t->ok($rows > 0, 'there is something to walk: ' . $rows . ' rows');
+    $t->ok($spent < 40, 'spent ' . $spent . ' statements on ' . $rows . ' rows');
+});
+
 $t->group('An export is one user data');
 
 $t->test('a second account exports its own rows and none of the first',
@@ -216,6 +293,14 @@ $t->test('a second account exports its own rows and none of the first',
     $t->ok($ownerRows > 0, 'the first account does have plantings to leak');
     // Header only: this account has recorded nothing.
     $t->same(1, \substr_count(\trim($body), "\r\n") + 1, 'one line, the header');
+
+    // The JSON export is the same scope, through the same repositories.
+    $json = $client->get('/export/claude.json');
+    $t->same(200, $json->status);
+    $document = \json_decode($json->collect(), true);
+    $t->same([], $document['plantings'], "and no plantings of the first account's");
+    $t->same([], $document['plant_events']);
+    $t->same([], $document['research']['plants'], 'nor research for plants it does not grow');
 });
 
 $t->test('a signed-out request is redirected to login, not served a file',

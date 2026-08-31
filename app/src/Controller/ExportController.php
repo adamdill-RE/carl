@@ -6,6 +6,8 @@ namespace Carl\Controller;
 
 use Carl\Core\Request;
 use Carl\Core\Response;
+use Carl\Domain\ListType;
+use Carl\Support\Attribution;
 use Carl\Support\Csv;
 
 /**
@@ -180,6 +182,245 @@ final class ExportController extends Controller
                     }
                 } while (\count($rows) === self::CHUNK);
             });
+    }
+
+    /**
+     * `/export/claude.json` (handoff Section 13.3): one document per user,
+     * shaped for pasting into a Claude conversation. This is the bridge to
+     * the v2 "Recommendations" feature.
+     *
+     * It inherits three of the four rules above and deliberately not the
+     * fourth:
+     *
+     *  - **User-scoped**, through the same repositories. Same reason.
+     *  - **Keyset-paginated and chunked** on the three tables with no natural
+     *    size bound: plantings, events and weather. Gardens, rows, zones and
+     *    containers are not chunked, because a person builds them by hand and
+     *    there are single figures of each; a keyset walk over four rows is
+     *    ceremony, not safety.
+     *  - **NOT formula-injection guarded.** Csv::field() prefixes a cell that
+     *    begins `=`, `+`, `-` or `@` with an apostrophe so a spreadsheet does
+     *    not run it. That is a spreadsheet problem and JSON has no formulas:
+     *    running these values through it would silently rewrite every
+     *    negative number in the file -- `quantity_delta` is negative on every
+     *    cull -- and hand the reader corrupted data to reason about. The
+     *    guard is absent on purpose. Do not "fix" it.
+     *
+     * The document is written incrementally rather than assembled and
+     * encoded once. A user with five years of weather and a few hundred
+     * plantings is a few hundred thousand rows of nothing in particular, and
+     * memory_limit is 128M (hosting Section 4): building the array first
+     * would hold the whole thing twice, once as PHP values and once as the
+     * encoded string.
+     */
+    public function claudeJson(Request $request): Response
+    {
+        $user = $this->user();
+        $today = $this->today();
+
+        $plantings = $this->plantings();
+        $events = $this->events();
+        $gardens = $this->gardens();
+        $lists = $this->lists();
+        $weather = $this->weather();
+        $reference = $this->reference();
+
+        $region = $user->regionId !== null ? $reference->findRegion($user->regionId) : null;
+        $location = $user->weatherLocationId !== null
+            ? $weather->findLocation($user->weatherLocationId) : null;
+
+        $units = $this->app->units();
+
+        return Response::streamed(
+            function () use (
+                $user, $today, $plantings, $events, $gardens, $lists, $weather,
+                $reference, $region, $location, $units
+            ): iterable {
+                yield '{"carl":' . self::json([
+                    'document'     => 'carl-export',
+                    'version'      => 1,
+                    'generated_at' => \gmdate('c'),
+                    'generated_for_local_date' => $today,
+                    // What a reader needs to know before believing a number.
+                    'read_me' => [
+                        'One gardener\'s own records. Every date is that gardener\'s local'
+                            . ' calendar day, not UTC.',
+                        'Weather is stored SI as it arrives from the archive: temperatures in'
+                            . ' Celsius, depths in millimetres, wind in km/h. The gardener reads'
+                            . ' the site in ' . ($units->isUs() ? 'US units' : 'SI units')
+                            . '; convert for them, not for yourself.',
+                        'water_balance_mm is precip_mm minus et0_mm. A negative run of days is'
+                            . ' the soil drying out.',
+                        'is_provisional means the archive may still revise that day: it re-reads'
+                            . ' roughly the last two weeks.',
+                        'An event with a source_garden_event_id was derived from a garden-wide'
+                            . ' action, not logged against that plant on its own. Counting both'
+                            . ' is double counting.',
+                        'Decimal columns arrive as JSON strings ("14.02"), which is how the'
+                            . ' database returns them. They are exact; ZIP and FIPS codes are'
+                            . ' strings for a different reason and must stay that way.',
+                        'research.plants and research.regions are the values in force for this'
+                            . ' gardener\'s region. Each carries a confidence: verified, approx'
+                            . ' or generic. A generic value is a catalogue default, not a'
+                            . ' measurement for this county.',
+                    ],
+                ]);
+
+                yield ',"gardener":' . self::json([
+                    'name'          => $user->name,
+                    'timezone'      => $user->timezone,
+                    'zip'           => $user->zip,
+                    'county_fips'   => $user->countyFips,
+                    'display_units' => $units->isUs() ? 'us' : 'si',
+                    // The whole region row, not three fields of it: the frost
+                    // dates and the growing season length are the facts a
+                    // recommendation is actually built on, and leaving them
+                    // out would make the document look complete while being
+                    // useless for the thing it exists to feed.
+                    'region' => $region === null ? null : self::row($region),
+                ]);
+
+                // Bounded by hand: a person builds a handful of gardens.
+                yield ',"gardens":[';
+                $separator = '';
+                foreach ($gardens->activeGardens() as $garden) {
+                    $gardenId = (int) $garden['id'];
+                    yield $separator . self::json(self::row($garden) + [
+                        'rows'  => \array_map(self::row(...), $gardens->rows($gardenId)),
+                        'zones' => \array_map(self::row(...), $gardens->zones($gardenId)),
+                    ]);
+                    $separator = ',';
+                }
+                yield ']';
+
+                yield ',"containers":' . self::json(
+                    \array_map(self::row(...), $gardens->containers(false))
+                );
+                // The gardener's own vocabulary -- their seed sources, soils,
+                // fertilisers, water methods. Without it every ref_name in the
+                // event log is a word with no category behind it.
+                yield ',"lists":' . self::json(\array_map(
+                    static fn (array $items): array => \array_map(self::row(...), $items),
+                    $lists->manyTypes(ListType::all())
+                ));
+
+                // Unbounded from here on: keyset walks, a chunk at a time.
+                $plantTypeIds = [];
+                yield ',"plantings":[';
+                $separator = '';
+                $afterId = 0;
+                do {
+                    $rows = $plantings->exportChunk($afterId, self::CHUNK);
+                    foreach ($rows as $row) {
+                        $afterId = (int) $row['id'];
+                        $plantTypeIds[(int) $row['plant_type_id']] = true;
+                        yield $separator . self::json(self::row($row));
+                        $separator = ',';
+                    }
+                } while (\count($rows) === self::CHUNK);
+                yield ']';
+
+                yield ',"plant_events":[';
+                $separator = '';
+                $afterId = 0;
+                do {
+                    $rows = $events->exportChunk($afterId, self::CHUNK);
+                    foreach ($rows as $row) {
+                        $afterId = (int) $row['id'];
+                        yield $separator . self::json(self::row($row));
+                        $separator = ',';
+                    }
+                } while (\count($rows) === self::CHUNK);
+                yield ']';
+
+                yield ',"garden_events":[';
+                $separator = '';
+                $afterId = 0;
+                do {
+                    $rows = $events->gardenExportChunk($afterId, self::CHUNK);
+                    foreach ($rows as $row) {
+                        $afterId = (int) $row['id'];
+                        yield $separator . self::json(self::row($row));
+                        $separator = ',';
+                    }
+                } while (\count($rows) === self::CHUNK);
+                yield ']';
+
+                yield ',"weather":{"location":' . self::json($location === null ? null : [
+                    'label'     => $location['label'],
+                    'zip'       => $location['zip'],
+                    'latitude'  => $location['latitude'],
+                    'longitude' => $location['longitude'],
+                    'timezone'  => $location['timezone'],
+                ]);
+                yield ',"units":{"temperature":"C","precipitation":"mm","et0":"mm","wind":"km/h"}';
+                yield ',"days":[';
+                $separator = '';
+                $models = [];
+                if ($location !== null) {
+                    // A DATE column has no NULL-safe '>', so the walk needs a
+                    // floor below any obs_date the table can hold.
+                    $afterDate = '0001-01-01';
+                    do {
+                        $rows = $weather->exportChunk((int) $location['id'], $afterDate, self::CHUNK);
+                        foreach ($rows as $row) {
+                            $afterDate = (string) $row['obs_date'];
+                            $models[(string) $row['source_model']] = true;
+                            yield $separator . self::json($row);
+                            $separator = ',';
+                        }
+                    } while (\count($rows) === self::CHUNK);
+                }
+                yield ']}';
+
+                // Last, because it needs the plant type ids the walk above
+                // collected -- which is also why it is two statements rather
+                // than one per planting.
+                $research = $reference->researchFor(\array_keys($plantTypeIds), $user->regionId);
+                yield ',"research":' . self::json($research);
+
+                // weather.md Section 10: the credit travels with the data,
+                // generated from source_model on the rows actually included.
+                yield ',"attribution":' . self::json(Attribution::lines(\array_keys($models)));
+                yield '}';
+            },
+            'application/json; charset=utf-8',
+            'carl-for-claude-' . $today . '.json'
+        );
+    }
+
+    /**
+     * One database row, cleaned for a document a person will paste somewhere.
+     *
+     * `user_id` goes. It is this user's own id on every row, so it is not a
+     * leak -- it is noise, repeated once per row, in a file whose whole
+     * purpose is to be read by something that charges by the token.
+     *
+     * @param array<string,mixed> $row
+     * @return array<string,mixed>
+     */
+    private static function row(array $row): array
+    {
+        unset($row['user_id']);
+        return $row;
+    }
+
+    /**
+     * One value, encoded.
+     *
+     * JSON_INVALID_UTF8_SUBSTITUTE, because json_encode returns false on a
+     * byte sequence it cannot read and false concatenated into a stream is an
+     * empty string -- which would produce a document that is silently missing
+     * a row and still parses. A narrative typed on a phone with a broken
+     * keyboard map is not worth a corrupt export.
+     */
+    private static function json(mixed $value): string
+    {
+        $encoded = \json_encode(
+            $value,
+            \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_INVALID_UTF8_SUBSTITUTE
+        );
+        return $encoded === false ? 'null' : $encoded;
     }
 
     /**

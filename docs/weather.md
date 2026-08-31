@@ -446,6 +446,16 @@ muted background band or a secondary axis, never competing with the performance
 line for attention. On mobile, one weather series at a time — a chart with four
 overlaid weather variables is unreadable at 380 px and nobody will pinch-zoom it.
 
+> **Annotation, Claude Code, Phase 4, 2026-08-31.** Built and looked at in a
+> headless browser at 380 px. The paragraph above is right, and it is right
+> about *two* series as well as four: the ET₀ panel first carried rainfall as
+> a dashed comparison line, and daily rainfall against a smooth ET₀ curve read
+> as a picket fence the eye could not separate from the curve. It was removed.
+> The comparison it was for — the water balance — is one number in the totals
+> table above the chart. Provisional days are marked on every panel, not only
+> on the one where they were first drawn, because the note under the chart
+> says they are and the note sits under whichever panel is showing.
+
 ---
 
 ## 8. Failure modes

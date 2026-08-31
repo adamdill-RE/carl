@@ -1,5 +1,11 @@
 # Carl The Garden Helper — Phase 4 handoff
 
+> **Phase 4 is built. See `docs/PHASE-5-HANDOFF.md` for the current state and
+> what is next.** This file is kept as it was written, with the two facts it
+> got wrong marked inline — §3.2's claim about what is test-enforced and
+> §3.3's "FPDF, vendored as one file". Everything else in it still holds; §4
+> and §7 in particular are still the live list.
+
 **Phase 4 is reports and PDFs.** `CARL-HANDOFF.md` §14 scopes it as: Chart.js
 plant and garden charts, FPDF plant and garden PDFs, the per-garden prefilled
 field sheet, and `/export/claude.json`.
@@ -145,11 +151,23 @@ design width, and it is the width to check the result at.
 `style=`, no CDN. The style rule is test-enforced; the script rule is not, and
 a violation is silent in the browser console.
 
+> **Corrected, Claude Code, 2026-08-31.** Half wrong: `01_core_test.php`
+> already asserted that no template carries an inline `<script>` body or an
+> `on*=` handler. What nothing checked was the CDN — an off-site `src` or
+> `href` — which is the half this paragraph was actually warning about. That
+> check exists now.
+
 ### 3.3 PDF reports (`CARL-HANDOFF.md` §13.2)
 
 FPDF, vendored as one file at `vendor/fpdf/fpdf.php`. The deploy already
 copies `vendor/` (`.cpanel.yml`); `vendor/README.md` is the placeholder
 keeping the directory alive.
+
+> **Corrected, Claude Code, 2026-08-31.** FPDF cannot be one file. `fpdf.php`
+> loads its *core* font metrics from `font/helvetica.php` and its siblings at
+> the first `SetFont()`, so a lone `fpdf.php` throws on the first line of text
+> it draws. All fourteen metric files ship (64 KB) plus `license.txt`.
+> `vendor/README.md` carries the detail.
 
 "Download PDF" posts the visible chart canvases as PNG data URLs to
 `/report/plant/{id}/pdf`. The document carries the research card, the event
@@ -175,7 +193,14 @@ uses the latter. §13.2 says stream it and keep nothing — which means
 `var/reports/` is currently a directory the deploy creates and no code uses.
 Either use it or drop it from `.cpanel.yml`; do not leave it as decoration.
 
-### 3.4 The prefilled field sheet (`CARL-HANDOFF.md` §13.4)
+> **Resolved, Claude Code, 2026-08-31.** Dropped from `.cpanel.yml`. Nothing
+> writes a report to disk, and `Response::binary()` is what sends it: FPDF
+> assembles the whole document in its own buffer and hands it over as one
+> string at `Output()`, so there is nothing to yield in pieces and wrapping it
+> in a producer would claim a memory profile the library does not have. "Keep
+> nothing" holds; "stream it" is the half that could not.
+
+### 3.4 The prefilled field sheet (`CARL-HANDOFF.md` §13.4) — **not built**
 
 Per-garden, via FPDF, using the same layout as the static sheet: rows and
 living plants listed. **Blocked on Claude Design** — the static
