@@ -122,9 +122,13 @@ would be flaky *and* would spend the quota the nightly job depends on.
 
 ## Deploying
 
-See [`docs/deploy.md`](docs/deploy.md) for the first deploy, the cron entry,
-and the Phase 0 spikes that have to be run on the real host before the weather
-feature can be trusted.
+See [`docs/deploy.md`](docs/deploy.md) for the first deploy and the cron entry.
+
+The Phase 0 spikes ran on sh193 on 2026-08-31 and are recorded there. The one
+that could have killed the weather feature — outbound HTTPS — passed on all
+five hosts. Round trip to the database is 0.81 ms, which is what makes
+hosting §9's `time ≈ measured + statements × RTT` a real budget rather than a
+principle.
 
 ## Attribution
 

@@ -5,45 +5,93 @@ every administrative action is either a cPanel page or a key-guarded route.
 
 ---
 
-## 0. Before the first deploy: the Phase 0 spikes
+## 0. The Phase 0 spikes — run, and passed
 
-Handoff §14 lists five spikes. The first can kill the weather feature, so it
-goes first. All of them are answered by the `/diag` route, which exists only
-while `diag_key` is configured.
+Handoff §14 lists five spikes. The first could have killed the weather
+feature. **It passed.** Run on sh193 on 2026-08-31 through the `/diag` route,
+which existed only while `diag_key` was configured and has since been closed.
 
-**These have not been run on sh193.** They were run from a development
-container on 2026-08-31, which proves the request shapes are right but says
-nothing about egress from the real host — the two are different machines with
-different network policy. Run them on the server and record the numbers here.
+| # | Spike | Result on sh193, 2026-08-31 |
+| --- | --- | --- |
+| 1 | Outbound HTTPS to the five hosts the app talks to | **Pass.** All five HTTP 200. Egress is open; no rescope needed |
+| 2 | PHP CLI binary path for cron | **Pass.** All five candidates exist and are executable |
+| 3 | A real cron execution writing a `weather_sync_run` row | Pending — confirm the morning after §7 |
+| 4 | SMTP-AUTH send, and one Brevo API send | Phase 3; needs the §12.1 mailbox first |
+| 5 | Upsert timing and RTT to the database host | **Pass.** RTT 0.81 ms; 200 rows 1.9 ms, 2,000 rows 19.9 ms |
 
-| # | Spike | How | Result on sh193 |
+### 0.1 Outbound HTTPS — the blocking spike
+
+This is the one weather.md §11 says to run before anything else, because a
+filtered egress would have made the whole feature impossible as designed.
+
+| Host | Status | Time | What it proves |
 | --- | --- | --- | --- |
-| 1 | Outbound HTTPS to `archive-api.open-meteo.com`, `api.open-meteo.com`, `api.weather.gov`, `api.zippopotam.us`, `www.ncei.noaa.gov` | `/diag?key=` | *not yet run* |
-| 2 | PHP CLI binary path for cron | `/diag?key=` lists which candidates exist | *not yet run* |
-| 3 | A real cron execution writing a `weather_sync_run` row | schedule the job five minutes out | *not yet run* |
-| 4 | SMTP-AUTH send, and one Brevo API send | Phase 3; needs the §12.1 mailbox first | *not yet run* |
-| 5 | 200-row and 2,000-row upsert timing, and RTT | `/diag?key=` | *not yet run* |
+| `archive-api.open-meteo.com` | 200 | 459 ms | Historical weather. The primary source |
+| `api.open-meteo.com` | 200 | 463 ms | Forecast and `past_days` |
+| `api.weather.gov` | 200 | 165 ms | NWS alerts (Phase 3) |
+| `api.zippopotam.us` | 200 | 122 ms | ZIP fallback for codes the Census file misses |
+| `www.ncei.noaa.gov` | 200 | 528 ms | The NCEI escape hatch of weather.md §9 |
 
-**If spike 1 fails for Open-Meteo, stop and rescope.** Weather is the reason
-the event log is worth keeping; without it the correlation the app exists for
-cannot be drawn.
+Two details worth keeping. Open-Meteo resolved 76692 to elevation 183 m and
+`America/Chicago` at `utc_offset_seconds: -18000`, which is the timezone Carl
+derives independently from the state and longitude — the two agree.
+Zippopotam named the place "Whitney", which is the city name the Census ZCTA
+files do not carry; that is exactly the gap the fallback exists to fill.
 
-### What was measured off-host, 2026-08-31 — and what it does not tell you
+All five are comfortably faster than from the development container, where
+the same calls took 750–850 ms. The nightly job needs single-digit calls, so
+there is a very large margin here.
 
-Useful as a contract check, not as evidence about sh193:
+### 0.2 PHP CLI — every candidate exists
 
-- `archive-api.open-meteo.com/v1/archive` with every variable in
-  `OpenMeteoClient::ARCHIVE_DAILY`: HTTP 200, ~750 ms, all seventeen daily
-  arrays present and the same length as `time`.
-- `api.open-meteo.com/v1/forecast` with `forecast_days=7&past_days=7`: HTTP
-  200, ~850 ms, all nine daily arrays and all four hourly soil arrays present.
+| Path | |
+| --- | --- |
+| `/usr/local/bin/php` | exists, executable |
+| `/usr/local/bin/ea-php82` | exists, executable — **use this one**, see §7 |
+| `/opt/alt/php82/usr/bin/php` | exists, executable |
+| `/usr/bin/php` | exists, executable |
+| `/usr/local/bin/lsphp` | exists, executable — this is the binary serving web requests, not a cron target |
+
+weather.md §3.1 marked this Unverified and listed three plausible paths. All
+three exist, so the curl fallback is not needed. Which to pick is not
+arbitrary — see §7.
+
+### 0.3 Database timing — the arithmetic that shapes every query
+
+| Measurement | Result |
+| --- | --- |
+| Round trip, 10 × `SELECT 1` | **0.81 ms each** |
+| 200-row upsert | 1.9 ms |
+| 2,000-row upsert | 19.9 ms |
+
+This confirms hosting §9's "RTT to the DB host is under 1 ms" against the real
+host, and makes its arithmetic concrete: `time ≈ measured + statements × 0.81 ms`.
+A 20-statement page render carries about 16 ms of round trips.
+
+It also validates the two chunk sizes already in the code. Research imports
+and weather sync upsert 200 rows per statement; the ZCTA migration uses 2,000,
+so its 17 statements cost about 340 ms of database time — which is why loading
+33,791 ZIP rows from a browser finishes inside `max_execution_time` with room
+to spare rather than by luck.
+
+Note that 2,000 rows cost 10× the time of 200 rather than being free — the
+cost here is real work, not round trips. Raising the research chunk size would
+buy nothing.
+
+### 0.4 What was measured off-host beforehand
+
+From a development container on the same day. It proved the request shapes
+were right; the table above is what proves the host allows them.
+
+- Every variable in `OpenMeteoClient::ARCHIVE_DAILY` present, all seventeen
+  daily arrays the same length as `time`.
+- Forecast with `forecast_days=7&past_days=7`: all nine daily arrays and all
+  four hourly soil arrays present.
 - A second full sync inside the same hour returned
-  `{"error":true,"reason":"Hourly API request limit exceeded..."}`. This is
-  the shared-IP risk weather.md §8.1 describes, arriving as an error envelope
-  rather than a bare 429. The client now recognises a quota by its reason text
-  and does **not** spend thirty seconds retrying it.
-- The ZCTA migration loads 33,791 rows in 419 ms at 2,000 rows per statement,
-  comfortably inside the 30 s browser ceiling.
+  `{"error":true,"reason":"Hourly API request limit exceeded..."}` — the
+  shared-IP risk of weather.md §8.1, arriving as an error envelope rather than
+  a bare 429. The client recognises a quota by its reason text and does not
+  spend thirty seconds retrying it.
 
 ---
 
@@ -127,10 +175,11 @@ case and prints the file and the line to fix, without echoing a value.
 
 - Apply the migrations. Migration 011 loads the 33,791-row ZIP table; expect
   it to take a second or two.
-- Set the administrator password on the same page.
-- **Remove the `setup_key` line and save.** Whoever holds it can take the
-  master admin account. With no key configured the route does not exist, and
-  that is the state to leave it in.
+- Set the administrator password on the same page. That replaces the seeded
+  `admin` / `1234` before it is ever reachable.
+- **Comment out the `setup_key` line and save** (§8). Whoever holds it can
+  take the master admin account. With no key configured the route does not
+  exist, and that is the state to leave it in between deploys.
 
 ## 5. Check the health page
 
@@ -158,34 +207,88 @@ plant catalog and the plant forms have nothing to offer.
 
 ## 7. Cron
 
-**cPanel → Cron Jobs.** Once daily, around 09:15 UTC:
+**cPanel → Cron Jobs.** One job, once a day. The fields, left to right:
+
+| Minute | Hour | Day | Month | Weekday |
+| --- | --- | --- | --- | --- |
+| `15` | `9` | `*` | `*` | `*` |
+
+Cron runs in the server's timezone, which is UTC (hosting §1), so this fires
+at **09:15 UTC — 4:15 am Central in summer, 3:15 am in winter.** Late enough
+that yesterday has settled at the provider, early enough to be waiting before
+anyone opens the app.
+
+Command:
 
 ```
-/usr/local/bin/php -q /home/reshiftmanager/carl-app/bin/weather_sync.php >/dev/null 2>&1
+/usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/weather_sync.php >/dev/null 2>&1
 ```
 
-The CLI path is unverified on this host — `/diag` says which of
-`/usr/local/bin/php`, `/usr/local/bin/ea-php82` and `/opt/alt/php82/usr/bin/php`
-exists. If none resolves, use the browser form instead:
+### Why `ea-php82` and not `php`
+
+All five candidates exist on this host (§0.2), so this is a choice rather than
+a constraint. `/usr/local/bin/php` follows whatever the account's default PHP
+version is set to in MultiPHP Manager; `/usr/local/bin/ea-php82` is pinned to
+8.2, which is the version the web requests run under (8.2.33, measured) and
+the version CI tests against.
+
+Pinning matters because the failure it prevents is a quiet one. If the account
+default were ever moved to 8.3, `/usr/local/bin/php` would follow it and the
+nightly job would start running on a different PHP from every other part of
+the system — the exact split hosting §10 argues against, and one nobody would
+notice until a deprecation changed a value. The bootstrap refuses anything
+below 8.2 outright, so the dangerous direction is newer, not older.
+
+### The fallback, which is not needed here
+
+Kept for the record. If no PHP binary had resolved:
 
 ```
 /usr/bin/curl -s "https://www.reshiftmanager.com/carl/tasks/weather-sync?key=<cron_key>" >/dev/null 2>&1
 ```
 
-The curl form runs under the web SAPI and inherits the 30 s ceiling. The job
-chunks either way, so the two forms are interchangeable.
+That form runs through the web server and inherits the 30 s ceiling. The job
+chunks its work either way, so the two are interchangeable — but the CLI form
+has no time limit to work around, so prefer it.
 
-**Redirect the output.** cPanel emails the account on every run otherwise, and
-a nightly job that mails 365 times a year trains everyone to ignore it.
+### Keep the redirect
 
-Confirm it ran: `/status?key=` shows "last successful run" per location. A
-cron job that stops is otherwise invisible for months — that line is the whole
-reason `/status` reports it.
+`>/dev/null 2>&1` is not optional. Without it cPanel emails the account after
+every run, and a nightly job that mails 365 times a year is one everybody
+learns to ignore — which defeats the purpose of having it report at all.
 
-## 8. Run the spikes, then close the door
+### Confirming it ran (spike 3)
 
-With `diag_key` set, open `/diag?key=`, record the five spike results in the
-table at the top of this file, and **remove the `diag_key` line**.
+The morning after, open `/status?key=` and look for **last successful run**
+against the location. That closes the last open spike.
+
+If you would rather not wait a day: set the Minute and Hour to five minutes
+from now, save, wait, check `/status`, then set it back to `15` / `9`. A row
+appears in `weather_sync_run` either way, success or failure — the job always
+writes one, because a cron that silently stops is otherwise invisible for
+months.
+
+## 8. Close the door
+
+Two keys were only ever meant to be temporary.
+
+- **`setup_key`** — comment it out once the migrations are applied. Commenting
+  is exactly as effective as deleting: `Config::secret()` treats an absent,
+  null or empty value identically, and the route returns 404 before it ever
+  compares a key, so even the correct key gets nothing.
+- **`diag_key`** — same, once §0's numbers are recorded here.
+
+Leave `status_key` and `cron_key` set. They are meant to stay.
+
+**Paste a fresh value rather than un-commenting the old one** when you next
+need `setup_key`. Not out of paranoia about the file — it is 0600 and outside
+the web root — but because the key travels in a URL query string, so it has
+been through a browser address bar and the account's raw access log. That is
+the one key that can take the master admin account; it is worth five seconds:
+
+```
+openssl rand -hex 24
+```
 
 ---
 
@@ -211,14 +314,19 @@ checksum is recorded and a changed file is refused rather than silently re-run.
 
 ## Still open for the owner
 
-1. Run the Phase 0 spikes and fill in the table above.
-2. The §12.1 mailbox and DNS steps, before any Phase 3 email work.
+1. Confirm spike 3 — a real cron execution — the morning after §7. The other
+   four are done and recorded in §0.
+2. The §12.1 mailbox and DNS steps, before any Phase 3 email work. That is
+   also spike 4.
 3. Ask Ahosting whether `ea-php82-php-opcache` can be enabled. If it is,
-   `opcache.validate_timestamps` becomes a deploy concern.
-4. Email Open-Meteo describing Carl (internal, unsold, no ads) and keep the
+   `opcache.validate_timestamps` becomes a deploy concern — a file-copy deploy
+   may not take effect until revalidation.
+4. Leave the account's default PHP version alone in MultiPHP Manager, or if it
+   moves, revisit the cron command in §7. It is pinned to 8.2 for that reason.
+5. Email Open-Meteo describing Carl (internal, unsold, no ads) and keep the
    reply in `docs/`. Attribution is already in the footer and is generated
    from `source_model`, so it stays honest if NCEI rows are ever mixed in.
-5. Claude Design: the logo, the palette, and the field-recording sheet.
+6. Claude Design: the logo, the palette, and the field-recording sheet.
    `public/assets/css/tokens.css` is a neutral placeholder defining exactly
    the `--carl-*` names to deliver; it is the only file that names a colour,
    so the palette is a one-file swap.
