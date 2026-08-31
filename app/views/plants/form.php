@@ -10,6 +10,7 @@
  * @var list<array<string,mixed>> $gardens
  * @var array<int,list<array<string,mixed>>> $rowsByGarden
  * @var list<array<string,mixed>> $containers
+ * @var array<int,array{living:int,plantings:int}> $occupancy
  * @var array<string,list<array<string,mixed>>> $lists
  * @var string $today @var int|null $indoorGardenId
  * @var list<string> $errors @var array<string,mixed> $old
@@ -136,7 +137,7 @@ foreach ($plantTypes as $type) {
   </div>
   <?= $view->partial('plants/placement', [
         'gardens' => $gardens, 'rowsByGarden' => $rowsByGarden,
-        'containers' => $containers, 'old' => $old]) ?>
+        'containers' => $containers, 'occupancy' => $occupancy, 'old' => $old]) ?>
 
 <?php else: ?>
   <?= $view->partial('partials/select_add', [
@@ -169,7 +170,7 @@ foreach ($plantTypes as $type) {
   </div>
   <?= $view->partial('plants/placement', [
         'gardens' => $gardens, 'rowsByGarden' => $rowsByGarden,
-        'containers' => $containers, 'old' => $old]) ?>
+        'containers' => $containers, 'occupancy' => $occupancy, 'old' => $old]) ?>
 <?php endif; ?>
 
   <div class="field">

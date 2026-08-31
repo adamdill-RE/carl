@@ -158,6 +158,9 @@ final class LogController extends Controller
         }
 
         $first = $plantings[0];
+        // Read once: hosting Section 9 counts statements, and this list was
+        // being fetched twice to build the same two values.
+        $gardens = $this->gardens()->activeGardens();
 
         return [
             'plantings' => $plantings,
@@ -166,11 +169,14 @@ final class LogController extends Controller
             'card'      => $this->reference()->researchCard((int) $first['plant_type_id'], $user->regionId),
             'hasRegion' => $user->hasRegion(),
             'today'     => $this->today(),
-            'gardens'   => $this->gardens()->activeGardens(),
+            'gardens'   => $gardens,
             'rowsByGarden' => $this->gardens()->rowsForGardens(
-                \array_map(static fn (array $g): int => (int) $g['id'], $this->gardens()->activeGardens())
+                \array_map(static fn (array $g): int => (int) $g['id'], $gardens)
             ),
             'containers' => $this->gardens()->containers(),
+            // The occupancy hint follows the Transplant action's row select
+            // too, not only the new-plant forms (handoff Section 4.3).
+            'occupancy'  => $this->gardens()->livingCountByRow(),
             'schedules'  => $this->hardeningSchedules(),
             'lists'      => $this->lists()->manyTypes([
                 ListType::WATER_METHOD, ListType::UP_POT_SOIL, ListType::UP_POT_CONTAINER,

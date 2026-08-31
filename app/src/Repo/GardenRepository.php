@@ -289,16 +289,27 @@ final class GardenRepository extends Repository
         return $this->db->insertId();
     }
 
-    /** Occupancy hint on row selection: a nudge, never a block (handoff 4.3). */
-    public function livingCountByRow(int $gardenId): array
+    /**
+     * Occupancy hint on row selection: a nudge, never a block (handoff 4.3).
+     *
+     * @param int|null $gardenId one garden, or null for every row this user
+     *        has -- the plant form offers rows from every garden at once and
+     *        filters them in the browser, so it needs the whole map. Either
+     *        way it is one statement (hosting Section 9).
+     * @return array<int,array{living:int,plantings:int}> keyed by garden_row_id
+     */
+    public function livingCountByRow(?int $gardenId = null): array
     {
         $rows = $this->db->all(
             'SELECT `garden_row_id`, SUM(`quantity_live`) AS living, COUNT(*) AS plantings'
             . ' FROM `planting`'
-            . ' WHERE `user_id` = :' . self::SCOPE . ' AND `garden_id` = :garden_id'
+            . ' WHERE `user_id` = :' . self::SCOPE
+            . ($gardenId !== null ? ' AND `garden_id` = :garden_id' : '')
             . '   AND `garden_row_id` IS NOT NULL AND `state` <> :ended'
             . ' GROUP BY `garden_row_id`',
-            $this->bind(['garden_id' => $gardenId, 'ended' => 'ended'])
+            $this->bind($gardenId !== null
+                ? ['garden_id' => $gardenId, 'ended' => 'ended']
+                : ['ended' => 'ended'])
         );
         $out = [];
         foreach ($rows as $row) {

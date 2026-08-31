@@ -14,6 +14,7 @@
  * @var bool $hasRegion @var string $today
  * @var array<string,list<array<string,mixed>>> $lists
  * @var list<array<string,mixed>> $schedules
+ * @var array<int,array{living:int,plantings:int}> $occupancy
  * @var list<array<string,mixed>> $timeline
  */
 $e = $view->e(...);
@@ -148,7 +149,7 @@ $action = $isBatch ? $app->url('log/batch') : $app->url('log/' . $single['id']);
   <fieldset class="event-fields" data-for="<?= $e($E::TRANSPLANTED) ?>">
     <?= $view->partial('plants/placement', [
           'gardens' => $gardens, 'rowsByGarden' => $rowsByGarden,
-          'containers' => $containers, 'old' => []]) ?>
+          'containers' => $containers, 'occupancy' => $occupancy, 'old' => []]) ?>
   </fieldset>
 
   <fieldset class="event-fields" data-for="<?= $e($E::YIELDED) ?>">

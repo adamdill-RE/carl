@@ -280,7 +280,10 @@ final class PlantController extends Controller
             'lists'      => $this->lists()->manyTypes($listTypes),
             'today'      => $this->today(),
             'indoorGardenId' => $this->indoorGardenId($gardens),
-            'occupancy'  => [],
+            // The hint beside each row option (handoff Section 4.3). One
+            // statement for every garden, because the row select carries the
+            // rows of all of them and filters in the browser.
+            'occupancy'  => $this->gardens()->livingCountByRow(),
             'errors'     => [],
             'old'        => $request->isPost() ? $request->post : [],
         ];
