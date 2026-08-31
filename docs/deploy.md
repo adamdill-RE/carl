@@ -218,7 +218,7 @@ from PHP's `date.timezone`, and hosting §1 and §4 both record UTC without
 distinguishing them — §4's reading came from a PHP script, which cannot see
 the OS setting at all.
 
-`/status?key=` now reports both, so check it rather than assuming:
+`/status?key=` reports both, so check it rather than assuming:
 
 ```
   php timezone       UTC (date.timezone; app pins UTC in code regardless)
@@ -234,10 +234,43 @@ at the provider, early enough to be waiting before anyone opens the app.
 local, which is five hours later than intended: a gardener checking at six
 would find yesterday missing. Use `15 4 * * *` instead.
 
-Nothing about the application depends on this. PHP is pinned to UTC in the
-bootstrap, the database session is pinned to `+00:00`, and each user's "today"
-is computed through their own IANA zone. The only thing the OS setting decides
-is what wall-clock time the job fires.
+### Settling it before that build is deployed
+
+cPanel's **Server Information** page does not show a clock on this version —
+it lists the package, versions, IP and service states, and nothing else. Do
+not go looking for one there.
+
+The reliable way needs no shell and no deploy: fold `/bin/date` into the
+one-off cron you are running for spike 3 anyway. `date` prints the timezone
+abbreviation, which is the answer outright.
+
+```
+/bin/date > /home/reshiftmanager/carl-app/var/cron-test.log 2>&1; /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/weather_sync.php --verbose >> /home/reshiftmanager/carl-app/var/cron-test.log 2>&1
+```
+
+Schedule it a few minutes out, then read `carl-app/var/cron-test.log` in File
+Manager:
+
+```
+Mon Sep  1 09:20:01 UTC 2026
+weather_sync archive+forecast: 1 locations, 28 rows, 0 failures, 2.1 s
+  archive 2026-08-18..2026-08-31: 14 rows in 460 ms
+  forecast: 14 rows in 465 ms
+```
+
+`UTC` on that first line settles the schedule; `CDT` or `CST` would mean use
+`15 4 * * *` instead. The rest closes spike 3 in the same run — it proves cron
+fired, `ea-php82` ran, the bootstrap loaded, `local.php` parsed, the database
+connected and rows landed.
+
+Delete the temporary job and the log afterwards. Note that `%` is special
+inside a crontab — it becomes a newline — so do not add a `date +%format` to
+that line without escaping it. Plain `date` is deliberate.
+
+Nothing about the application depends on any of this. PHP is pinned to UTC in
+the bootstrap, the database session is pinned to `+00:00`, and each user's
+"today" is computed through their own IANA zone. The only thing the OS setting
+decides is what wall-clock time the job fires.
 
 Command:
 
