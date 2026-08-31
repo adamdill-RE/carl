@@ -380,6 +380,34 @@ appears in `weather_sync_run` either way, success or failure — the job always
 writes one, because a cron that silently stops is otherwise invisible for
 months.
 
+### Verifying backfill-on-backdate (Phase 3 handoff §3.3)
+
+The chain is tested end to end in `tests/cases/06_backfill_test.php` against a
+stub provider — backdate moves the window, the run chunks by year, the report
+fills in — but §3.3 asks to see it once against the real archive, because
+Open-Meteo is the half the suite deliberately does not call.
+
+Once, on the live install:
+
+1. Note today's value: `/status?key=` prints **days held since ‹date›** per
+   location. That date is `weather_location.backfill_from`.
+2. Start a plant with a date 60 days in the past (any of the three forms).
+3. Reload `/status?key=`. The **since** date has moved back to the planting's
+   date. Nothing has been fetched yet — nothing fetches on the request path.
+4. Open the plant. Its weather section says how many days in the range have
+   not been fetched yet. That is the honest state, not a bug.
+5. Wait for the 05:15 Eastern run, or bring the cron forward as described
+   above.
+6. Reload `/status?key=`. **missing in range** is 0 and **days held** has
+   grown by roughly 60. The archive is fetched in calendar-year chunks, so a
+   backdate that crosses New Year costs two calls rather than one long one.
+7. Reload the plant. The weather table is populated and the gap notice is gone.
+
+If step 6 shows a 429 or an `error: true` reason mentioning a limit, that is
+the hourly quota rather than a failure — the run is not retried inside the
+same hour on purpose, and the next night's run picks the gap up, because the
+fetch plan is derived from what is missing rather than from a cursor.
+
 ## 8. Close the door
 
 Two keys were only ever meant to be temporary.

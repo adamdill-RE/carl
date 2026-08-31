@@ -219,10 +219,17 @@ final class PlantController extends Controller
         $models = [];
         $from = $planting['in_ground_date'] ?? $planting['start_date'];
         if ($user->weatherLocationId !== null && \is_string($from)) {
-            $to = $planting['ended_at'] ?? $this->today();
-            $weather = $this->weather()->series($user->weatherLocationId, $from, (string) $to);
-            $gaps = $this->weather()->gapCount($user->weatherLocationId, $from, (string) $to);
-            $models = $this->weather()->sourceModels($user->weatherLocationId, $from, (string) $to);
+            // Yesterday, not today: today's day is not over, so the archive
+            // has no observation for it and weather_forecast is where it
+            // lives (weather.md Section 6.2). Counting today as missing would
+            // put a permanent "1 day has not been fetched yet" notice on
+            // every living plant, every day, which teaches people to ignore
+            // the one that means something.
+            $to = $planting['ended_at'] ?? Clock::addDays($this->today(), -1);
+            $to = (string) $to;
+            $weather = $this->weather()->series($user->weatherLocationId, $from, $to);
+            $gaps = $this->weather()->gapCount($user->weatherLocationId, $from, $to);
+            $models = $this->weather()->sourceModels($user->weatherLocationId, $from, $to);
         }
 
         return $this->render('plants/show', [
