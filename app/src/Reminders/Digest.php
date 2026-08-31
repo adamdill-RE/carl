@@ -8,7 +8,6 @@ use Carl\Core\App;
 use Carl\Core\Database;
 use Carl\Domain\ReminderKind;
 use Carl\Mail\Outbox;
-use Carl\Support\Clock;
 use Throwable;
 
 /**
