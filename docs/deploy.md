@@ -451,21 +451,57 @@ which is the path that has always worked. `/admin/mail-test` and `/status?key=`
 both say which state it is in.
 
 1. **cPanel → Email Accounts → Create.** `carl@reshiftmanager.com`, a strong
-   password, 250 MB quota. Open **Connect Devices** and note the outgoing
-   server, the port, and the username — it is the full address, not the local
-   part.
+   password, 250 MB quota. Open **Connect Devices** and read the outgoing
+   server, the port, and the username — the username is the full address, not
+   the local part.
+
+   **Confirmed 2026-08-31**, and it matches `config/app.php` exactly, so
+   nothing about the host needs configuring:
+
+   | | |
+   | --- | --- |
+   | Outgoing server | `mail.reshiftmanager.com` |
+   | SMTP port | `465` (Secure SSL/TLS — implicit TLS, which is `'tls'` here) |
+   | Username | `carl@reshiftmanager.com` |
+
 2. **cPanel → Email Deliverability → `reshiftmanager.com` → Manage.** Install
-   the suggested SPF record and the suggested DKIM record. If Brevo is adopted
-   later, merge SPF into one record —
-   `v=spf1 +mx +a include:spf.brevo.com ~all` — because a domain with two SPF
-   records has none.
-3. **Zone Editor.** Add TXT `_dmarc.reshiftmanager.com` =
-   `v=DMARC1; p=none; rua=mailto:carl@reshiftmanager.com`. `p=none` first:
-   it reports without rejecting, so a misconfiguration is visible rather than
-   silent.
-4. **File Manager → `carl-app/config/local.php`,** and add the `mail` block.
-   `config/local.php.example` carries it commented out, for both drivers. Set
-   `driver` to `smtp` **or** `api`, never both. Mode stays 0600.
+   the suggested **SPF** and **DKIM** records. If Brevo is adopted later, merge
+   SPF into one record — `v=spf1 +mx +a include:spf.brevo.com ~all` — because a
+   domain with two SPF records has none.
+
+3. **DMARC.** Email Deliverability creates one for you, as bare
+   `v=DMARC1; p=none;`, and reports it VALID. That is enough to satisfy the
+   bulk-sender rules, but on its own it does nothing at all: `p=none` asks
+   receivers not to enforce, and with no `rua=` there is nowhere for them to
+   report to. **Edit it in Zone Editor** — `_dmarc.reshiftmanager.com.` → Edit
+   — to:
+
+   ```
+   v=DMARC1; p=none; rua=mailto:carl@reshiftmanager.com
+   ```
+
+   Then the receivers that matter send a daily XML summary of how your mail
+   authenticated, which is the only way to find out you have a problem before
+   somebody tells you they never got their digest.
+
+4. **File Manager → `carl-app/config/local.php`,** mode 0600. Only the driver
+   choice and the credential go here; the host and port are not secret and
+   live in `config/app.php`, which is why the block is this short:
+
+   ```php
+   'mail' => [
+       'driver' => 'smtp',
+       'smtp' => [
+           'username' => 'carl@reshiftmanager.com',
+           'password' => 'THE-MAILBOX-PASSWORD',
+       ],
+   ],
+   ```
+
+   Keep the trailing comma. `config/local.php.example` carries the same block
+   commented out, and the Brevo one beside it. Set `driver` to `smtp` **or**
+   `api`, never both.
+
 5. **Sign in as an admin → Admin → Mail.** It should now say
    `smtp mail.reshiftmanager.com:465 (tls) as carl@reshiftmanager.com` rather
    than "no driver". Press **Queue a test**.
@@ -478,6 +514,29 @@ both say which state it is in.
 8. **Spike 4** (handoff §6.2) is steps 4 to 7 done once with `driver = smtp`
    and once with `driver = api`, noting which lands in the inbox rather than
    in spam. Record the answer in this file.
+
+### Two things about this host that look like they need configuring, and do not
+
+**The alternate HELO.** Email Deliverability says *"The system uses an
+alternate HELO of `sh193.sameservers.com` when sending mail from the
+reshiftmanager.com domain."* That is Exim's HELO on the hop from this server
+out to Gmail, and it is what has to match the PTR record — which cPanel
+reports VALID. `SmtpMailer` sends `EHLO reshiftmanager.com` on a different
+hop: an authenticated submission to `mail.reshiftmanager.com:465` from the
+same box. Nothing on the internet sees that name, and no receiver checks it.
+Leave both alone.
+
+**`mail.reshiftmanager.com` is a CNAME to the domain.** That is normal cPanel,
+and the certificate is served by SNI for whatever name is asked for. It only
+matters because `SmtpMailer` verifies certificates properly — `verify_peer`
+and `verify_peer_name` are both on. If AutoSSL has not covered the `mail.`
+subdomain, the outbox row will fail with `certificate verify failed` or a CN
+mismatch. The fix is **SSL/TLS Status → tick `mail.reshiftmanager.com` → Run
+AutoSSL**, or failing that, set `'host' => '<the server's own hostname>'` in
+the `local.php` smtp block, whose certificate will match.
+
+**Never turn certificate verification off to get past it.** That connection
+carries the mailbox password on every single send.
 
 ### The key-guarded task routes
 
