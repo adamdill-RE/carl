@@ -88,6 +88,14 @@ $pageTitle = 'Reports';
 <?php endif; ?>
       </div>
     </li>
+    <li>
+      <a href="<?= $e($app->url('companions')) ?>">Companion planting</a>
+      <div class="small muted">
+        Which crops are said to suit each other and which to keep apart, with
+        the mechanism behind each and how well established it is. A reference:
+        nothing here changes a reminder or a countdown.
+      </div>
+    </li>
   </ul>
 </section>
 

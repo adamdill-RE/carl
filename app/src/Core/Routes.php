@@ -17,6 +17,7 @@ use Carl\Controller\OnboardingController;
 use Carl\Controller\PhotoController;
 use Carl\Controller\PlantController;
 use Carl\Controller\ReportController;
+use Carl\Controller\CompanionController;
 use Carl\Controller\SuccessionController;
 use Carl\Controller\SystemController;
 
@@ -170,6 +171,9 @@ final class Routes
 
         // -- Succession planting (handoff Section 15, Phase 6) --------------
         $r->get('/succession', SuccessionController::class, 'index');
+
+        // -- Companion planting reference (handoff Section 14 v2, Phase 6) --
+        $r->get('/companions', CompanionController::class, 'index');
 
         // -- Recommendations (handoff Section 14 v2; Phase 5 Section 3.1) ---
         // The POST queues an `analysis` row and returns. It does NOT call the

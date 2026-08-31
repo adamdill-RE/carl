@@ -213,13 +213,20 @@ final class ReferenceRepository
      * (handoff Section 9.1): the global plant values plus this region's
      * windows, with the source and confidence that justify each.
      *
-     * @return array{plant:?array<string,mixed>,regions:list<array<string,mixed>>}
+     * @return array{plant:?array<string,mixed>,regions:list<array<string,mixed>>,
+     *               companions:list<array<string,mixed>>}
      */
     public function researchCard(int $plantTypeId, ?int $regionId): array
     {
         $plant = $this->findPlantType($plantTypeId);
-        if ($plant === null || $regionId === null) {
-            return ['plant' => $plant, 'regions' => []];
+        if ($plant === null) {
+            return ['plant' => null, 'regions' => [], 'companions' => []];
+        }
+        // Companions are global, so an unresearched county still gets them:
+        // they are a fact about the plants, not about the place.
+        if ($regionId === null) {
+            return ['plant' => $plant, 'regions' => [],
+                    'companions' => $this->companionsFor((string) $plant['category'])];
         }
 
         $regions = $this->db->all(
@@ -228,7 +235,68 @@ final class ReferenceRepository
             ['plant_id' => $plantTypeId, 'region_id' => $regionId]
         );
 
-        return ['plant' => $plant, 'regions' => $regions];
+        return ['plant' => $plant, 'regions' => $regions,
+                'companions' => $this->companionsFor((string) $plant['category'])];
+    }
+
+    /**
+     * The companion pairings for one category (Phase 6, handoff Section 14 v2).
+     *
+     * The pair is unordered and stored once, so this reads BOTH columns and
+     * flips the row where the match came from the second -- the caller wants
+     * "the other plant", not "column two".
+     *
+     * One statement. The OR is why `plant_companion` indexes both columns:
+     * without the second index half of every lookup is a table scan.
+     *
+     * @return list<array{other:string,relationship:string,reason:?string,
+     *                    confidence:?string,source:?string}>
+     */
+    public function companionsFor(string $category): array
+    {
+        if (\trim($category) === '') {
+            return [];
+        }
+
+        // Two names for one value: with emulation off a named placeholder
+        // cannot be reused in a statement (hosting Section 7).
+        $rows = $this->db->all(
+            'SELECT * FROM `plant_companion`'
+            . ' WHERE `category` = :one OR `other_category` = :two'
+            . " ORDER BY `relationship` DESC, FIELD(`confidence`, 'verified', 'approx', 'generic'),"
+            . ' `category`, `other_category`',
+            ['one' => $category, 'two' => $category]
+        );
+
+        $out = [];
+        foreach ($rows as $row) {
+            $mine = \strcasecmp((string) $row['category'], $category) === 0;
+            $out[] = [
+                'other'        => (string) ($mine ? $row['other_category'] : $row['category']),
+                'relationship' => (string) $row['relationship'],
+                'reason'       => $row['reason'] === null ? null : (string) $row['reason'],
+                'confidence'   => $row['confidence'] === null ? null : (string) $row['confidence'],
+                'source'       => $row['source'] === null ? null : (string) $row['source'],
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Every pairing in the catalogue, for the reference screen.
+     *
+     * One statement, and the whole table: it is one row per stated pair
+     * across every crop, which is tens of rows rather than thousands.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function allCompanions(): array
+    {
+        return $this->db->all(
+            'SELECT * FROM `plant_companion`'
+            . " ORDER BY `relationship` DESC, FIELD(`confidence`, 'verified', 'approx', 'generic'),"
+            . ' `category`, `other_category`'
+        );
     }
 
     /**

@@ -1,7 +1,7 @@
 key,value
-template_version,1
-dataset_version,2026-08-30.1
+template_version,2
+dataset_version,2026-08-31.1
 region_keys,US-48217
-produced_on,2026-08-30
-produced_by,"Claude research session, from Scoping research report 2026-08-30"
-notes,First import for the Hill County TX test garden. confidence=verified means read from an extension source; approx means a reasonable regional estimate to be confirmed; generic means a non-regional reference value.
+produced_on,2026-08-31
+produced_by,"Claude Code, Phase 6"
+notes,"Phase 6. Adds companions.csv (template_version 2) and the five companion crops it needs -- basil, French marigold, nasturtium, dill and Blue Hubbard squash. Also promotes the squash vine borer GDD row to confidence=verified: 1000 DD50 from 01-01 was measured against 2019-2025 Hillsboro weather and lands 18 Apr - 6 May, matching the April/May emergence AgriLife reports. confidence=verified means read from an extension source or measured; approx means a reasonable regional estimate to be confirmed; generic means a non-regional reference value, or -- in companions.csv -- a pairing that is traditional rather than tested."

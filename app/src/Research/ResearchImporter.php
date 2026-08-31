@@ -23,12 +23,23 @@ use ZipArchive;
  */
 final class ResearchImporter
 {
-    public const TEMPLATE_VERSION = 1;
+    /** What the blank template ships as, and what a new dataset should say. */
+    public const TEMPLATE_VERSION = 2;
+
+    /**
+     * Every version this build can still read.
+     *
+     * Phase 6 added `companions.csv` and took the template to 2. A version 1
+     * zip stays valid, because the only difference between them is a file
+     * that is optional in both -- and refusing one would strand every
+     * dataset already produced, including the one in this repository.
+     */
+    public const READABLE_TEMPLATE_VERSIONS = [1, 2];
 
     /** The only entry names accepted. Anything else fails the zip. */
     private const FILES = [
         'manifest.csv', 'regions.csv', 'plant_types.csv', 'plant_region.csv',
-        'pests.csv', 'pest_region.csv', 'region_guidance.csv',
+        'pests.csv', 'pest_region.csv', 'region_guidance.csv', 'companions.csv',
     ];
 
     /** Header rows, exact and in order (research-template README). */
@@ -63,6 +74,13 @@ final class ResearchImporter
             'region_key', 'topic', 'applies_to_categories', 'show_from', 'show_to',
             'guidance', 'confidence', 'source',
         ],
+        // Global, like plant_types.csv, and keyed on CATEGORY rather than on
+        // (category, type): nothing anybody has written says basil suits a
+        // Roma but not a Celebrity. `pest_region.affects_categories` already
+        // works this way.
+        'companions.csv' => [
+            'category', 'other_category', 'relationship', 'reason', 'confidence', 'source',
+        ],
     ];
 
     private const ENUMS = [
@@ -75,6 +93,7 @@ final class ResearchImporter
         'season'               => ['spring', 'summer', 'fall', 'winter'],
         'method'               => ['seed', 'transplant'],
         'kind'                 => ['pest', 'disease', 'disorder'],
+        'relationship'         => ['good', 'bad'],
         'topic'                => ['season', 'soil', 'water', 'shade', 'mulch', 'seed_start',
                                    'hardening', 'frost', 'other'],
     ];
@@ -172,6 +191,7 @@ final class ResearchImporter
             $written['plant_region.csv'] = $this->upsertPlantRegion($result, $regionIds, $plantIds, $now);
             $written['pest_region.csv'] = $this->upsertPestRegion($result, $regionIds, $pestIds, $now);
             $written['region_guidance.csv'] = $this->upsertGuidance($result, $regionIds, $now);
+            $written['companions.csv'] = $this->upsertCompanions($result, $now);
 
             // 4. Mark the manifest's regions researched (Section 9.3 step 5).
             $this->markResearched($result, $now);
@@ -269,15 +289,16 @@ final class ResearchImporter
         $result->manifest = $manifest;
 
         $templateVersion = (int) ($manifest['template_version'] ?? 0);
-        if ($templateVersion !== self::TEMPLATE_VERSION) {
+        if (!\in_array($templateVersion, self::READABLE_TEMPLATE_VERSIONS, true)) {
             // A bump requires a code change and a migration note (Section 9.2).
             $result->fail(
                 'This dataset says template_version ' . ($manifest['template_version'] ?? '(missing)')
-                . '; Carl reads version ' . self::TEMPLATE_VERSION . '. A template bump needs a '
-                . 'code change before the file can be imported.'
+                . '; Carl reads version ' . \implode(' and ', self::READABLE_TEMPLATE_VERSIONS)
+                . '. A template bump needs a code change before the file can be imported.'
             );
             return;
         }
+        $result->templateVersion = $templateVersion;
 
         $result->datasetVersion = \trim((string) ($manifest['dataset_version'] ?? ''));
         if ($result->datasetVersion === '') {
@@ -466,6 +487,47 @@ final class ResearchImporter
             }
         }
 
+        // companions.csv (Phase 6). Both categories must exist, and a pair
+        // must be two different ones: a row saying basil goes well with basil
+        // passes every other check and means nothing.
+        $knownCategories = $this->knownCategories($result);
+        $seenPairs = [];
+        foreach ($result->rows['companions.csv'] ?? [] as $row) {
+            $where = 'companions.csv line ' . $row['_line'];
+            $this->requireCell($result, $where, $row, 'category');
+            $this->requireCell($result, $where, $row, 'other_category');
+            $this->requireCell($result, $where, $row, 'relationship');
+            $this->checkEnum($result, $where, $row, 'relationship');
+            $this->checkEnum($result, $where, $row, 'confidence');
+
+            $one = \strtolower($row['category']);
+            $two = \strtolower($row['other_category']);
+
+            foreach ([$one => $row['category'], $two => $row['other_category']] as $key => $shown) {
+                if ($shown !== '' && !isset($knownCategories[$key])) {
+                    $result->fail($where . ': category "' . $shown . '" is not in '
+                        . 'plant_types.csv and is not already in the catalogue.');
+                }
+            }
+
+            if ($one !== '' && $one === $two) {
+                $result->fail($where . ': a category cannot be its own companion.');
+                continue;
+            }
+
+            // The table reads the pair in both directions, so A-with-B and
+            // B-with-A are the same row -- and stating both is how a dataset
+            // ends up asserting two different reasons for one fact.
+            $pair = $one < $two ? $one . '~' . $two : $two . '~' . $one;
+            if (isset($seenPairs[$pair])) {
+                $result->fail($where . ': this pair is already stated on line '
+                    . $seenPairs[$pair] . '. Companions are read in both directions, so each '
+                    . 'pair belongs in the file once.');
+                continue;
+            }
+            $seenPairs[$pair] = $row['_line'];
+        }
+
         foreach ($result->rows['region_guidance.csv'] ?? [] as $row) {
             $where = 'region_guidance.csv line ' . $row['_line'];
             $this->requireCell($result, $where, $row, 'region_key');
@@ -652,6 +714,17 @@ final class ResearchImporter
             . ' FROM `region_guidance` g JOIN `region` r ON r.id = g.region_id',
             static fn (array $row): string => $row['region_key'] . '|' . $row['topic']
                 . '|' . $row['applies_to_categories'] . '|' . $row['show_from']);
+
+        // The pair is unordered, so both stored directions map to one key --
+        // otherwise re-importing the same file would report every row new.
+        $this->tallyByKey($result, 'companions.csv',
+            'SELECT CONCAT(LEAST(LOWER(`category`), LOWER(`other_category`)), "~",'
+            . ' GREATEST(LOWER(`category`), LOWER(`other_category`))) AS k FROM `plant_companion`',
+            static function (array $row): string {
+                $one = \strtolower($row['category']);
+                $two = \strtolower($row['other_category']);
+                return $one < $two ? $one . '~' . $two : $two . '~' . $one;
+            });
     }
 
     private function tally(ImportResult $result, string $file, ?string $existing, string $incoming): void
@@ -725,6 +798,29 @@ final class ResearchImporter
     }
 
     // -- Known-key lookups -------------------------------------------------
+
+    /**
+     * Every plant CATEGORY the catalogue knows, lower-cased, counting the
+     * ones this zip is about to add.
+     *
+     * Companions key on the category alone, so this is the check that stands
+     * in for the foreign key the table cannot have.
+     *
+     * @return array<string,bool>
+     */
+    private function knownCategories(ImportResult $result): array
+    {
+        $known = [];
+        foreach ($this->db->column('SELECT DISTINCT `category` FROM `plant_type`') as $category) {
+            $known[\strtolower((string) $category)] = true;
+        }
+        foreach ($result->rows['plant_types.csv'] ?? [] as $row) {
+            if ($row['category'] !== '') {
+                $known[\strtolower($row['category'])] = true;
+            }
+        }
+        return $known;
+    }
 
     /** @return array<string,bool> */
     private function knownPlantKeys(ImportResult $result): array
@@ -943,6 +1039,51 @@ final class ResearchImporter
             $rows,
             ['active_start', 'active_end', 'affects_categories', 'gdd_base_f', 'gdd_threshold',
              'gdd_biofix', 'confidence', 'source', 'regional_notes', 'dataset_version', 'updated_at']);
+    }
+
+    /**
+     * companions.csv (Phase 6). Global, keyed on the two category names, and
+     * stored with them in lexical order.
+     *
+     * Normalising the direction is what makes the unique key mean what it
+     * says. The pair is unordered -- the reference reads it both ways -- so
+     * without this, a dataset stating "Basil with Tomato" and a later one
+     * stating "Tomato with Basil" would satisfy `uq_companion_pair` twice and
+     * leave the table holding both, with whichever reason was written second
+     * showing on only one of the two plants' pages. Idempotence is the rule
+     * migrations and the weather sync already follow, and here it costs one
+     * `if`.
+     *
+     * The category is stored as the dataset wrote it rather than lower-cased,
+     * because it is shown on the page; the ORDER is decided case-insensitively
+     * so that "basil" and "Basil" cannot become two different pairs.
+     */
+    private function upsertCompanions(ImportResult $result, string $now): int
+    {
+        $rows = [];
+        foreach ($result->rows['companions.csv'] ?? [] as $row) {
+            $one = $row['category'];
+            $two = $row['other_category'];
+            if ($one === '' || $two === '' || \strtolower($one) === \strtolower($two)) {
+                continue;
+            }
+            if (\strtolower($one) > \strtolower($two)) {
+                [$one, $two] = [$two, $one];
+            }
+            $rows[] = [
+                $one, $two,
+                self::lowerOrDefault($row['relationship'], 'good'),
+                self::nullIfEmpty($row['reason']),
+                self::lowerOrNull($row['confidence']),
+                self::nullIfEmpty($row['source']),
+                $result->datasetVersion, $now, $now,
+            ];
+        }
+        return $this->writeChunks('plant_companion',
+            ['category', 'other_category', 'relationship', 'reason', 'confidence',
+             'source', 'dataset_version', 'created_at', 'updated_at'],
+            $rows,
+            ['relationship', 'reason', 'confidence', 'source', 'dataset_version', 'updated_at']);
     }
 
     /** @param array<string,int> $regionIds */
