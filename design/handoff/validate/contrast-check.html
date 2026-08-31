@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carl palette validator</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 24px; max-width: 1080px; margin-inline: auto;
+         background: #fbfbf9; color: #1b1b18; }
+  @media (prefers-color-scheme: dark) { body { background: #16181a; color: #e8e8e4; } }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { margin: 0 0 20px; opacity: .7; font-size: 14px; }
+  textarea { width: 100%; min-height: 220px; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+             padding: 12px; border-radius: 8px; border: 1px solid #999; background: canvas; color: canvastext; }
+  button { font: inherit; font-weight: 600; padding: 10px 18px; border-radius: 8px;
+           border: 1px solid #2f6b3f; background: #2f6b3f; color: #fff; cursor: pointer; margin: 12px 0 4px; }
+  button.secondary { background: transparent; color: inherit; border-color: currentColor; margin-left: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  th, td { padding: 7px 8px; text-align: left; border-bottom: 1px solid rgba(128,128,128,.3); }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; opacity: .7; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .pass { color: #1f7a3d; } .fail { color: #b3261e; font-weight: 700; }
+  .advisory { color: #8a6100; font-weight: 600; }
+  .chip { display: inline-block; width: 13px; height: 13px; border-radius: 3px;
+          border: 1px solid rgba(128,128,128,.5); vertical-align: -2px; margin-right: 5px; }
+  .box { border: 1px solid rgba(128,128,128,.35); border-radius: 10px; padding: 14px 16px; margin: 16px 0; }
+  .box h2 { font-size: 15px; margin: 0 0 8px; }
+  .err { border-color: #b3261e; }
+  .ok  { border-color: #1f7a3d; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         background: rgba(128,128,128,.15); padding: 1px 5px; border-radius: 4px; font-size: .92em; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .sw { width: 74px; font-size: 10px; text-align: center; }
+  .sw i { display: block; height: 40px; border-radius: 6px; border: 1px solid rgba(128,128,128,.4); }
+  .sw span { display: block; margin-top: 3px; word-break: break-all; opacity: .75; line-height: 1.25; }
+  ul { margin: 6px 0 0; padding-left: 20px; }
+  .hint { font-size: 13px; opacity: .75; }
+</style>
+</head>
+<body>
+
+<h1>Carl palette validator</h1>
+<p class="sub">Paste your <code>tokens.css</code> below and press Check. This runs the same
+hex regex the PHP PDF writer uses and the same WCAG maths Claude Code used for the baseline.</p>
+
+<textarea id="src" spellcheck="false" placeholder=":root {&#10;  --carl-bg: #f6f6f3;&#10;  ...&#10;}"></textarea>
+<div>
+  <button id="go">Check palette</button>
+  <button id="demo" class="secondary">Load current placeholder</button>
+</div>
+
+<div id="out"></div>
+
+<script>
+// The 31 names the application requires. Renaming or dropping one breaks the build.
+var REQUIRED = ['--carl-bg','--carl-surface','--carl-surface-sunk','--carl-border','--carl-border-strong',
+  '--carl-text','--carl-text-muted','--carl-text-inverse','--carl-primary','--carl-primary-dark',
+  '--carl-primary-soft','--carl-accent','--carl-ok','--carl-ok-soft','--carl-warn','--carl-warn-soft',
+  '--carl-error','--carl-error-soft','--carl-info','--carl-info-soft','--carl-verified','--carl-approx',
+  '--carl-generic','--carl-font','--carl-font-mono','--carl-gap','--carl-gap-lg','--carl-radius',
+  '--carl-radius-lg','--carl-shadow','--carl-touch'];
+
+// Every foreground/background combination the app actually renders.
+// [fg, bg, where, minimum ratio]
+var PAIRS = [
+  ['--carl-text','--carl-bg','Body text on the page',4.5],
+  ['--carl-text','--carl-surface','Text on a card',4.5],
+  ['--carl-text-muted','--carl-surface','Help text, meta lines, citations',4.5],
+  ['--carl-text-muted','--carl-bg','Muted text on the page',4.5],
+  ['--carl-text-inverse','--carl-primary','Topbar brand + primary button label',4.5],
+  ['--carl-primary','--carl-surface','.btn-link, timeline dot',4.5],
+  ['--carl-primary-dark','--carl-surface','In-content links',4.5],
+  ['--carl-primary-dark','--carl-primary-soft','.badge',4.5],
+  ['--carl-text-muted','--carl-surface-sunk','.badge-muted, .tier-skip',4.5],
+  ['--carl-warn','--carl-warn-soft','.tier-water, .notice-warn',4.5],
+  ['--carl-info','--carl-info-soft','.tier-likely, .notice-info',4.5],
+  ['--carl-ok','--carl-ok-soft','.notice-ok',4.5],
+  ['--carl-error','--carl-error-soft','.notice-error',4.5],
+  ['--carl-verified','--carl-surface','Confidence: verified',4.5],
+  ['--carl-approx','--carl-surface','Confidence: approximate',4.5],
+  ['--carl-generic','--carl-surface','Confidence: traditional/generic',4.5],
+  ['--carl-accent','--carl-surface','Focus ring on a card',3.0],
+  ['--carl-accent','--carl-bg','Focus ring on the page',3.0],
+  ['--carl-border-strong','--carl-surface','Input/select/textarea border (WCAG 1.4.11)',3.0],
+  // Advisory: decorative only. SC 1.4.11 does not require 3:1 for a purely
+  // decorative rule, and forcing it there makes every card shout. Reported,
+  // but does not block.
+  ['--carl-border','--carl-surface','Card border, table rule (decorative)',3.0,'advisory']
+];
+
+// Optional chart tokens: data series on a card, 3:1 minimum.
+var CHART = ['--carl-chart-hot','--carl-chart-cold','--carl-chart-water','--carl-chart-et0','--carl-chart-event'];
+
+// Tokens that are NOT colours. The PHP parser never reads these, so an rgba()
+// inside --carl-shadow is correct and must not be reported as unparseable.
+var NON_COLOUR = ['--carl-font','--carl-font-mono','--carl-gap','--carl-gap-lg',
+  '--carl-radius','--carl-radius-lg','--carl-shadow','--carl-touch'];
+
+// The exact regex from Carl\Support\Tokens. If a value does not match this,
+// the PDF silently renders grey.
+var HEX_RE = /(--carl-[a-z0-9-]+)\s*:\s*#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})\s*;/g;
+
+function parseHex(css) {
+  var out = {}, m;
+  HEX_RE.lastIndex = 0;
+  while ((m = HEX_RE.exec(css)) !== null) {
+    var h = m[2];
+    if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    out[m[1]] = [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+  }
+  return out;
+}
+// Any --carl-* declaration at all, so we can tell "missing" from "present but unparseable".
+function parseAnyNames(css) {
+  var out = {}, re = /(--carl-[a-z0-9-]+)\s*:\s*([^;]+);/g, m;
+  while ((m = re.exec(css)) !== null) out[m[1]] = m[2].trim();
+  return out;
+}
+function lum(rgb) {
+  var o = rgb.map(function (v) { v /= 255; return v <= 0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); });
+  return 0.2126*o[0] + 0.7152*o[1] + 0.0722*o[2];
+}
+function ratio(a, b) {
+  var l1 = lum(a), l2 = lum(b);
+  if (l1 < l2) { var t = l1; l1 = l2; l2 = t; }
+  return (l1 + 0.05) / (l2 + 0.05);
+}
+function hex(rgb) {
+  return '#' + rgb.map(function (v) { return ('0'+v.toString(16)).slice(-2); }).join('');
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) {
+  return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
+
+function check() {
+  var css = document.getElementById('src').value;
+  var out = document.getElementById('out');
+  if (!css.trim()) { out.innerHTML = '<div class="box err">Paste your tokens.css first.</div>'; return; }
+
+  var hexTokens = parseHex(css);
+  var allNames  = parseAnyNames(css);
+  var html = '', problems = 0;
+
+  // --- 1. Unparseable colour values (the silent PDF killer) -----------------
+  var badFn = [];
+  Object.keys(allNames).forEach(function (name) {
+    if (NON_COLOUR.indexOf(name) !== -1) return;  // --carl-shadow may hold rgba() legitimately
+    var v = allNames[name];
+    if (/oklch|oklab|\bhsla?\(|\brgba?\(|color-mix|\blab\(|\blch\(|\bcolor\(/i.test(v)) badFn.push([name, v]);
+    else if (/^#[0-9a-fA-F]{8}$/.test(v)) badFn.push([name, v + '  (8-digit hex with alpha does not parse)']);
+  });
+  if (badFn.length) {
+    problems++;
+    html += '<div class="box err"><h2>&#10007; ' + badFn.length + ' value(s) the PHP parser cannot read</h2>' +
+      '<p class="hint">These resolve to <strong>grey</strong> in the PDF reports, with no error. Convert to 3- or 6-digit hex.</p><ul>' +
+      badFn.map(function (b) { return '<li><code>' + esc(b[0]) + '</code>: <code>' + esc(b[1]) + '</code></li>'; }).join('') +
+      '</ul></div>';
+  }
+
+  // --- 2. Missing required names -------------------------------------------
+  var missing = REQUIRED.filter(function (n) { return !(n in allNames); });
+  if (missing.length) {
+    problems++;
+    html += '<div class="box err"><h2>&#10007; ' + missing.length + ' required token(s) missing</h2>' +
+      '<p class="hint">The application references these by name. Add them back with your values.</p><ul>' +
+      missing.map(function (n) { return '<li><code>' + esc(n) + '</code></li>'; }).join('') + '</ul></div>';
+  }
+
+  // --- 3. Contrast ----------------------------------------------------------
+  var rows = '', fails = 0, advisories = 0, skipped = [];
+  PAIRS.forEach(function (p) {
+    var fg = hexTokens[p[0]], bg = hexTokens[p[1]];
+    if (!fg || !bg) { skipped.push(p[0] + ' / ' + p[1]); return; }
+    var r = ratio(fg, bg), ok = r >= p[3], advisory = p[4] === 'advisory';
+    var verdict, cls;
+    if (ok)             { verdict = 'pass';     cls = 'pass'; }
+    else if (advisory)  { verdict = 'advisory'; cls = 'advisory'; advisories++; }
+    else                { verdict = 'FAIL';     cls = 'fail'; fails++; }
+    rows += '<tr><td><span class="chip" style="background:' + hex(fg) + '"></span><code>' + esc(p[0]) + '</code></td>' +
+            '<td><span class="chip" style="background:' + hex(bg) + '"></span><code>' + esc(p[1]) + '</code></td>' +
+            '<td>' + esc(p[2]) + '</td>' +
+            '<td class="num">' + r.toFixed(2) + ':1</td>' +
+            '<td class="num">' + p[3].toFixed(1) + ':1</td>' +
+            '<td class="' + cls + '">' + verdict + '</td></tr>';
+  });
+
+  // Optional chart series, if the designer added them.
+  var haveChart = CHART.filter(function (n) { return hexTokens[n]; });
+  if (haveChart.length && hexTokens['--carl-surface']) {
+    haveChart.forEach(function (n) {
+      var r = ratio(hexTokens[n], hexTokens['--carl-surface']), ok = r >= 3.0;
+      if (!ok) fails++;
+      rows += '<tr><td><span class="chip" style="background:' + hex(hexTokens[n]) + '"></span><code>' + esc(n) + '</code></td>' +
+              '<td><span class="chip" style="background:' + hex(hexTokens['--carl-surface']) + '"></span><code>--carl-surface</code></td>' +
+              '<td>Chart data series</td><td class="num">' + r.toFixed(2) + ':1</td><td class="num">3.0:1</td>' +
+              '<td class="' + (ok ? 'pass' : 'fail') + '">' + (ok ? 'pass' : 'FAIL') + '</td></tr>';
+    });
+  }
+
+  if (fails) problems++;
+  var head = fails ? '&#10007; ' + fails + ' contrast failure(s)' : '&#10003; All required contrast pairs pass';
+  if (advisories) head += ' <span class="advisory">(' + advisories + ' advisory)</span>';
+  html += '<div class="box ' + (fails ? 'err' : 'ok') + '"><h2>' + head + '</h2>' +
+    '<table><thead><tr><th>Foreground</th><th>Background</th><th>Where it renders</th><th>Ratio</th><th>Needs</th><th></th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table>';
+  if (advisories) html += '<p class="hint"><strong>Advisory</strong> rows are decorative — WCAG does not require 3:1 there, ' +
+    'and pushing a card border to 3:1 makes every card on a dense screen shout. They do not block.</p>';
+  if (skipped.length) html += '<p class="hint">Not checked (token missing or unparseable): ' + esc(skipped.join(', ')) + '</p>';
+  html += '</div>';
+
+  // --- 4. QR tokens must stay near-black on near-white ----------------------
+  if (hexTokens['--carl-qr-ink'] && hexTokens['--carl-qr-paper']) {
+    var qr = ratio(hexTokens['--carl-qr-ink'], hexTokens['--carl-qr-paper']);
+    var qrOk = qr >= 10;
+    if (!qrOk) problems++;
+    html += '<div class="box ' + (qrOk ? 'ok' : 'err') + '"><h2>' + (qrOk ? '&#10003;' : '&#10007;') +
+      ' QR tokens ' + qr.toFixed(1) + ':1</h2><p class="hint">A QR code must be near-black on near-white to scan. ' +
+      'These are contrast-critical, not palette &mdash; do not tint them to brand.</p></div>';
+  }
+
+  // --- 5. Swatches ----------------------------------------------------------
+  var names = Object.keys(hexTokens);
+  if (names.length) {
+    html += '<div class="box"><h2>' + names.length + ' colour tokens parsed</h2><div class="swatches">' +
+      names.map(function (n) {
+        return '<div class="sw"><i style="background:' + hex(hexTokens[n]) + '"></i><span>' +
+               esc(n.replace('--carl-','')) + '<br>' + hex(hexTokens[n]) + '</span></div>';
+      }).join('') + '</div></div>';
+  }
+
+  html = '<div class="box ' + (problems ? 'err' : 'ok') + '"><h2>' +
+    (problems ? '&#10007; Not ready to ship &mdash; ' + problems + ' area(s) need attention'
+              : '&#10003; Ready to ship') + '</h2></div>' + html;
+
+  out.innerHTML = html;
+}
+
+document.getElementById('go').addEventListener('click', check);
+document.getElementById('demo').addEventListener('click', function () {
+  document.getElementById('src').value =
+':root {\n' +
+'  --carl-bg:            #f6f6f3;\n  --carl-surface:       #ffffff;\n' +
+'  --carl-surface-sunk:  #eeeeea;\n  --carl-border:        #d6d6cf;\n' +
+'  --carl-border-strong: #b4b4aa;\n  --carl-text:          #1f2420;\n' +
+'  --carl-text-muted:    #5c635d;\n  --carl-text-inverse:  #ffffff;\n' +
+'  --carl-primary:       #2f6b3f;\n  --carl-primary-dark:  #24522f;\n' +
+'  --carl-primary-soft:  #e6efe7;\n  --carl-accent:        #7a5a1f;\n' +
+'  --carl-ok:            #2f6b3f;\n  --carl-ok-soft:       #e6efe7;\n' +
+'  --carl-warn:          #8a6100;\n  --carl-warn-soft:     #fbf1d9;\n' +
+'  --carl-error:         #a32020;\n  --carl-error-soft:    #fae7e7;\n' +
+'  --carl-info:          #1f4f77;\n  --carl-info-soft:     #e4eef7;\n' +
+'  --carl-verified:      #2f6b3f;\n  --carl-approx:        #8a6100;\n' +
+'  --carl-generic:       #5c635d;\n' +
+'  --carl-font: system-ui, sans-serif;\n  --carl-font-mono: ui-monospace, monospace;\n' +
+'  --carl-gap: 12px;\n  --carl-gap-lg: 20px;\n  --carl-radius: 8px;\n' +
+'  --carl-radius-lg: 12px;\n  --carl-shadow: 0 1px 2px rgba(0,0,0,.08);\n' +
+'  --carl-touch: 44px;\n}\n';
+  check();
+});
+</script>
+</body>
+</html>
