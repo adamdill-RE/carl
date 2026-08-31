@@ -7,6 +7,7 @@
  * @var Carl\Auth\User $user
  * @var Carl\Support\Units $units
  * @var array{recent:list<array<string,mixed>>,forecast:list<array<string,mixed>>} $weather
+ * @var list<array<string,mixed>> $watering
  * @var list<array<string,mixed>> $guidance
  * @var list<array<string,mixed>> $pests
  * @var list<array<string,mixed>> $alerts
@@ -93,6 +94,21 @@ $hasWeather = $weather['recent'] !== [] || $weather['forecast'] !== [];
   </table>
   </div>
   <p class="tiny muted">* still provisional -- the reanalysis revises the last few days.</p>
+<?php endif; ?>
+
+<?php if ($watering !== []): ?>
+  <h3>Watering</h3>
+  <ul class="list guidance">
+<?php foreach ($watering as $place): ?>
+    <li>
+      <div class="grow">
+        <span class="topic tier-<?= $e($place['tier']) ?>"><?= $e($place['tier']) ?></span><br>
+        <strong><?= $e($place['place_name']) ?></strong>
+        <div class="small"><?= $e($place['reason_text']) ?></div>
+      </div>
+    </li>
+<?php endforeach; ?>
+  </ul>
 <?php endif; ?>
 
 <?php if ($guidance !== [] || $pests !== []): ?>

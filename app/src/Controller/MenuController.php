@@ -37,6 +37,10 @@ final class MenuController extends Controller
             $alerts = $this->weather()->activeAlerts($user->weatherLocationId);
         }
 
+        // Read, never computed: the model runs nightly after the weather
+        // step and stores the row (handoff Section 11).
+        $watering = $this->watering()->forDate($today);
+
         $categories = $this->categoriesGrown();
         $guidance = $this->reference()->guidanceFor($user->regionId, $categories, $today);
         $pests = $this->reference()->activePests($user->regionId, $categories, $today);
@@ -54,6 +58,7 @@ final class MenuController extends Controller
 
         return $this->render('menu', [
             'weather'       => $weather,
+            'watering'      => $watering,
             'alerts'        => $alerts,
             'location'      => $location,
             'guidance'      => $guidance,

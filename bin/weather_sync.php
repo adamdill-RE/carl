@@ -19,8 +19,15 @@
  *   php bin/weather_sync.php                 archive + forecast
  *   php bin/weather_sync.php --archive       historical only
  *   php bin/weather_sync.php --forecast      forecast only
+ *   php bin/weather_sync.php --recommend     the watering model, no fetching
  *   php bin/weather_sync.php --location=3    one location
  *   php bin/weather_sync.php --verbose       print the run log
+ *
+ * --recommend is a SEPARATE cron entry, scheduled after this one, and it
+ * calls no API at all: it reads weather_daily and weather_forecast, which
+ * the run above has already filled, and computes (handoff Section 11). Phase
+ * 3 must not add an Open-Meteo call -- the limit that bit during development
+ * was the hourly one (Phase 3 handoff Section 1.3).
  */
 
 declare(strict_types=1);
@@ -36,12 +43,15 @@ $app = require \dirname(__DIR__) . '/app/bootstrap.php';
 $kinds = [];
 $locationId = null;
 $verbose = false;
+$recommend = false;
 
 foreach (\array_slice($argv, 1) as $argument) {
     if ($argument === '--archive') {
         $kinds[] = 'archive';
     } elseif ($argument === '--forecast') {
         $kinds[] = 'forecast';
+    } elseif ($argument === '--recommend') {
+        $recommend = true;
     } elseif ($argument === '--verbose' || $argument === '-v') {
         $verbose = true;
     } elseif (\preg_match('/^--location=(\d+)$/', $argument, $m) === 1) {
@@ -52,11 +62,39 @@ foreach (\array_slice($argv, 1) as $argument) {
     }
 }
 
+$started = \microtime(true);
+
+// --recommend on its own runs only the model. Given alongside a fetch kind,
+// it runs after it, which is also the order the two cron entries are in.
+if ($recommend && $kinds === []) {
+    try {
+        $model = new Carl\Weather\WateringModel($app);
+        $summary = $model->run();
+    } catch (Throwable $e) {
+        \fwrite(\STDERR, 'weather_sync --recommend: ' . $e->getMessage() . "\n");
+        exit(1);
+    }
+
+    \printf(
+        "weather_sync recommend: %d gardens and containers, %d rows, %d failures, %.1f s\n",
+        $summary['places'],
+        $summary['rows'],
+        $summary['failures'],
+        \microtime(true) - $started,
+    );
+
+    if ($verbose) {
+        foreach ($summary['log'] as $line) {
+            echo '  ' . $line . "\n";
+        }
+    }
+
+    exit($summary['failures'] > 0 ? 1 : 0);
+}
+
 if ($kinds === []) {
     $kinds = ['archive', 'forecast'];
 }
-
-$started = \microtime(true);
 
 try {
     $sync = new Carl\Weather\WeatherSync($app);
@@ -64,6 +102,18 @@ try {
 } catch (Throwable $e) {
     \fwrite(\STDERR, 'weather_sync: ' . $e->getMessage() . "\n");
     exit(1);
+}
+
+if ($recommend) {
+    try {
+        $model = new Carl\Weather\WateringModel($app);
+        $recommendation = $model->run();
+        $summary['log'] = \array_merge($summary['log'], $recommendation['log']);
+        $summary['failures'] += $recommendation['failures'];
+    } catch (Throwable $e) {
+        \fwrite(\STDERR, 'weather_sync --recommend: ' . $e->getMessage() . "\n");
+        exit(1);
+    }
 }
 
 \printf(

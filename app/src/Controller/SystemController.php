@@ -374,6 +374,28 @@ final class SystemController extends Controller
         // job chunks either way, which is what keeps the CLI and browser
         // forms interchangeable (weather.md Section 3.1).
         $kindParam = (string) ($request->query('kind', 'all') ?? 'all');
+
+        // The watering model fetches nothing -- it reads what the sync
+        // already stored and computes (handoff Section 11) -- so it is safe
+        // to run on its own from here, and it has its own cron entry.
+        if ($kindParam === 'recommend') {
+            $started = \microtime(true);
+            $model = new \Carl\Weather\WateringModel($this->app);
+            $summary = $model->run();
+
+            $lines = [
+                'watering model',
+                \sprintf('gardens and containers %d, rows %d, failures %d, %.1f s',
+                    $summary['places'], $summary['rows'], $summary['failures'],
+                    \microtime(true) - $started),
+                '',
+            ];
+            foreach ($summary['log'] as $entry) {
+                $lines[] = '  ' . $entry;
+            }
+            return Response::text(\implode("\n", $lines) . "\n");
+        }
+
         $kinds = match ($kindParam) {
             'archive'  => ['archive'],
             'forecast' => ['forecast'],
