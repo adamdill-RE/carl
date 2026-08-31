@@ -231,7 +231,8 @@ Why:
 
 ### 3.1 Data model — migration `016_qr_tags.sql`
 
-Two tables, plus one column on `user` for the label-stock preference (§5.3). `utf8mb4_unicode_ci`, like everything else.
+Two tables, plus two columns on `user`: the label-stock preference (§5.3) and
+the tagging-session flag (§6.5). `utf8mb4_unicode_ci`, like everything else.
 
 ```
 qr_tag
@@ -553,7 +554,7 @@ usual kind.
 | Code unknown | **404.** Not "invalid code" — a 404 leaks nothing about which codes exist. |
 | Not signed in | Login, then the target. |
 | Tag belongs to another user | **404.** The same page as unknown, deliberately. |
-| Tag unbound | **Bind screen:** "Tag AB7K4M isn't assigned yet." A list of recent living plantings, plus "Start a new plant with this tag." |
+| Tag unbound | **Bind screen:** "Tag AB7K4M isn't assigned yet." Every *untagged* living planting, most recent first (§6.4), plus "Start a new plant with this tag." |
 | Tag bound, plant living | **The field screen** (§7). |
 | Tag bound, plant ended | Read-only season summary, plus "Release this tag." |
 
@@ -567,6 +568,104 @@ its live binding and the planting, the event list for the header, and
 whatever the action list needs. The database is on separate hardware and
 latency scales with statement count (`hosting.md` §9). This is a page that
 gets hit forty times in one walk around a garden.
+
+### 6.4 The bind screen lists *untagged* plants, not recent ones
+
+The first draft of §6.2 said the bind screen offers "a list of recent living
+plantings". **That is wrong**, and it breaks precisely the case this section
+now exists for: a tomato that went in the ground in May has no tag and is not
+recent, so a recency filter hides the plant you are standing in front of.
+
+The predicate is **untagged**, and recency is only the *sort*:
+
+```
+living plantings for this user
+  with no qr_tag_binding where unbound_at IS NULL
+  ORDER BY start_date DESC, id DESC
+```
+
+Recently started first, because the common case is tagging something you sowed
+this week — but nothing is filtered out, so the May tomato is on the list, four
+screens down, and a search box finds it by name when the list is long.
+
+**Nothing in the model ties binding to a life stage.** `bound_at` is a
+timestamp and no more; a tag bound to a `yielding` plant behaves exactly like
+one bound at `seed_started`. Tagging an established plant is not a special case
+in the code and must not become one in the UI — the only question ever asked is
+whether the plant already has a tag.
+
+The screen therefore offers three things, in this order:
+
+1. **The untagged list**, most recent first, searchable.
+2. **Start a new plant with this tag** — the sow-as-you-go case, which lands on
+   Start a New Plant with the tag bound on submit.
+3. **Assign to a plant that already has a tag** — behind a confirmation, because
+   it silently unbinds the old tag. This is the replacement-for-a-destroyed-tag
+   path, not an everyday one.
+
+### 6.5 Tagging a stack of tags in one pass
+
+Twelve plants and twelve tags is the seed-starting reality, and scan → pick →
+scan → pick is twelve list-picks on a phone with wet hands. Worth removing.
+
+**A tagging session inverts it: Carl holds the cursor and the scan is the
+confirm.**
+
+1. From the Tags screen or the untagged list: **Start tagging**.
+2. Carl shows "Next: Cherokee Purple — scan a tag."
+3. Scan. The tag binds to that plant, the screen says
+   **"Bound to Cherokee Purple. Undo · Assign to a different plant"**, and names
+   the next untagged plant.
+4. Scan the next tag. Repeat until the list is empty or you stop.
+
+Twelve scans, zero taps. The scan is a full page load — the camera navigates to
+`/t/{code}` — so the session cannot live in the page. It lives on `user`:
+
+```
+user.tagging_started_at   DATETIME NULL     -- session active while unexpired
+```
+
+Three properties that make this cheap and hard to get wrong:
+
+- **Zero extra statements.** `Auth::user()` already runs a `SELECT` over the
+  user row on every request (`app/src/Auth/Auth.php`), so the session flag rides
+  along in a query that was happening anyway. §6.3's three-statement budget
+  survives intact.
+- **The cursor is computed, never stored.** "Next untagged plant" is the §6.4
+  query with a `LIMIT 1`. A stored pointer would go stale the moment a plant got
+  tagged by another route or ended; a computed one cannot. It also means the
+  session survives the phone being locked, the browser being closed, and the
+  page being reloaded — none of which is true of anything held client-side.
+- **An expiry, an explicit stop, and a visible banner.** Two hours, a **Stop
+  tagging** control, and a persistent "Tagging · 4 bound · stop" strip on every
+  page while it runs. A silent binding mode that outlives the potting session is
+  a way to attach a tag to the wrong plant a week later and never find out.
+
+Two behaviours that make it safe to use quickly:
+
+- **Optimistic bind with undo, not confirm-then-bind.** For a repetitive
+  physical task, confirming every scan is the whole cost you were removing.
+  Undo is one tap and only wanted when something went wrong.
+- **Scanning an already-bound tag does not consume the cursor.** It shows that
+  plant's field screen and leaves the session where it was. So scanning the same
+  tag twice, or scanning a tag already on a stake to check what it is, is
+  harmless mid-session.
+
+**There is no skip.** Skipping needs per-session state — a list of deferred
+plantings — which is a table, for a case the confirmation screen's "assign to a
+different plant" already covers in one tap. If the order is wrong often enough
+to hurt, that is evidence for the worklist, not a reason to build it now.
+
+When the untagged list empties, the session ends itself and says so. When it is
+empty to begin with, **Start tagging** is not offered — the answer there is
+"start a new plant with this tag."
+
+**One caveat, and it is Q1 wearing a different hat.** All of the above assumes
+your twelve plants are twelve *plantings*. If they are one planting with
+`quantity_initial = 12` — twelve cells of one variety — then the question is not
+how to scan twelve tags but whether twelve tags may point at one planting, and
+that is §10.1.
+
 
 ---
 
@@ -656,7 +755,8 @@ JavaScript.
 
 **5a — the whole useful thing.** Encoder + fixtures, migration 016, both label
 stocks and the preference, the full-sheet PDF, `/t/{code}` with bind in both
-directions (§5.2), the field screen. Nothing here depends on anything unbuilt
+directions (§5.2), the untagged-plant bind list and the tagging session
+(§6.4, §6.5), the field screen. Nothing here depends on anything unbuilt
 except `?next=` on login. **No partial-sheet handling anywhere in 5a** — that
 is what printing whole sheets buys.
 
