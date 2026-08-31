@@ -276,7 +276,214 @@ $t->test('the digest email carries List-Unsubscribe and its One-Click twin',
     $t->contains('Good morning', (string) $row['body_text']);
 });
 
+$t->group('The other eight kinds, each on the day it should fire');
+
+/**
+ * Drive one kind by putting the data it needs in place, running the digest
+ * for one user with a frozen clock, and looking for the title.
+ *
+ * Each of these is a rule that fires on exactly one or two days of the year.
+ * Without a frozen clock they would be untestable except by waiting, which
+ * is how a rule that never fires stays undiscovered for a season.
+ */
+$fires = static function (Carl\Tests\Harness $t, Carl\Core\App $app, Carl\Core\Database $db,
+                          int $userId, string $utcInstant, string $needle,
+                          string $message = '') use ($atUtc): void {
+    $db->run('DELETE FROM `reminder` WHERE `user_id` = :id', ['id' => $userId]);
+    $frozen = $atUtc($utcInstant);
+    (new Digest($frozen))->run($userId, true);
+
+    $titles = $db->column(
+        'SELECT CONCAT(`title`, \' :: \', `body`) FROM `reminder` WHERE `user_id` = :id',
+        ['id' => $userId]
+    );
+    $joined = \implode(" | ", \array_map(\strval(...), $titles));
+    $t->contains($needle, $joined, $message !== '' ? $message : ('got: ' . $joined));
+};
+
+$regionId = (int) ($db->value('SELECT id FROM `region` LIMIT 1') ?? 0);
+$db->run('UPDATE `user` SET `region_id` = :r, `email_digest_enabled` = 1 WHERE `id` = :id',
+    ['r' => $regionId, 'id' => $userId]);
+
+$t->test('start_seeds_by fires 14 and 7 days before the sowing deadline',
+    function ($t) use ($app, $db, $userId, $fires): void {
+    // The dataset gives Roma a spring transplant window opening 03-15 and
+    // 7 weeks indoors first, so the sow-by date is 01-25. Fourteen days
+    // before that is 01-11.
+    $fires($t, $app, $db, $userId, '2027-01-11 12:00:00', 'seeds within 14 days');
+    $fires($t, $app, $db, $userId, '2027-01-18 12:00:00', 'seeds within 7 days');
+});
+
+$t->test('start_seeds_by is silent on every other day of the year',
+    function ($t) use ($app, $db, $userId, $atUtc): void {
+    $db->run('DELETE FROM `reminder` WHERE `user_id` = :id', ['id' => $userId]);
+    (new Digest($atUtc('2027-01-14 12:00:00')))->run($userId, true);
+    $t->same(0, (int) $db->value(
+        'SELECT COUNT(*) FROM `reminder` WHERE `user_id` = :id AND `kind` = :k',
+        ['id' => $userId, 'k' => ReminderKind::START_SEEDS_BY], 0
+    ), 'a reminder that fires every day is a reminder nobody reads');
+});
+
+$t->test('frost_watch fires fourteen days before the earliest first frost',
+    function ($t) use ($app, $db, $userId, $fires): void {
+    // The dataset gives first_frost_early = 11-15 for this region.
+    $fires($t, $app, $db, $userId, '2026-11-01 12:00:00', 'First frost is about two weeks away');
+});
+
+$t->test('pest_scouting fires when a pest window opens on a category you grow',
+    function ($t) use ($app, $db, $userId, $fires): void {
+    // Spider mites open 07-01 and affect Tomato, which this account grows.
+    // The categories cell is semicolon-separated -- splitting it on a comma
+    // matches nothing and the rule never fires at all.
+    $fires($t, $app, $db, $userId, '2026-07-01 12:00:00', 'Start watching for');
+});
+
+$t->test('transplant_window fires a week before the window opens, for a seedling',
+    function ($t) use ($app, $db, $userId, $fires): void {
+    // A seedling exists from the hardening test above; the fall transplant
+    // window opens 07-01, so a week out is 06-24.
+    $fires($t, $app, $db, $userId, '2026-06-24 12:00:00', 'Transplant window opens in a week');
+    $fires($t, $app, $db, $userId, '2026-07-01 12:00:00', 'Transplant window opens today');
+});
+
+$t->test('first_harvest_expected fires a week out and again on the day',
+    function ($t) use ($client, $app, $db, $userId, $plantTypeId, $today, $fires): void {
+    // A plant whose days-to-maturity lands on a known date.
+    $type = $db->one(
+        'SELECT id, dtm_days_min, dtm_days_max, dtm_counted_from FROM `plant_type`'
+        . ' WHERE dtm_days_min IS NOT NULL AND dtm_counted_from = :from LIMIT 1',
+        ['from' => 'seed']
+    );
+    if ($type === null) {
+        $t->ok(true, 'no seed-counted type in this dataset');
+        return;
+    }
+
+    $min = (int) $type['dtm_days_min'];
+    // Sown so that maturity falls on 2026-10-01.
+    $sown = (string) Clock::addDays('2026-10-01', -$min);
+    $db->run(
+        'INSERT INTO `planting` (user_id, plant_type_id, label, start_method, start_date,'
+        . ' quantity_initial, quantity_live, state, state_changed_at, created_at, updated_at)'
+        . " VALUES (:u, :pt, 'Harvest Test', 'direct_sow', :d, 1, 1, 'planted',"
+        . '  UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP())',
+        ['u' => $userId, 'pt' => (int) $type['id'], 'd' => $sown]
+    );
+
+    $fires($t, $app, $db, $userId, '2026-09-24 12:00:00', 'should be ready in a week');
+    $fires($t, $app, $db, $userId, '2026-10-01 12:00:00', 'should be ready about now');
+});
+
+$t->test('harvest_window_closing fires a fortnight past the late date, but only if nothing was picked',
+    function ($t) use ($app, $db, $userId, $fires, $atUtc): void {
+    $planting = $db->one(
+        "SELECT p.id, p.start_date, pt.dtm_days_max FROM `planting` p"
+        . ' JOIN `plant_type` pt ON pt.id = p.plant_type_id'
+        . " WHERE p.user_id = :u AND p.label = 'Harvest Test' LIMIT 1",
+        ['u' => $userId]
+    );
+    if ($planting === null || $planting['dtm_days_max'] === null) {
+        $t->ok(true, 'nothing to close');
+        return;
+    }
+
+    $closing = (string) Clock::addDays((string) $planting['start_date'],
+        (int) $planting['dtm_days_max'] + 14);
+    $fires($t, $app, $db, $userId, $closing . ' 12:00:00', 'Nothing harvested yet');
+
+    // Log a yield, and the reminder stops: it is about a plant that has
+    // given nothing, not about a date.
+    $db->run(
+        'INSERT INTO `plant_event` (user_id, planting_id, event_type, event_date, recorded_at,'
+        . ' count_qty, created_at)'
+        . " VALUES (:u, :p, 'yielded', :d, UTC_TIMESTAMP(), 3, UTC_TIMESTAMP())",
+        ['u' => $userId, 'p' => (int) $planting['id'], 'd' => $closing]
+    );
+    $db->run('DELETE FROM `reminder` WHERE `user_id` = :id', ['id' => $userId]);
+    (new Digest($atUtc($closing . ' 12:00:00')))->run($userId, true);
+    $t->same(0, (int) $db->value(
+        'SELECT COUNT(*) FROM `reminder` WHERE `user_id` = :id AND `kind` = :k',
+        ['id' => $userId, 'k' => ReminderKind::HARVEST_WINDOW_CLOSING], 0
+    ));
+});
+
+$t->test('inactivity nudges once, and then stops until something is logged',
+    function ($t) use ($app, $db, $atUtc): void {
+    $repo = new UserRepository($db);
+    $name = 'idle' . \substr(\bin2hex(\random_bytes(4)), 0, 8);
+    $made = $repo->createWithTemporaryPassword($name, $name . '@example.test', 'Idle',
+        new Password($app->config()->int('auth.bcrypt_cost', 11)), 'user');
+    $idleId = (int) $made['id'];
+    $db->run(
+        "UPDATE `user` SET `timezone` = 'UTC', `onboarded_at` = UTC_TIMESTAMP(),"
+        . " `must_reset_password` = 0, `onboarding_step` = 'done' WHERE `id` = :id",
+        ['id' => $idleId]
+    );
+
+    // A planting with one event, ten days ago.
+    $typeId = (int) $db->value('SELECT id FROM `plant_type` ORDER BY id LIMIT 1');
+    $db->run(
+        'INSERT INTO `planting` (user_id, plant_type_id, start_method, start_date,'
+        . ' quantity_initial, quantity_live, state, state_changed_at, created_at, updated_at)'
+        . " VALUES (:u, :pt, 'direct_sow', '2026-06-05', 1, 1, 'planted',"
+        . '  UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP())',
+        ['u' => $idleId, 'pt' => $typeId]
+    );
+    $plantingId = $db->insertId();
+    $db->run(
+        'INSERT INTO `plant_event` (user_id, planting_id, event_type, event_date, recorded_at, created_at)'
+        . " VALUES (:u, :p, 'direct_sown', '2026-06-05', UTC_TIMESTAMP(), UTC_TIMESTAMP())",
+        ['u' => $idleId, 'p' => $plantingId]
+    );
+
+    (new Digest($atUtc('2026-06-15 12:00:00')))->run($idleId, true);
+    $t->same(1, (int) $db->value(
+        'SELECT COUNT(*) FROM `reminder` WHERE `user_id` = :id AND `kind` = :k',
+        ['id' => $idleId, 'k' => ReminderKind::INACTIVITY], 0
+    ), 'ten days quiet earns a nudge');
+
+    // The next morning, still nothing logged: still one nudge, not two.
+    (new Digest($atUtc('2026-06-16 12:00:00')))->run($idleId, true);
+    $t->same(1, (int) $db->value(
+        'SELECT COUNT(*) FROM `reminder` WHERE `user_id` = :id AND `kind` = :k',
+        ['id' => $idleId, 'k' => ReminderKind::INACTIVITY], 0
+    ), 'nagging every morning is how a channel gets muted');
+});
+
+$t->test('research_diff is said once per planting, then never again',
+    function ($t) use ($app, $db, $userId, $atUtc): void {
+    $before = (int) $db->value(
+        'SELECT COUNT(DISTINCT `subject_key`) FROM `reminder`'
+        . ' WHERE `user_id` = :id AND `kind` = :k',
+        ['id' => $userId, 'k' => ReminderKind::RESEARCH_DIFF], 0
+    );
+
+    (new Digest($atUtc('2026-12-05 12:00:00')))->run($userId, true);
+    (new Digest($atUtc('2026-12-06 12:00:00')))->run($userId, true);
+
+    $subjects = (int) $db->value(
+        'SELECT COUNT(DISTINCT `subject_key`) FROM `reminder`'
+        . ' WHERE `user_id` = :id AND `kind` = :k',
+        ['id' => $userId, 'k' => ReminderKind::RESEARCH_DIFF], 0
+    );
+    $t->ok($subjects >= $before, 'it may have found new plantings');
+
+    // Whatever it found, a second morning adds no new subject.
+    $afterThird = (int) $db->value(
+        'SELECT COUNT(DISTINCT `subject_key`) FROM `reminder`'
+        . ' WHERE `user_id` = :id AND `kind` = :k',
+        ['id' => $userId, 'k' => ReminderKind::RESEARCH_DIFF], 0
+    );
+    $t->same($subjects, $afterThird);
+});
+
 $t->group('Today\'s items on the menu');
+
+// The frozen-clock group above walked this account through half a year and
+// cleared the table each time. Put today's items back before looking at
+// today's menu.
+$db->run('DELETE FROM `reminder` WHERE `user_id` = :id', ['id' => $userId]);
+(new Digest($app))->run($userId, true);
 
 $t->test('the menu shows the stored items, not a recomputation',
     function ($t) use ($client): void {

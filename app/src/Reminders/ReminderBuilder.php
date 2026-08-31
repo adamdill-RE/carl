@@ -598,9 +598,14 @@ final class ReminderBuilder
                 continue;
             }
 
+            // Semicolon, not comma: the research template's multi-valued
+            // cells are semicolon-separated so a category can contain a
+            // comma (research-template/README.md), and ReferenceRepository
+            // already splits them that way. Splitting on a comma here would
+            // match nothing and the pest reminder would never fire.
             $affects = \array_filter(\array_map(
                 static fn (string $c): string => \strtolower(\trim($c)),
-                \explode(',', (string) ($pest['affects_categories'] ?? ''))
+                \explode(';', (string) ($pest['affects_categories'] ?? ''))
             ));
 
             if ($affects !== [] && \array_intersect($affects, \array_keys($grown)) === []) {
