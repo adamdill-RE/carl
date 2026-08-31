@@ -13,6 +13,7 @@ weather that actually happened.
 | Document | Authority over |
 | --- | --- |
 | [`docs/CARL-HANDOFF.md`](docs/CARL-HANDOFF.md) | Scope. What Carl is, the screens, the data model, the phasing. |
+| [`docs/PHASE-3-HANDOFF.md`](docs/PHASE-3-HANDOFF.md) | What to build next, and the facts Phase 1 measured that the original scope could only assume. |
 | [`docs/hosting.md`](docs/hosting.md) | Every platform constraint. Overrides the handoff where they conflict. |
 | [`docs/weather.md`](docs/weather.md) | Weather ingestion. Overrides the handoff where they conflict. |
 
