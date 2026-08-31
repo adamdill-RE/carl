@@ -7,6 +7,8 @@
  * @var Carl\Auth\User $user
  * @var Carl\Support\Units $units
  * @var array{recent:list<array<string,mixed>>,forecast:list<array<string,mixed>>} $weather
+ * @var list<array<string,mixed>> $watering
+ * @var list<array<string,mixed>> $items
  * @var list<array<string,mixed>> $guidance
  * @var list<array<string,mixed>> $pests
  * @var list<array<string,mixed>> $alerts
@@ -15,6 +17,7 @@
  * @var array{living:int,plantings:int,gardens:int,events:int} $counts
  */
 $e = $view->e(...);
+$K = Carl\Domain\ReminderKind::class;
 $pageTitle = null;
 $hasWeather = $weather['recent'] !== [] || $weather['forecast'] !== [];
 ?>
@@ -95,6 +98,21 @@ $hasWeather = $weather['recent'] !== [] || $weather['forecast'] !== [];
   <p class="tiny muted">* still provisional -- the reanalysis revises the last few days.</p>
 <?php endif; ?>
 
+<?php if ($watering !== []): ?>
+  <h3>Watering</h3>
+  <ul class="list guidance">
+<?php foreach ($watering as $place): ?>
+    <li>
+      <div class="grow">
+        <span class="topic tier-<?= $e($place['tier']) ?>"><?= $e($place['tier']) ?></span><br>
+        <strong><?= $e($place['place_name']) ?></strong>
+        <div class="small"><?= $e($place['reason_text']) ?></div>
+      </div>
+    </li>
+<?php endforeach; ?>
+  </ul>
+<?php endif; ?>
+
 <?php if ($guidance !== [] || $pests !== []): ?>
   <h3>For your area today</h3>
   <ul class="list guidance">
@@ -132,6 +150,34 @@ $hasWeather = $weather['recent'] !== [] || $weather['forecast'] !== [];
 </section>
 <?php endif; ?>
 
+<?php if ($items !== []): ?>
+<section class="card">
+  <h2>Today</h2>
+  <p class="tiny muted flush">
+    The same items as your morning email. Computed overnight, not while you waited.
+  </p>
+  <ul class="list items">
+<?php foreach ($items as $item): ?>
+    <li>
+      <div class="grow">
+        <span class="topic kind-<?= $e($item['kind']) ?>"><?= $e($K::label((string) $item['kind'])) ?></span><br>
+        <strong><?= $e($item['title']) ?></strong>
+<?php if ((string) $item['body'] !== ''): ?>
+        <div class="small muted"><?= $e($item['body']) ?></div>
+<?php endif; ?>
+      </div>
+      <form method="post" action="<?= $e($app->url('reminders/dismiss')) ?>" class="flush">
+        <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+        <input type="hidden" name="reminder_id" value="<?= $e($item['id']) ?>">
+        <button type="submit" class="btn btn-secondary btn-small"
+                aria-label="Dismiss this item">&times;</button>
+      </form>
+    </li>
+<?php endforeach; ?>
+  </ul>
+</section>
+<?php endif; ?>
+
 <h1 class="page-title">What would you like to do?</h1>
 <p class="page-sub">
   <?= $e($counts['living']) ?> living plants across <?= $e($counts['gardens']) ?> gardens
@@ -151,4 +197,6 @@ $hasWeather = $weather['recent'] !== [] || $weather['forecast'] !== [];
     <span class="hint">Water a zone, mulch, fertilise</span></a>
   <a href="<?= $e($app->url('lists')) ?>">Lists
     <span class="hint">Your seeds, soils, fertilisers</span></a>
+  <a href="<?= $e($app->url('export')) ?>">Export
+    <span class="hint">Your plants, events and weather as CSV</span></a>
 </nav>

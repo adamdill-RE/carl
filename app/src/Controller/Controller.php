@@ -16,7 +16,9 @@ use Carl\Repo\ListRepository;
 use Carl\Repo\PhotoRepository;
 use Carl\Repo\PlantingRepository;
 use Carl\Repo\ReferenceRepository;
+use Carl\Repo\ReminderRepository;
 use Carl\Repo\UserRepository;
+use Carl\Repo\WateringRepository;
 use Carl\Repo\WeatherRepository;
 use Carl\Repo\ZctaRepository;
 
@@ -32,8 +34,10 @@ abstract class Controller
     private ?EventRepository $events = null;
     private ?PhotoRepository $photos = null;
     private ?ReferenceRepository $reference = null;
+    private ?ReminderRepository $reminders = null;
     private ?UserRepository $accounts = null;
     private ?WeatherRepository $weather = null;
+    private ?WateringRepository $watering = null;
     private ?ZctaRepository $zcta = null;
 
     public function __construct(protected App $app)
@@ -104,6 +108,24 @@ abstract class Controller
     protected function weather(): WeatherRepository
     {
         return $this->weather ??= new WeatherRepository($this->app->db());
+    }
+
+    /**
+     * Today's items, read only: the hourly digest job computes and stores
+     * them, and the menu shows what is stored (handoff Section 4.2).
+     */
+    protected function reminders(): ReminderRepository
+    {
+        return $this->reminders ??= new ReminderRepository($this->app->db(), $this->userId());
+    }
+
+    /**
+     * The watering recommendation, read only: it is computed nightly and
+     * never at render (handoff Section 11).
+     */
+    protected function watering(): WateringRepository
+    {
+        return $this->watering ??= new WateringRepository($this->app->db(), $this->userId());
     }
 
     protected function zcta(): ZctaRepository

@@ -381,6 +381,18 @@ are derived, never stored.
   status, attempts, last_error, created_at, sent_at. Cron drains it; nothing
   sends inline in a request.
 
+> **Correction, Phase 3 build, 2026-08-31.** Neither unique key above can be
+> built as written. `planting_id` is NULL on five of the eleven reminder kinds
+> and `garden_id` is NULL for every container recommendation (§11 evaluates
+> containers as their own gardens), and **MySQL permits any number of NULLs in
+> a unique index** — so both keys would enforce nothing on exactly the rows
+> that need them. Every watering reminder would be written again on every run.
+>
+> Both tables carry an extra NOT NULL key column that the index is built on
+> instead: `reminder.subject_key` and `watering_recommendation.place_key`. The
+> nullable foreign keys remain, for the cascade. See
+> `PHASE-3-HANDOFF.md` §9.1.
+
 ---
 
 ## 6. Dates and time
@@ -599,6 +611,15 @@ Both write to `email_outbox` first; the cron sends with bounded retries.
    Manager (0600).
 7. Send yourself a test from `/admin/mail-test?key=` (Phase 3 route) and check
    headers for `spf=pass dkim=pass`.
+
+> **Correction, Phase 3 build, 2026-08-31.** Step 7's route is
+> `/admin/mail-test`, admin-guarded rather than key-guarded, and it **queues**
+> rather than sends. A key-guarded route that mails an address from the query
+> string is an open relay to anyone who ever sees the key, and a key travels
+> in a URL — through a browser bar and the account's access log. The
+> destination is fixed to the signed-in admin's own address, and the drain
+> sends it, because §5 of the Phase 3 handoff forbids a third-party call on
+> the request path. See `PHASE-3-HANDOFF.md` §9.2.
 
 ---
 

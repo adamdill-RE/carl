@@ -28,4 +28,31 @@ return [
 
     // Phase 0 spikes only. Remove the line once the spikes are recorded.
     // 'diag_key' => 'CHANGE-ME-long-random-string',
+
+    // --- Mail (handoff Section 12.1) ------------------------------------
+    // Leave this whole block out until the mailbox exists. With no driver,
+    // Carl queues its mail and waits: nothing is lost, nothing is sent
+    // twice, and the temporary password for a new account is still shown on
+    // screen. /admin/mail-test shows what state it is in.
+    //
+    // Set driver to 'smtp' OR 'api', not both. Spike 4 is sending one of
+    // each and noting which lands in a Gmail inbox.
+    //
+    // 'mail' => [
+    //     'driver' => 'smtp',
+    //     'smtp' => [
+    //         // cPanel: Email Accounts -> Connect Devices prints these.
+    //         // Port 465 is implicit TLS ('tls'); 587 is 'starttls'.
+    //         'host'       => 'mail.reshiftmanager.com',
+    //         'port'       => 465,
+    //         'encryption' => 'tls',
+    //         'username'   => 'carl@reshiftmanager.com',
+    //         'password'   => 'THE-MAILBOX-PASSWORD',
+    //     ],
+    // ],
+    //
+    // 'mail' => [
+    //     'driver' => 'api',
+    //     'api'    => ['key' => 'xkeysib-...'],
+    // ],
 ];

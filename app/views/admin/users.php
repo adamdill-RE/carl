@@ -5,7 +5,7 @@
  *
  * @var Carl\Core\App $app @var Carl\Core\View $view
  * @var list<array<string,mixed>> $users
- * @var array{username:string,password:string,email:string}|null $created
+ * @var array{username:string,password:string,email:string,queued:bool}|null $created
  * @var list<string> $errors @var array<string,string> $old
  */
 $e = $view->e(...);
@@ -17,12 +17,24 @@ $pageTitle = 'Users';
 <?php if ($created !== null): ?>
 <div class="notice notice-ok">
   <p><strong><?= $e($created['username']) ?></strong> created.</p>
-  <p>Temporary password: <code> class="credential"<?= $e($created['password']) ?></code></p>
+  <p>Temporary password: <code class="credential"><?= $e($created['password']) ?></code></p>
   <p class="small">
     This is shown once and is not stored anywhere readable. Write it down or send it now.
     They will be made to change it the first time they sign in.
-    Emailing it automatically arrives in a later phase.
   </p>
+<?php if (!empty($created['queued'])): ?>
+  <p class="small">
+    It has also been queued to <?= $e($created['email']) ?>, and goes out on the next
+    mail drain. Passing it on yourself is still the surest route --
+    <a href="<?= $e($app->url('admin/mail-test')) ?>">mail health</a>.
+  </p>
+<?php else: ?>
+  <p class="small">
+    No mail driver is configured, so nothing was emailed. Set one up under
+    <a href="<?= $e($app->url('admin/mail-test')) ?>">mail health</a> and new accounts
+    are emailed as well as shown here.
+  </p>
+<?php endif; ?>
 </div>
 <?php endif; ?>
 

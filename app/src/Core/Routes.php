@@ -6,6 +6,8 @@ namespace Carl\Core;
 
 use Carl\Controller\AdminController;
 use Carl\Controller\AuthController;
+use Carl\Controller\DigestController;
+use Carl\Controller\ExportController;
 use Carl\Controller\GardenController;
 use Carl\Controller\ListController;
 use Carl\Controller\LogController;
@@ -52,6 +54,25 @@ final class Routes
         // -- Main menu -----------------------------------------------------
         $r->get('/', MenuController::class, 'index');
         $r->post('/motd/dismiss', MenuController::class, 'dismiss');
+        $r->post('/reminders/dismiss', DigestController::class, 'dismiss');
+
+        // -- Unsubscribe (handoff Section 12) -------------------------------
+        // Public on purpose: someone clicking a link in an email is not
+        // signed in, and making them sign in to stop the mail is exactly the
+        // pattern that gets a sender marked as spam. The POST is
+        // PUBLIC_ACCESS so RFC 8058 One-Click works, which needs no CSRF
+        // token and no session; the token in the path is the only credential
+        // and the only thing it can do is turn that person's own mail off.
+        // The constraint is [0-9a-f]+ rather than [0-9a-f]{64}: the router
+        // reads a constraint as everything up to the first '}', so a brace
+        // quantifier would cut the pattern in half. The exact length is
+        // enforced where the token is looked up.
+        $r->get('/unsubscribe/{token:[0-9a-f]+}',
+            DigestController::class, 'unsubscribe', Route::PUBLIC_ACCESS);
+        $r->post('/unsubscribe/{token:[0-9a-f]+}',
+            DigestController::class, 'confirmUnsubscribe', Route::TOKEN_ACCESS);
+        $r->post('/unsubscribe/{token:[0-9a-f]+}/resume',
+            DigestController::class, 'resubscribe', Route::TOKEN_ACCESS);
 
         // -- Start a New Plant ---------------------------------------------
         $r->get('/plants/new', PlantController::class, 'chooseKind');
@@ -88,6 +109,14 @@ final class Routes
         $r->post('/lists/archive', ListController::class, 'archive');
         $r->post('/lists/inline', ListController::class, 'inlineAdd');
 
+        // -- CSV export (handoff Section 13.3) ------------------------------
+        // The user's own data only; the scope comes from the repository base
+        // class, and every cell is formula-injection guarded (hosting 8.5).
+        $r->get('/export', ExportController::class, 'index');
+        $r->get('/export/plants.csv', ExportController::class, 'plantsCsv');
+        $r->get('/export/events.csv', ExportController::class, 'eventsCsv');
+        $r->get('/export/weather.csv', ExportController::class, 'weatherCsv');
+
         // -- Photos (never a direct URL -- handoff Section 5.3) -------------
         $r->post('/photos', PhotoController::class, 'upload');
         $r->get('/photos/{id:\d+}', PhotoController::class, 'show');
@@ -104,6 +133,14 @@ final class Routes
         $r->post('/admin/research-import', AdminController::class, 'researchPreview', Route::ADMIN_ACCESS);
         $r->post('/admin/research-import/confirm', AdminController::class, 'researchConfirm', Route::ADMIN_ACCESS);
         $r->get('/admin/regions', AdminController::class, 'regions', Route::ADMIN_ACCESS);
+        // Handoff Section 12.1 step 7 calls this "/admin/mail-test?key=".
+        // It is admin-only instead: a key-guarded route that sends mail to an
+        // address in the query string is an open relay to anyone who ever
+        // sees the key in a browser bar or an access log. Admin access is the
+        // stronger guard, and the destination is fixed to the signed-in
+        // admin's own address. Recorded in docs/PHASE-3-HANDOFF.md Section 9.
+        $r->get('/admin/mail-test', AdminController::class, 'mailTest', Route::ADMIN_ACCESS);
+        $r->post('/admin/mail-test', AdminController::class, 'sendMailTest', Route::ADMIN_ACCESS);
 
         // -- Key-guarded operations (hosting Section 6.3) -------------------
         // No key configured, or a wrong key, is 404 -- never 403.
@@ -111,6 +148,9 @@ final class Routes
         $r->get('/setup', SystemController::class, 'setup', Route::KEY_ACCESS, 'setup_key');
         $r->post('/setup', SystemController::class, 'runSetup', Route::KEY_ACCESS, 'setup_key');
         $r->get('/tasks/weather-sync', SystemController::class, 'weatherSync', Route::KEY_ACCESS, 'cron_key');
+        $r->get('/tasks/mail-send', SystemController::class, 'mailSend', Route::KEY_ACCESS, 'cron_key');
+        $r->get('/tasks/alerts-poll', SystemController::class, 'alertsPoll', Route::KEY_ACCESS, 'cron_key');
+        $r->get('/tasks/daily-digest', SystemController::class, 'dailyDigest', Route::KEY_ACCESS, 'cron_key');
         $r->get('/diag', SystemController::class, 'diag', Route::KEY_ACCESS, 'diag_key');
 
         return $r;

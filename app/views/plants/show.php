@@ -85,7 +85,7 @@ $live = (int) $planting['quantity_live'];
 
 <?= $view->partial('plants/research_card', ['card' => $card, 'hasRegion' => $user->hasRegion()]) ?>
 
-<?php if ($weather !== []): ?>
+<?php if ($weather !== [] || $weatherGaps > 0): ?>
 <section class="card">
   <h2>Weather while it was in the ground</h2>
 <?php if ($weatherGaps > 0): ?>
@@ -94,6 +94,7 @@ $live = (int) $planting['quantity_live'];
     fetched yet. The nightly sync fills gaps working backwards; they will appear here on their own.
   </p>
 <?php endif; ?>
+<?php if ($weather !== []): ?>
 <?php
     $rain = 0.0; $et0 = 0.0; $hottest = null; $coldest = null;
     foreach ($weather as $day) {
@@ -118,6 +119,7 @@ $live = (int) $planting['quantity_live'];
     </tbody>
   </table>
   <p class="tiny muted">Charts arrive in a later phase; these are the totals behind them.</p>
+<?php endif; ?>
 </section>
 <?php endif; ?>
 

@@ -226,6 +226,30 @@ $t->test('a nursery transplant enters at planted', function ($t) use ($client, $
     $plantIds['transplant'] = (int) $rows[0]['id'];
 });
 
+$t->test('the row select carries the occupancy hint (handoff 4.3)', function ($t) use ($client, $alice, $db): void {
+    $gardens = new GardenRepository($db, $alice['id']);
+    $garden = $gardens->where('`name` = :n', ['n' => 'Main Bed'])[0];
+    $rows = $gardens->rows((int) $garden['id']);
+
+    // 20 direct-sown into row 1 and 3 transplants into row 2, above.
+    $occupancy = $gardens->livingCountByRow((int) $garden['id']);
+    $t->same(20, $occupancy[(int) $rows[0]['id']]['living']);
+    $t->same(3, $occupancy[(int) $rows[1]['id']]['living']);
+
+    // Every garden at once is what the plant form asks for, and it is the
+    // same numbers.
+    $everywhere = $gardens->livingCountByRow();
+    $t->same(20, $everywhere[(int) $rows[0]['id']]['living']);
+
+    $response = $client->get('/plants/new/direct_sow');
+    $t->same(200, $response->status);
+    $t->contains('already has 20 living plants', $response->body,
+        'the hint is beside the row option, not only in the garden report');
+    $t->contains('already has 3 living plants', $response->body);
+    // A nudge, never a block: the option is still selectable.
+    $t->notContains('disabled', $response->body);
+});
+
 $t->test('a future date is pulled back to today rather than accepted', function ($t) use ($client, $alice, $db, $today, $plantTypeId): void {
     $response = $client->post('/plants', [
         'start_method' => 'indoor_seed', 'plant_type_id' => (string) $plantTypeId,
@@ -534,7 +558,8 @@ $t->test('an admin reaches the three admin screens', function ($t) use ($client,
     $adminPassword = 'yet another long passphrase';
     $client->post('/password/reset', ['password' => $adminPassword, 'password_confirm' => $adminPassword]);
 
-    foreach (['/admin', '/admin/users', '/admin/research-import', '/admin/regions'] as $path) {
+    foreach (['/admin', '/admin/users', '/admin/research-import', '/admin/regions',
+              '/admin/mail-test'] as $path) {
         $t->same(200, $client->get($path)->status, $path);
     }
 });

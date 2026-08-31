@@ -266,11 +266,45 @@ plant catalog and the plant forms have nothing to offer.
 
 ## 7. Cron
 
-**cPanel → Cron Jobs.** One job, once a day. The fields, left to right:
+**cPanel → Cron Jobs.** Five jobs. The weather one is the one whose hour
+matters; the rest do their own clock arithmetic and can fire whenever.
 
-| Minute | Hour | Day | Month | Weekday |
-| --- | --- | --- | --- | --- |
-| `15` | `5` | `*` | `*` | `*` |
+| What | Minute | Hour | Day | Month | Weekday | Command |
+| --- | --- | --- | --- | --- | --- | --- |
+| Weather | `15` | `5` | `*` | `*` | `*` | `bin/weather_sync.php` |
+| Watering model | `45` | `5` | `*` | `*` | `*` | `bin/weather_sync.php --recommend` |
+| NWS alerts | `20` | `*/3` | `*` | `*` | `*` | `bin/alerts_poll.php` |
+| Mail outbox | `*/10` | `*` | `*` | `*` | `*` | `bin/mail_send.php` |
+| Digest | `15` | `*` | `*` | `*` | `*` | `bin/daily_digest.php` |
+
+Each command in full, with the pinned PHP binary and the output redirect —
+cPanel emails the account on every run otherwise, and a job that mails 365
+times a year trains everyone to ignore it:
+
+```
+15 5 * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/weather_sync.php >/dev/null 2>&1
+45 5 * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/weather_sync.php --recommend >/dev/null 2>&1
+20 */3 * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/alerts_poll.php >/dev/null 2>&1
+*/10 * * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/mail_send.php >/dev/null 2>&1
+15 * * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/daily_digest.php >/dev/null 2>&1
+```
+
+**The watering model runs after the weather, not with it.** It reads
+`weather_daily` and `weather_forecast` and computes; it fetches nothing. Half
+an hour is generous room for the sync to finish, and if it has not, the
+recommendation is simply a day behind rather than wrong.
+
+**The digest is hourly, and that is not a mistake.** It sends to each user
+whose *own local time* is between 06:00 and 07:00, computed from
+`user.timezone`. The server's zone never enters into it, which is exactly why
+the hour field is `*`: the job's job is to notice which users it is 06:00 for.
+
+**The mail drain is separate from everything that queues mail.** Nothing sends
+inline in a request or inside another job; pages and jobs write `email_outbox`
+rows and this drains them with bounded retries. A mail server being down then
+delays mail, which is what should happen, instead of making a page hang.
+
+### The weather job's hour
 
 **Hour 5, not 9.** Cron runs in the operating system's timezone, and this
 server is **US Eastern** — measured, not assumed (§0.6). PHP's `date.timezone`
@@ -380,6 +414,86 @@ appears in `weather_sync_run` either way, success or failure — the job always
 writes one, because a cron that silently stops is otherwise invisible for
 months.
 
+### Verifying backfill-on-backdate (Phase 3 handoff §3.3)
+
+The chain is tested end to end in `tests/cases/06_backfill_test.php` against a
+stub provider — backdate moves the window, the run chunks by year, the report
+fills in — but §3.3 asks to see it once against the real archive, because
+Open-Meteo is the half the suite deliberately does not call.
+
+Once, on the live install:
+
+1. Note today's value: `/status?key=` prints **days held since ‹date›** per
+   location. That date is `weather_location.backfill_from`.
+2. Start a plant with a date 60 days in the past (any of the three forms).
+3. Reload `/status?key=`. The **since** date has moved back to the planting's
+   date. Nothing has been fetched yet — nothing fetches on the request path.
+4. Open the plant. Its weather section says how many days in the range have
+   not been fetched yet. That is the honest state, not a bug.
+5. Wait for the 05:15 Eastern run, or bring the cron forward as described
+   above.
+6. Reload `/status?key=`. **missing in range** is 0 and **days held** has
+   grown by roughly 60. The archive is fetched in calendar-year chunks, so a
+   backdate that crosses New Year costs two calls rather than one long one.
+7. Reload the plant. The weather table is populated and the gap notice is gone.
+
+If step 6 shows a 429 or an `error: true` reason mentioning a limit, that is
+the hourly quota rather than a failure — the run is not retried inside the
+same hour on purpose, and the next night's run picks the gap up, because the
+fetch plan is derived from what is missing rather than from a cursor.
+
+## 7.5 Mail (handoff §12.1)
+
+Nothing here is needed for the app to run. Until it is done, Carl **queues its
+mail and waits**: nothing is lost, nothing sends twice when the credentials
+arrive, and the temporary password for a new account is still shown on screen,
+which is the path that has always worked. `/admin/mail-test` and `/status?key=`
+both say which state it is in.
+
+1. **cPanel → Email Accounts → Create.** `carl@reshiftmanager.com`, a strong
+   password, 250 MB quota. Open **Connect Devices** and note the outgoing
+   server, the port, and the username — it is the full address, not the local
+   part.
+2. **cPanel → Email Deliverability → `reshiftmanager.com` → Manage.** Install
+   the suggested SPF record and the suggested DKIM record. If Brevo is adopted
+   later, merge SPF into one record —
+   `v=spf1 +mx +a include:spf.brevo.com ~all` — because a domain with two SPF
+   records has none.
+3. **Zone Editor.** Add TXT `_dmarc.reshiftmanager.com` =
+   `v=DMARC1; p=none; rua=mailto:carl@reshiftmanager.com`. `p=none` first:
+   it reports without rejecting, so a misconfiguration is visible rather than
+   silent.
+4. **File Manager → `carl-app/config/local.php`,** and add the `mail` block.
+   `config/local.php.example` carries it commented out, for both drivers. Set
+   `driver` to `smtp` **or** `api`, never both. Mode stays 0600.
+5. **Sign in as an admin → Admin → Mail.** It should now say
+   `smtp mail.reshiftmanager.com:465 (tls) as carl@reshiftmanager.com` rather
+   than "no driver". Press **Queue a test**.
+6. The drain sends it within ten minutes. To not wait:
+   `/tasks/mail-send?key=<cron_key>`. Reload the Mail page: the message reads
+   `sent`, or `failed` with the reason on the row.
+7. In the received message, **View original** (Gmail) and look for
+   `spf=pass` and `dkim=pass`. If either says `fail` or `none`, step 2 or 3 has
+   not propagated yet — DNS takes up to an hour.
+8. **Spike 4** (handoff §6.2) is steps 4 to 7 done once with `driver = smtp`
+   and once with `driver = api`, noting which lands in the inbox rather than
+   in spam. Record the answer in this file.
+
+### The key-guarded task routes
+
+Every cron job has a browser twin, because the account has no shell. All four
+take `?key=<cron_key>`, and a wrong or absent key is 404:
+
+| Route | What it runs |
+| --- | --- |
+| `/tasks/weather-sync` | The nightly sync. `&kind=archive`, `&kind=forecast` or `&kind=recommend` to run one part. |
+| `/tasks/alerts-poll` | The NWS alerts poll. It stops after 20 s and says how far it got; it polls least-recently-polled first, so calling it again continues rather than repeating. |
+| `/tasks/daily-digest` | The digest. `&force=1` ignores the 06:00-local rule; the once-a-day key still holds, so forcing it cannot send two. |
+| `/tasks/mail-send` | The outbox drain. |
+
+These run under the web SAPI and inherit the 30 s ceiling, so each chunks its
+work the same way the CLI form does and the two stay interchangeable.
+
 ## 8. Close the door
 
 Two keys were only ever meant to be temporary.
@@ -422,6 +536,10 @@ checksum is recorded and a changed file is refused rather than silently re-run.
 | A file you can see in File Manager 404s | The directory's mode. 0700 inside the document root produces a 404, not a 403. |
 | `Plugin 'unix_socket' is not loaded` | `db.host` is pointing at `localhost`. It must be the Remote MySQL address. |
 | Weather stopped | `/status?key=` — newest observation, last successful run, last bad status. A 429 is the Open-Meteo per-IP quota, most likely another of your own projects, or another account on sh193 if outbound leaves by the server address (§0.5). Either way it heals on its own. |
+| No watering advice on the MOTD | `/status?key=` — "watering rows today". The model needs the weather in first, so it runs at 05:45, half an hour after the sync. An indoor garden never gets one on purpose: ET₀ is an outdoor number. |
+| No morning email | `/status?key=` — the DIGEST block. "last run NEVER" means the hourly cron entry is missing. "0 due" every hour means nobody's local clock has hit 06:00 during a run. Then the MAIL block: with no driver, mail queues and waits, which is the expected state until §7.5 is done. |
+| A message stuck in the outbox | Admin → Mail lists the last fifteen with the reason on each. `failed` after five attempts is a real refusal and the row says which; `queued` with attempts above zero is a backoff and will go by itself. |
+| Alerts never appear | `/status?key=` — "active nws alerts" per location. Zero is usually correct; most days have none. `/tasks/alerts-poll?key=` runs it on demand and prints what it found. |
 | `apache_php_fpm` shows down in cPanel | Correct. It is not in use; the server is LiteSpeed over LSAPI. |
 
 ## Still open for the owner
@@ -429,8 +547,8 @@ checksum is recorded and a changed file is refused rather than silently re-run.
 1. Settle spike 0.5 — which IP Open-Meteo sees — whenever convenient. One
    line of curl; nothing depends on the answer. Spikes 1, 2, 3 and 5 are done
    and recorded in §0.
-2. The §12.1 mailbox and DNS steps, before any Phase 3 email work. That is
-   also spike 4.
+2. The §12.1 mailbox and DNS steps, written out in §7.5. That is also spike 4.
+   Nothing else waits on it: mail queues until it is done.
 3. Ask Ahosting whether `ea-php82-php-opcache` can be enabled. If it is,
    `opcache.validate_timestamps` becomes a deploy concern — a file-copy deploy
    may not take effect until revalidation.

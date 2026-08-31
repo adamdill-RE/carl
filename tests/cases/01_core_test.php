@@ -240,6 +240,34 @@ $t->test('a numeric constraint is enforced', function ($t): void {
     $t->same(null, $router->match('GET', '/plants/abc'));
 });
 
+$t->test('a literal dot in a pattern is a dot, not a wildcard', function ($t): void {
+    // '/export/plants.csv' with an unescaped dot would also answer to
+    // '/export/plantsXcsv'. A route that responds to a URL nobody wrote down
+    // is the kind of thing found years later.
+    $router = new Router();
+    $router->get('/export/plants.csv', Carl\Core\App::class, 'noop');
+    $t->ok($router->match('GET', '/export/plants.csv') !== null);
+    $t->same(null, $router->match('GET', '/export/plantsXcsv'));
+});
+
+$t->test('a constrained placeholder is still regex after the escaping', function ($t): void {
+    $router = new Router();
+    $router->get('/a.b/{id:\d+}/c.d', Carl\Core\App::class, 'noop');
+    $match = $router->match('GET', '/a.b/7/c.d');
+    $t->ok($match !== null);
+    $t->same('7', $match['params']['id']);
+    $t->same(null, $router->match('GET', '/aXb/7/c.d'));
+});
+
+$t->test('an unconstrained placeholder still defaults to one segment', function ($t): void {
+    $router = new Router();
+    $router->get('/lists/{type}', Carl\Core\App::class, 'noop');
+    $match = $router->match('GET', '/lists/seed_source');
+    $t->ok($match !== null);
+    $t->same('seed_source', $match['params']['type']);
+    $t->same(null, $router->match('GET', '/lists/a/b'), 'it must not cross a slash');
+});
+
 $t->test('a known path with the wrong method is 405, not 404', function ($t): void {
     $router = new Router();
     $router->post('/plants', Carl\Core\App::class, 'noop');

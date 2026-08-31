@@ -142,6 +142,33 @@ final class WeatherRepository
         return \max(0, $expected - $held);
     }
 
+    /**
+     * One chunk of the weather CSV export (handoff Section 13.3).
+     *
+     * Weather is global by design -- one series per ZIP, shared by everyone
+     * at that ZIP -- so it does not extend Repository and cannot be scoped by
+     * user_id. The scope is the caller's own weather_location_id, which is
+     * the same scope the MOTD and the plant report already read through.
+     *
+     * Keyset on obs_date, which is the natural key's second half.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function exportChunk(int $locationId, string $afterDate, int $limit): array
+    {
+        return $this->db->all(
+            'SELECT `obs_date`, `temp_max_c`, `temp_min_c`, `temp_mean_c`, `precip_mm`,'
+            . ' `precip_hours`, `et0_mm`, `water_balance_mm`, `radiation_mj`, `sunshine_s`,'
+            . ' `daylight_s`, `rh_mean_pct`, `rh_min_pct`, `vpd_max_kpa`, `wind_max_kmh`,'
+            . ' `gust_max_kmh`, `soil_moist_0_7`, `soil_temp_0_7_c`, `weather_code`,'
+            . ' `source_model`, `is_provisional`'
+            . ' FROM `weather_daily`'
+            . ' WHERE `location_id` = :location_id AND `obs_date` > :after_date'
+            . ' ORDER BY `obs_date` LIMIT ' . (int) $limit,
+            ['location_id' => $locationId, 'after_date' => $afterDate]
+        );
+    }
+
     /** @return list<array<string,mixed>> */
     public function activeAlerts(int $locationId): array
     {

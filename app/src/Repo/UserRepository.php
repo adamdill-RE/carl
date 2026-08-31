@@ -156,6 +156,27 @@ final class UserRepository
         );
     }
 
+    /**
+     * The account behind an unsubscribe token (handoff Section 12).
+     *
+     * The token is 64 hex characters from random_bytes and is unique in the
+     * schema, so the lookup is an index hit rather than a scan. It is the
+     * whole credential for that one route, which is why it is long: it has to
+     * survive being in a URL in an inbox.
+     *
+     * @return array<string,mixed>|null
+     */
+    public function findByUnsubscribeToken(string $token): ?array
+    {
+        if (\preg_match('/^[0-9a-f]{64}$/', $token) !== 1) {
+            return null;
+        }
+        return $this->db->one(
+            'SELECT * FROM `user` WHERE `email_unsubscribe_token` = :token',
+            ['token' => $token]
+        );
+    }
+
     public function setDigestEnabled(int $userId, bool $enabled): void
     {
         $this->db->run(

@@ -28,6 +28,7 @@ final class App
     private ?Units $units = null;
     private ?Request $request = null;
     private ?string $publicPath = null;
+    private ?\Carl\Mail\Outbox $outbox = null;
 
     public function __construct(private Config $config, private string $root)
     {
@@ -62,6 +63,16 @@ final class App
     public function setClock(Clock $clock): void
     {
         $this->clock = $clock;
+    }
+
+    /**
+     * The mail queue (handoff Section 5.8). Pages queue; only the drain cron
+     * sends, so a mail server being down cannot reach a request
+     * (Phase 3 handoff Section 4.1).
+     */
+    public function outbox(): \Carl\Mail\Outbox
+    {
+        return $this->outbox ??= new \Carl\Mail\Outbox($this);
     }
 
     /** Store SI, convert at display, in one helper (weather.md Section 6.3). */
@@ -214,8 +225,13 @@ final class App
                         'That upload was larger than the server accepts (8 MB total, 2 MB per file). '
                         . 'Nothing was saved. Try a smaller photo.');
                 }
-                if ($route->access !== Route::KEY_ACCESS
-                    && !$this->csrf()->isValid($request->input('_csrf'))) {
+                // Key-guarded routes are authenticated by the key itself,
+                // and the single TOKEN_ACCESS route is a One-Click
+                // unsubscribe that a mail client POSTs with no session to
+                // carry a token in (see Route::TOKEN_ACCESS).
+                $csrfExempt = $route->access === Route::KEY_ACCESS
+                    || $route->access === Route::TOKEN_ACCESS;
+                if (!$csrfExempt && !$this->csrf()->isValid($request->input('_csrf'))) {
                     throw new HttpException(419);
                 }
             }
@@ -256,7 +272,7 @@ final class App
             return null;
         }
 
-        if ($route->access === Route::PUBLIC_ACCESS) {
+        if ($route->access === Route::PUBLIC_ACCESS || $route->access === Route::TOKEN_ACCESS) {
             return null;
         }
 

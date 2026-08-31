@@ -9,6 +9,14 @@ namespace Carl\Core;
  */
 final class Response
 {
+    /**
+     * Set on a streamed response: a producer yielding the body in pieces, so
+     * a large export never has to exist in memory all at once.
+     *
+     * @var (\Closure():iterable<string>)|null
+     */
+    private ?\Closure $producer = null;
+
     /** @param array<string,string> $headers */
     private function __construct(
         public readonly int $status,
@@ -67,6 +75,51 @@ final class Response
         return new self(200, $body, $headers);
     }
 
+    /**
+     * A body produced in pieces rather than built in memory.
+     *
+     * memory_limit is 128M and an export has no natural size bound (hosting
+     * Section 4), so the rows are read a chunk at a time and each chunk is
+     * written out before the next is fetched. Nothing accumulates.
+     *
+     * There is no Content-Length: the length is not known when the headers
+     * go out, which is the point.
+     *
+     * @param callable():iterable<string> $producer
+     */
+    public static function streamed(callable $producer, string $contentType, ?string $filename = null): self
+    {
+        $headers = ['Content-Type' => $contentType];
+        if ($filename !== null) {
+            $headers['Content-Disposition'] =
+                'attachment; filename="' . \str_replace(['"', "\r", "\n"], '', $filename) . '"';
+        }
+        $response = new self(200, '', $headers);
+        $response->producer = \Closure::fromCallable($producer);
+        return $response;
+    }
+
+    public function isStreamed(): bool
+    {
+        return $this->producer !== null;
+    }
+
+    /**
+     * The whole body as one string. Only tests and error paths should want
+     * this -- calling it is exactly the memory cost streaming exists to avoid.
+     */
+    public function collect(): string
+    {
+        if ($this->producer === null) {
+            return $this->body;
+        }
+        $out = '';
+        foreach (($this->producer)() as $chunk) {
+            $out .= $chunk;
+        }
+        return $out;
+    }
+
     public function withHeader(string $name, string $value): self
     {
         $clone = clone $this;
@@ -110,6 +163,20 @@ final class Response
                 ]);
             }
         }
-        echo $this->body;
+
+        if ($this->producer === null) {
+            echo $this->body;
+            return;
+        }
+
+        // LiteSpeed buffers, so a flush per chunk is what actually gets the
+        // first rows to the browser while the rest are still being read.
+        foreach (($this->producer)() as $chunk) {
+            echo $chunk;
+            if (\ob_get_level() > 0) {
+                \ob_flush();
+            }
+            \flush();
+        }
     }
 }

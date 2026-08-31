@@ -159,12 +159,60 @@ final class SystemController extends Controller
                 $lines[] = \sprintf('      missing in range    %d', $gaps);
                 $lines[] = \sprintf('      newest forecast     %s', $row['newest_forecast'] ?? 'none');
                 $lines[] = \sprintf('      last successful run %s', $row['last_ok'] ?? 'NEVER');
+                $lines[] = \sprintf('      active nws alerts   %d',
+                    \count($this->weather()->activeAlerts((int) $row['id'])));
                 if ($row['last_bad_status'] !== null) {
                     $lines[] = \sprintf('      last bad status     HTTP %s', $row['last_bad_status']);
                 }
                 if ($row['last_error'] !== null) {
                     $lines[] = \sprintf('      last error          %s', $row['last_error']);
                 }
+            }
+        } catch (Throwable $e) {
+            $lines[] = '  ERROR              ' . $e->getMessage();
+        }
+        $lines[] = '';
+
+        // -- Reminders (handoff Section 12) ----------------------------------
+        $lines[] = 'DIGEST';
+        try {
+            $lastDigest = (new \Carl\Reminders\Digest($this->app))->lastRun();
+            $lines[] = $lastDigest === null
+                ? '  last run            NEVER -- is the hourly cron entry in place?'
+                : \sprintf('  last run            %s  %s (%d due, %d queued, %d silent)',
+                    $lastDigest['started_at'], $lastDigest['outcome'], $lastDigest['users_due'],
+                    $lastDigest['emails_queued'], $lastDigest['silent']);
+            $lines[] = \sprintf('  reminders held      %d, %d of them for today',
+                (int) $this->app->db()->value('SELECT COUNT(*) FROM `reminder`', [], 0),
+                (int) $this->app->db()->value(
+                    'SELECT COUNT(*) FROM `reminder` WHERE `due_date` = UTC_DATE()', [], 0
+                ));
+            $lines[] = \sprintf('  watering rows today %d', (int) $this->app->db()->value(
+                'SELECT COUNT(*) FROM `watering_recommendation` WHERE `for_date` = UTC_DATE()', [], 0
+            ));
+        } catch (Throwable $e) {
+            $lines[] = '  ERROR              ' . $e->getMessage();
+        }
+        $lines[] = '';
+
+        // -- Mail (handoff Section 5.8) --------------------------------------
+        $lines[] = 'MAIL';
+        try {
+            $outbox = $this->app->outbox();
+            $health = $outbox->health();
+            $lines[] = \sprintf('  driver              %s', $outbox->describeDriver());
+            $lines[] = \sprintf('  outbox              %d queued, %d sent, %d failed',
+                $health['queued'], $health['sent'], $health['failed']);
+            if ($health['oldest_queued'] !== null) {
+                $lines[] = \sprintf('  oldest queued       %s', $health['oldest_queued']);
+            }
+            $lastRun = $outbox->lastRun();
+            $lines[] = $lastRun === null
+                ? '  last drain          NEVER -- is the cron entry in place?'
+                : \sprintf('  last drain          %s  %s (%d sent, %d failed)',
+                    $lastRun['started_at'], $lastRun['outcome'], $lastRun['sent'], $lastRun['failed']);
+            if (($lastRun['error_text'] ?? null) !== null) {
+                $lines[] = \sprintf('  last drain note     %s', $lastRun['error_text']);
             }
         } catch (Throwable $e) {
             $lines[] = '  ERROR              ' . $e->getMessage();
@@ -350,6 +398,28 @@ final class SystemController extends Controller
         // job chunks either way, which is what keeps the CLI and browser
         // forms interchangeable (weather.md Section 3.1).
         $kindParam = (string) ($request->query('kind', 'all') ?? 'all');
+
+        // The watering model fetches nothing -- it reads what the sync
+        // already stored and computes (handoff Section 11) -- so it is safe
+        // to run on its own from here, and it has its own cron entry.
+        if ($kindParam === 'recommend') {
+            $started = \microtime(true);
+            $model = new \Carl\Weather\WateringModel($this->app);
+            $summary = $model->run();
+
+            $lines = [
+                'watering model',
+                \sprintf('gardens and containers %d, rows %d, failures %d, %.1f s',
+                    $summary['places'], $summary['rows'], $summary['failures'],
+                    \microtime(true) - $started),
+                '',
+            ];
+            foreach ($summary['log'] as $entry) {
+                $lines[] = '  ' . $entry;
+            }
+            return Response::text(\implode("\n", $lines) . "\n");
+        }
+
         $kinds = match ($kindParam) {
             'archive'  => ['archive'],
             'forecast' => ['forecast'],
@@ -368,6 +438,110 @@ final class SystemController extends Controller
             \sprintf('locations %d, rows %d, failures %d, %.1f s',
                 $summary['locations'], $summary['rows'], $summary['failures'],
                 \microtime(true) - $started),
+            '',
+        ];
+        foreach ($summary['log'] as $entry) {
+            $lines[] = '  ' . $entry;
+        }
+
+        return Response::text(\implode("\n", $lines) . "\n");
+    }
+
+    /**
+     * The browser fallback for the digest (handoff Section 12), guarded by
+     * the same key as the other jobs.
+     *
+     * `force=1` ignores the 06:00-local rule, which is what makes it possible
+     * to see what a digest would say without waiting for someone's morning.
+     * The once-a-day dedupe key still holds, so forcing it cannot send two.
+     */
+    public function dailyDigest(Request $request): Response
+    {
+        $userId = $request->query('user');
+        $started = \microtime(true);
+
+        $digest = new \Carl\Reminders\Digest($this->app);
+        $summary = $digest->run(
+            $userId !== null && \ctype_digit($userId) ? (int) $userId : null,
+            $request->query('force') === '1',
+        );
+
+        $lines = [
+            'daily digest',
+            \sprintf('due %d, reminders %d, emails queued %d, silent %d, failures %d, %.1f s',
+                $summary['due'], $summary['reminders'], $summary['queued'],
+                $summary['silent'], $summary['failures'], \microtime(true) - $started),
+            '',
+        ];
+        foreach ($summary['log'] as $entry) {
+            $lines[] = '  ' . $entry;
+        }
+
+        return Response::text(\implode("\n", $lines) . "\n");
+    }
+
+    /**
+     * The browser fallback for the alerts poll (handoff Section 8.4), the
+     * same shape as the weather one and guarded by the same key.
+     */
+    public function alertsPoll(Request $request): Response
+    {
+        $locationId = $request->query('location');
+        $started = \microtime(true);
+
+        $poller = new \Carl\Weather\AlertPoller($this->app);
+        // This runs under the web SAPI, so it inherits the 30 s ceiling. One
+        // request per location at about a second each outlasts that once
+        // there are a few dozen; the poller orders by least-recently-polled,
+        // so a bounded run makes progress and the next one continues.
+        $summary = $poller->run(
+            $locationId !== null && \ctype_digit($locationId) ? (int) $locationId : null,
+            20.0
+        );
+
+        // An alert that arrives after this morning's digest has gone is no
+        // use tomorrow morning (handoff Section 8.4).
+        $urgent = $summary['new_ids'] === []
+            ? 0
+            : (new \Carl\Reminders\Digest($this->app))->sendUrgentAlerts($summary['new_ids']);
+
+        $lines = [
+            'nws alerts',
+            \sprintf('locations %d, polled %d, active %d, new %d, closed %d, failures %d, %.1f s',
+                $summary['locations'], $summary['polled'], $summary['stored'], $summary['new'],
+                $summary['closed'], $summary['failures'], \microtime(true) - $started),
+            '',
+        ];
+        foreach ($summary['log'] as $entry) {
+            $lines[] = '  ' . $entry;
+        }
+
+        return Response::text(\implode("\n", $lines) . "\n");
+    }
+
+    /**
+     * The browser fallback for the mail drain, the same shape as the weather
+     * one above and for the same reason: no shell on this account, so every
+     * job needs a route a human can reach.
+     *
+     * This is the one place a request causes an outbound mail connection, and
+     * it is deliberately not reachable by a signed-in user -- it is guarded
+     * by cron_key, like the weather job (Phase 3 handoff Section 5).
+     */
+    public function mailSend(Request $request): Response
+    {
+        $limit = $request->query('limit');
+        $started = \microtime(true);
+
+        $summary = $this->app->outbox()->drain(
+            $limit !== null && \ctype_digit($limit) ? (int) $limit : null
+        );
+
+        $lines = [
+            'mail send: driver ' . $summary['driver'],
+            \sprintf('considered %d, sent %d, failed %d, outcome %s, %.1f s',
+                $summary['considered'], $summary['sent'], $summary['failed'],
+                $summary['outcome'], \microtime(true) - $started),
             '',
         ];
         foreach ($summary['log'] as $entry) {
