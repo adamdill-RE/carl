@@ -704,6 +704,69 @@ $t->test('a file that is not an image is refused with a reason', function ($t) u
     $t->contains('not an image', $response->body);
 });
 
+/*
+ * `capture="environment"` does not add the camera to the file picker -- it
+ * REPLACES the picker with the camera. One input therefore offers the roll or
+ * the camera and never both, which is why there are two, and why this asserts
+ * the attributes rather than merely that a file input exists.
+ *
+ * It runs over every screen that attaches a photo, because the point of the
+ * change is that you can go plant to plant: scan the tag, log what you saw,
+ * take the picture there. A screen that quietly kept one input would be the
+ * screen where that stops working, and only in a garden.
+ *
+ * `tests/check_photo_capture.php` pins the same split without a database;
+ * this one proves it survives being rendered through the layout on each of
+ * the three routes that include the partial.
+ */
+$t->test('every screen that attaches a photo offers the camera AND the roll',
+    function ($t) use ($client, $alice, $db, $plantIds): void {
+    $client->forgetCookies();
+    $client->post('/login', ['username' => $alice['username'], 'password' => $alice['password']]);
+
+    $gardens = new GardenRepository($db, $alice['id']);
+    $garden = $gardens->where('`name` = :n', ['n' => 'Main Bed'])[0];
+
+    $screens = [
+        'the log form'      => '/log/' . $plantIds['sow'],
+        'a new planting'    => '/plants/new/direct_sow',
+        'garden actions'    => '/gardens/' . $garden['id'] . '/actions',
+    ];
+
+    foreach ($screens as $what => $url) {
+        $response = $client->get($url);
+        $t->same(200, $response->status, $what . ' renders');
+        $body = $response->body;
+
+        \preg_match_all('/<input\b[^>]*type="file"[^>]*>/i', $body, $matches);
+        $t->same(2, \count($matches[0]), $what . ' ships both file inputs');
+
+        $roll = '';
+        $camera = '';
+        foreach ($matches[0] as $tag) {
+            if (\str_contains($tag, 'capture')) {
+                $camera = $tag;
+            } else {
+                $roll = $tag;
+            }
+        }
+
+        $t->contains('capture="environment"', $camera,
+            $what . ' points its camera input at the rear camera');
+        $t->ok(!\str_contains($camera, 'multiple'),
+            $what . ': a capture returns one photo, so the camera input is not multiple');
+
+        $t->ok($roll !== '' && !\str_contains($roll, 'capture'),
+            $what . ': the roll input must not carry capture, which would replace the picker');
+        $t->contains('multiple', $roll,
+            $what . ' can still take a morning of photos at once');
+
+        // The inputs are .sr-only, so the labels are the only visible control.
+        $t->contains('Take a photo', $body, $what . ' names the camera button');
+        $t->contains('Choose photos', $body, $what . ' names the roll button');
+    }
+});
+
 $t->group('Every screen renders');
 
 $t->test('every GET route a user can reach returns 200',

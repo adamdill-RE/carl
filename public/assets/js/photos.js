@@ -7,6 +7,11 @@
  *
  * XMLHttpRequest rather than fetch, because fetch has no upload progress and
  * a slow phone upload with no feedback reads as a hang.
+ *
+ * The partial ships TWO file inputs -- the camera roll and the camera itself,
+ * because `capture` replaces the picker rather than adding to it -- and this
+ * file does not care which one a photo arrived through. Everything below the
+ * change handler is shared.
  */
 (function () {
   'use strict';
@@ -14,7 +19,9 @@
   var holder = document.querySelector('.photo-uploader');
   if (!holder) { return; }
 
-  var input = holder.querySelector('input[type="file"]');
+  var inputs = holder.querySelectorAll('input[type="file"]');
+  if (!inputs.length) { return; }
+
   var progress = holder.querySelector('.upload-progress');
   var bar = progress ? progress.querySelector('span') : null;
   var gallery = holder.querySelector('.photos.uploaded');
@@ -72,9 +79,30 @@
     }
   }
 
+  /*
+   * A photo straight from a camera is stored in the sensor's orientation with
+   * an EXIF tag saying which way up it goes, and the default for that tag has
+   * moved across spec vintages -- older browsers ignored it, newer ones honour
+   * it. Asking for it by name is the only way to get the same answer from
+   * both, and it matters far more now that the camera is a button: portrait is
+   * how a phone is held at a plant. A browser that does not know the value
+   * rejects the call rather than throwing, so the retry covers both.
+   *
+   * GD ignores EXIF orientation too, so nothing downstream would have fixed
+   * this: a photo that arrives sideways is stored sideways.
+   */
+  function decode(file) {
+    try {
+      return createImageBitmap(file, { imageOrientation: 'from-image' })
+        .catch(function () { return createImageBitmap(file); });
+    } catch (e) {
+      return createImageBitmap(file);
+    }
+  }
+
   function resizeOnMainThread(file, name) {
     if (typeof createImageBitmap === 'undefined') { send(file, name); return; }
-    createImageBitmap(file).then(function (bitmap) {
+    decode(file).then(function (bitmap) {
       var edge = 1920;
       var scale = Math.min(1, edge / Math.max(bitmap.width, bitmap.height));
       var canvas = document.createElement('canvas');
@@ -91,7 +119,10 @@
   function send(blob, name) {
     var form = new FormData();
     form.append('_csrf', csrf);
-    form.append('photo', blob, name.replace(/\.[^.]+$/, '') + '.jpg');
+    // A capture can arrive with no name at all on some Android browsers, and
+    // stripping the extension off "" leaves a file called ".jpg".
+    var base = String(name || '').replace(/\.[^.]+$/, '');
+    form.append('photo', blob, (base || 'photo') + '.jpg');
     if (plantingId) { form.append('planting_id', plantingId); }
     if (gardenId) { form.append('garden_id', gardenId); }
 
@@ -145,12 +176,16 @@
     request.send(form);
   }
 
-  input.addEventListener('change', function () {
+  function accept(input) {
     clearError();
     var files = Array.prototype.slice.call(input.files || []);
 
     files.forEach(function (file) {
-      if (!/^image\//.test(file.type)) {
+      // A capture sometimes arrives with an empty type, and the server is the
+      // one that actually decides what an image is -- getimagesize plus a mime
+      // whitelist. So only a type that is present AND not an image is refused
+      // here; an absent one is passed on and answered for properly.
+      if (file.type && !/^image\//.test(file.type)) {
         fail('Only images can be attached.');
         return;
       }
@@ -165,5 +200,33 @@
 
     // The same photo can be picked twice in a row otherwise.
     input.value = '';
+  }
+
+  Array.prototype.forEach.call(inputs, function (input) {
+    input.addEventListener('change', function () { accept(input); });
   });
+
+  /*
+   * Phones and tablets act on `capture`; everything else ignores it, and there
+   * the camera button would open the very same file dialog as the button
+   * beside it -- two controls doing one thing, which reads as a bug. A coarse
+   * pointer is the closest honest test for "this device will act on capture",
+   * and it is deliberately a cheap one: a touchscreen laptop keeps a button it
+   * does not need, which costs nothing, where the reverse would take the
+   * camera away from a phone.
+   *
+   * The control is removed here rather than hidden in CSS so that a device
+   * without JavaScript -- where neither input does anything anyway -- is not
+   * the case that decides the markup.
+   */
+  var camera = holder.querySelector('input[capture]');
+  if (camera) {
+    var coarse = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches)
+      || navigator.maxTouchPoints > 0;
+    if (!coarse) {
+      var label = camera.id ? holder.querySelector('label[for="' + camera.id + '"]') : null;
+      if (label) { label.classList.add('hidden'); }
+      camera.classList.add('hidden');
+    }
+  }
 }());

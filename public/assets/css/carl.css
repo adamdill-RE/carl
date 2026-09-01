@@ -300,6 +300,17 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
 
 /* ---------- Photos ---------- */
 
+/* The camera roll and the camera are two file inputs, because `capture`
+   replaces the file picker rather than adding to it. Both inputs are .sr-only
+   and their labels are the controls, which is what lets them be buttons at all
+   -- and is why the focus ring has to be borrowed across: the input wearing it
+   is a pixel wide and off the page. Same ring as every other control, so
+   --carl-accent stays the focus ring and nothing else. */
+.photo-legend { display: block; margin-bottom: 4px; font-size: 14px; font-weight: 600; }
+.photo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.photo-actions .btn { flex: 1 1 auto; margin-bottom: 0; }
+.photo-actions input:focus-visible + label { outline: 3px solid var(--carl-accent); outline-offset: 1px; }
+
 .photos { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
 .photos img { width: 100%; height: 96px; object-fit: cover; border-radius: var(--carl-radius); display: block; }
 
