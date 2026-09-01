@@ -326,19 +326,35 @@ withdraws and replaces**. Phase 13 adds ten.
 
 ## 5. Owner actions outstanding
 
-**Thirteen, and one of them is now discharged.**
+**Eleven. Two were discharged during Phase 13 and are struck off here.**
 
-Twelve are unchanged and none has been performed; the list is in
-`PHASE-10-HANDOFF.md` §5. **§5.1 is still the one platform fact not
-established**: outbound HTTPS to `api.anthropic.com` has never been tried
-from sh193, carried unchanged through Phases 6–13.
+The list is in `PHASE-10-HANDOFF.md` §5 and is not reproduced for the fifth
+time. **§5.1 is still the one platform fact not established**: outbound
+HTTPS to `api.anthropic.com` has never been tried from sh193, carried
+unchanged through Phases 6–13.
 
-**The thirteenth — Phase 12's migration step — is discharged by this
-phase's deploy being a file copy**, but only in the sense that Phase 13 adds
-nothing to it. `024_plant_size.sql` still has to run, and **nothing in Phase
-12's code works before it does**. If the live site has not had
-`/setup?key=` opened since Phase 12, do that first and Phase 13 comes along
-for free.
+**Discharged: Phase 12's migration.** `024_plant_size.sql` has been applied
+on the live site (owner, 2026-09-01). Phase 12's size fields and the charts
+that read them work, and **Phase 13 adds no migration**, so its deploy is
+the plain `cp -R public/.` of `deploy.md` §6.2 with no `/setup?key=` step.
+
+**Discharged: item 2, `tags.uppercase_url`.** Settled by measurement rather
+than by anybody doing anything. `https://www.reshiftmanager.com/CARL/`
+returns **404** and `/carl/` returns 200 (measured 2026-09-01), and the
+item's own rule is *"a 404 means leave it off"*. It is already off:
+`uppercase_url` is `null` in `config/app.php` and
+`TagUrl::uppercaseIsSafe()` reads that as `false` under a subpath. **No
+change, no reprint, and QR spec §12.4 is now confirmed rather than
+assumed.** The cost is the one §12.4 already priced: version 4 at level Q
+instead of version 3, and a smaller module on the same 25.4 mm face.
+
+**Item 1 is now more load-bearing than it was when it was written.** It is
+the only verification the *derived* half of the label geometry gets
+(`LabelStock`, marked `[derived]`), and Phase 13 built a UI on top of that
+geometry: the stake grid tells a person to peel the label at **"row 3,
+column 1"**. If the derived origin or pitch is wrong, that instruction is
+wrong on paper, and it is wrong in a way that reads as the *software*
+being wrong. Print the registration sheet before the first real sheet.
 
 **And the walk is still outstanding**, now with a third thing on it. Take a
 phone to a plant and:
