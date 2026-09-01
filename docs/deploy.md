@@ -931,6 +931,65 @@ openssl rand -hex 24
 Push, then **Deploy HEAD Commit**. There is no build and no restart; the next
 request picks the files up, because there is no OPcache on this host.
 
+### The Phase 9 deploy adds TWO migrations and one file that is not code
+
+Migration **022** (`pest_reference`), pure DDL: twelve nullable columns and one
+index on `pest`. Nothing reads them until 023 fills them and nothing on any hot
+path reads them at all, so unlike 021 the window here is genuinely harmless —
+a pending 022 leaves every existing screen working.
+
+Migration **023** (`pest_catalog`), pure DML and a `.php` file: it applies
+`db/seed/pest_catalog.csv`, adopts the pest entries accounts typed for
+themselves, inserts what is missing, and seeds the treatment shelf. Measured at
+26 ms on an empty database and a little over a second on one with a few hundred
+accounts, because the work is per account and set-based rather than per row.
+
+**THE SEED FILE HAS TO BE ON THE SERVER BEFORE THE MIGRATION RUNS.**
+`.cpanel.yml` copies the whole of `db/`, so a normal deploy does that by
+itself — but running the migration against a half-copied deploy fails loudly
+with `Pest catalogue seed file is missing`, which is the good failure. Nothing
+is written; deploy again and re-run.
+
+Nothing else needs a deploy step: no new cron job, no new directory, no new
+vendored file. The client shell went from 19.1 KB to 19.9 KB gzipped against a
+150 KB budget, all of it CSS — the three new screens add no JavaScript.
+
+#### The catalogue is editorial content, and there is a button for that
+
+`db/seed/pest_catalog.csv` is prose about living things. It will be wrong about
+something, and a correction must not need a schema version — migrations are
+immutable once applied (`hosting.md` §7), so the catalogue cannot live in one.
+
+The maintenance path is therefore: **edit the CSV, deploy, then
+Admin → Research import → "Re-apply and sync every account"**. It is
+idempotent, so it is safe to press twice, and pressing it is the only way a
+corrected sentence reaches an installation that has already run 023.
+
+What it does and does not touch:
+
+* It **replaces** `description`, `signs`, `source` and the twelve Phase 9
+  columns on every entry it ships.
+* It **leaves `treatments` exactly as it found it**, which is where a county
+  research dataset says something local.
+* It **never touches anything anybody typed.** A `user_list_item` with a NULL
+  `pest_id` is that account's own entry and stays one.
+* Re-importing a county zip afterwards puts that dataset's description back.
+  Both writers are idempotent and each is one action from the other.
+
+#### After the migration: two minutes of looking
+
+1. **Open `/pests`.** It should show the entries that can affect the plants
+   this account grows, plus the ones that affect anything — slugs, cutworms,
+   frost, herbicide drift. If it shows nothing at all, 023 did not run.
+2. **Open Lists → Pests and diseases.** Every entry should carry either a
+   "reference" link or a "yours" badge. An entry with neither means the
+   adoption step did not match, which is not harmful and is worth a look.
+3. **Open Log Plant Activity on any plant and choose "Pest or disease
+   observed".** The dropdown should be full rather than empty, which was the
+   whole point.
+4. **Open `/calendar`.** The grid should draw; without a researched county the
+   upcoming table will be thin and says so in words.
+
 ### The Phase 8 deploy adds ONE migration, and one decision to make afterwards
 
 Migration **021** (`qr_tags`), pure DDL: three new tables (`qr_tag_batch`,
@@ -1140,6 +1199,8 @@ file is refused rather than silently re-run.
 | A printed tag will not scan | Measure the 100 mm rule at the foot of the sheet. If it is short, the print was scaled — reprint at 100%, never "fit to page". If the rule measures 100 mm, wipe the code and try again in better light; then read the six characters underneath it into Tags → "Find a tag by its code", which is what they are printed for. |
 | Every label on a sheet is a few millimetres off | The sheet geometry, not the printer. Print the **registration test** for that stock on plain paper and hold it against a real sheet: drift across the sheet is the pitch, a uniform shift is the margin. Both are one edit to `Carl\Domain\LabelStock` and no migration. |
 | A scanned tag says "Not found" | Four things, in order: it is somebody else's tag (deliberately the same 404 as a code that does not exist — §6.2 of the spec says why); the sheet was retired; the URL is upper-case and the server does not answer upper-case paths (see the Phase 8 deploy section); or the code really was mistyped. |
+| `/pests` is empty, or a pest dropdown still is | Migration 023 has not run, or it ran against a deploy that had not copied `db/seed/`. Check `bin/migrate.php --status`, then Admin → Research import → "Re-apply and sync every account", which is idempotent. |
+| A pest entry reads as one terse line | A county research dataset owns `treatments` and wrote `description` last. Press "Re-apply and sync every account" to restore Carl's text; re-import the zip to put the dataset's back. Both are idempotent and neither loses anything. |
 | Every page 500s and the only change was Phase 8 | Migration 021. Its two `user` columns are read by `Auth::user()`, which runs on every request, so a pending 021 takes down every signed-in page rather than only the tag screens. |
 
 ## Still open for the owner

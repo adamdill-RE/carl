@@ -147,6 +147,44 @@ And, from Phase 8, the thing you take out to the garden:
     untagged living plant rather than the recent ones, so the tomato that went
     in the ground in May is on it.
 
+And, from Phase 9, three refinements:
+
+- **A tag code is something you can type.** The camera still does the scanning
+  — there is no in-app scanner and there is not going to be one — but the
+  search box on View Plants and Log Plant Activity now takes the six characters
+  off the stake as well as a plant's name, and lands on the screen you were
+  already on: the report page from one, the log form from the other. Fewer than
+  six characters narrows the list instead, so four read off a faded tag still
+  find the plant. A code that is not one of yours quietly stays a search, which
+  matters more than it sounds: `PEPPER` and `GARDEN` are both six characters of
+  the tag alphabet.
+- **A Calendar.** A month of the garden — what you logged, drawn beside what
+  your plants and your county's research say is coming — with a plant filter
+  and, underneath, the table of upcoming actions: *17 October 2026, transplant
+  window opens for Cherokee Purple*. All of it was derivable before and none of
+  it had a page: the digest works out eight of these rules every morning but
+  only ever for today. It computes nothing the digest does not, from the same
+  research values and the digest's own arithmetic, so the two cannot disagree
+  about the date of the same harvest.
+- **A pest and disease reference that is not empty.** Seventy-six entries ship
+  with Carl — insects, diseases and the disorders that get mistaken for them —
+  each with what you will see, what it costs to ignore, what it is confused
+  with, when to look, how to prevent it, what to do without a spray, and only
+  then the chemistry. **Active ingredients, never brand names, and no rates
+  ever**: the label on the bottle is the legal authority on the crop and the
+  amount, and registrations differ by state. Where a control kills bees if it
+  is applied wrongly, the entry says so and the badge says so.
+  - **It is a list you can add to, not a closed one.** Your own entries still
+    work exactly as before and the Lists screen shows which is which. An entry
+    you typed last season that turns out to name a catalogue entry is adopted
+    rather than duplicated, which is what turns a year of your own typing into
+    records that add up.
+  - **Why load a list at all** is argued in full in
+    `db/migrations/022_pest_reference.sql`, and the short version is that free
+    text destroys the data — "aphids", "Aphids" and "green fly" are three rows
+    with three ids, and none of them can answer what aphids cost you over three
+    seasons.
+
 Not built yet, by design: the logo and the palette, which are Claude Design
 deliverables. `public/assets/css/tokens.css` is a neutral placeholder naming
 exactly the variables to deliver, and it is the only file that names a colour
@@ -165,6 +203,7 @@ carl/
   research-template/        the research dataset contract and the first dataset
   db/migrations/            numbered, immutable once applied
   db/seed/zcta.csv          33,791 ZIP rows, public-domain Census data
+  db/seed/pest_catalog.csv  76 pest, disease and disorder entries, editorial
   bin/                      migrate.php, weather_sync.php, alerts_poll.php,
                             daily_digest.php, mail_send.php, analysis_run.php
   app/bootstrap.php         autoloader, config, the parse-error guard
