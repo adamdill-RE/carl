@@ -10,10 +10,10 @@
  * no off-site script -- are asserted in 01_core_test.php, and so is the
  * matching rule about inline style attributes.
  *
- * PHASE 13 TURNED THE SUBJECT ROUND. weather.md Section 7.3 is the authority
+ * PHASE 12 TURNED THE SUBJECT ROUND. weather.md Section 7.3 is the authority
  * and it says weather is CONTEXT, NOT THE SUBJECT: "on a plant-performance
  * chart it belongs as a muted background band or a secondary axis, never
- * competing with the performance line for attention". Until Phase 13 this
+ * competing with the performance line for attention". Until Phase 12 this
  * block was three weather panels with the plant reduced to identical
  * triangles -- because until size (migration 024) the plant had almost no
  * number of its own to draw. It now has height, diameter, harvest weight,

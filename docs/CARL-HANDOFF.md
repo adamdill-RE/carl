@@ -160,7 +160,7 @@ for users).
   Garden Actions · View Garden · Lists · (v2: Reports · Recommendations · End
   Growing Season).
 - **This menu is the only hub**, so every signed-in screen carries a labelled
-  link back to it in the sticky top bar (Phase 13). The brand mark goes to the
+  link back to it in the sticky top bar (Phase 12). The brand mark goes to the
   same place and always did; what it does not do is say so. On the menu itself
   the link is marked current rather than removed — a control that comes and
   goes moves everything beside it on every navigation.
@@ -204,7 +204,7 @@ optional narrative, photos attachable to any event):
 Quantities default to the planting's current live count; entering fewer
 records partial attrition (§5.3).
 
-**Size (Phase 13, migration 024).** Every event may carry a height, a diameter,
+**Size (Phase 12, migration 024).** Every event may carry a height, a diameter,
 or both — offered outside the per-action fields, beside the notes and the
 photos, because the sentence is "watered it, it's fourteen inches now" and a
 box that costs a second pass through the form is a box that stops being filled
@@ -640,7 +640,7 @@ Both write to `email_outbox` first; the cron sends with bounded retries.
 
 ## 13. Reports, PDFs, exports
 
-### 13.1 Plant and garden reports (Phase 4, reworked Phase 13)
+### 13.1 Plant and garden reports (Phase 4, reworked Phase 12)
 Server-rendered HTML; charts drawn with Chart.js from a JSON endpoint
 (`/api/plant/<id>/series`), one statement for weather + one for events.
 

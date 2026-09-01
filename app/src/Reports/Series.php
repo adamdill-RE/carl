@@ -281,10 +281,10 @@ final class Series
      * WHY THIS EXISTS. weather.md Section 7.3 is the authority on charting and
      * it says weather is CONTEXT, NOT THE SUBJECT: on a plant-performance
      * chart it belongs as a muted band or a secondary axis, "never competing
-     * with the performance line for attention". Phases 4 to 12 had it the
+     * with the performance line for attention". Phases 4 to 11 had it the
      * other way round -- three weather panels, with the plant reduced to
      * identical triangles that said only that something happened -- because
-     * until Phase 13 the plant had almost no number of its own to draw. Size
+     * until Phase 12 the plant had almost no number of its own to draw. Size
      * (migration 024) is what changed that.
      *
      * TWO SPINES, DELIBERATELY. `days` is the weather spine: one entry per day

@@ -456,16 +456,17 @@ overlaid weather variables is unreadable at 380 px and nobody will pinch-zoom it
 > on the one where they were first drawn, because the note under the chart
 > says they are and the note sits under whichever panel is showing.
 
-> **Annotation, Claude Code, Phase 13, 2026-09-01.** The first paragraph above
-> is the one this project took nine phases to actually build. Phases 4 to 12
-> drew three *weather* panels with the plant reduced to identical triangles —
-> the subject was the context and the context was the subject — and the honest
-> reason is that until plant size existed (migration 024) the plant had almost
-> no number of its own to put on an axis. It now has height, diameter, harvest
-> weight, harvest count and watering minutes, so the plant report leads with a
-> subject series on the left axis at full strength and a weather series on the
-> right, muted, thinner, behind. Presets ("Growth", "Harvest") are pairs of
-> picks, so nothing a preset shows is unreachable from the two pickers.
+> **Annotation, Claude Code, Phase 12, 2026-09-01.** The first paragraph above
+> is the one this project took from Phase 4 to Phase 12 to actually build.
+> Phases 4 to 11 drew three *weather* panels with the plant reduced to identical
+> triangles — the subject was the context and the context was the subject — and
+> the honest reason is that until plant size existed (migration 024) the plant
+> had almost no number of its own to put on an axis. It now has height,
+> diameter, harvest weight, harvest count and watering minutes, so the plant
+> report leads with a subject series on the left axis at full strength and a
+> weather series on the right, muted, thinner, behind. Presets ("Growth",
+> "Harvest") are pairs of picks, so nothing a preset shows is unreachable from
+> the two pickers.
 >
 > **The one-series rule was kept and read narrowly.** What §7.3 and the Phase 4
 > annotation establish is that two *weather* series overlaid are unreadable at

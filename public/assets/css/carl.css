@@ -49,7 +49,7 @@ body {
 .topbar .spacer { flex: 1; }
 .topbar .who { font-size: 13px; opacity: .85; }
 
-/* The way back to the menu, on every screen (Phase 13).
+/* The way back to the menu, on every screen (Phase 12).
    Outlined in currentColor rather than in a named token, so it inverts with
    the bar: --carl-text-inverse is white type on deep green in light and dark
    type on a pale green bar at night (tokens-dark.css), and an outline drawn
@@ -509,7 +509,7 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
 .charts.is-ready .chart-tabs { display: flex; }
 .charts.is-ready [data-chart-pdf] { display: block; }
 
-/* The pickers under the chart (Phase 13). Three fields on one line at any
+/* The pickers under the chart (Phase 12). Three fields on one line at any
    width that has room, wrapping to two before anything is squeezed below a
    thumb's width. Hidden until the script has filled the selects in, for the
    reason the tabs are: an empty dropdown is worse than no dropdown. */

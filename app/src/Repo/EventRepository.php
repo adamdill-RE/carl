@@ -113,7 +113,7 @@ final class EventRepository extends Repository
      * forwards, the direction a chart reads.
      *
      * FIVE MEASURED COLUMNS COME BACK WITH THEM, and they cost nothing: they
-     * are on the rows this already reads. Phase 13 turns the plant into the
+     * are on the rows this already reads. Phase 12 turns the plant into the
      * SUBJECT of its own chart rather than forty identical triangles on a
      * weather one (weather.md Section 7.3 -- "weather is context, not the
      * subject"), and the numbers it draws are these. Adding columns to a

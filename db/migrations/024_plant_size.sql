@@ -1,5 +1,5 @@
 -- carl:kind=ddl
--- How big is it? (Phase 13.)
+-- How big is it? (Phase 12.)
 --
 -- The event log already answers "what did you do" and "how much did it give
 -- you". It could not answer "how big is it", which is the question a gardener

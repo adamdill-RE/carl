@@ -7,8 +7,8 @@ form, and "make the charts more interactive" — and the third, read against
 build what that section had said since before any chart existed.
 
 The chain runs the other way from how it was asked. The size is what made the
-charts possible: until Phase 13 the plant had almost no number of its own to
-put on an axis, which is the honest reason nine phases of charts drew the
+charts possible: until Phase 12 the plant had almost no number of its own to
+put on an axis, which is the honest reason eight phases of charts drew the
 weather and reduced the plant to identical triangles.
 
 ---
@@ -71,7 +71,7 @@ puts one measurement against the weather in the days before it.
 
 ## 2. What Phase 12 established that Phase 13 should not re-derive
 
-### 2.1 The application had `weather.md` §7.3 backwards for nine phases
+### 2.1 The application had `weather.md` §7.3 backwards for eight phases
 
 §7.3 opens: *"Weather is context, not the subject. On a plant-performance
 chart it belongs as a muted background band or a secondary axis, never
@@ -325,7 +325,7 @@ carried out rather than a palette decision.
 
 ## 7. Where the bodies are buried
 
-Everything in `PHASE-12-HANDOFF.md` §7 still applies. Phase 12 adds four.
+Everything in `PHASE-12-HANDOFF.md` §7 still applies. Phase 12 adds five.
 
 - **`weather_location` is keyed by the place, not by the account.** Every
   fixture in the suite onboards with ZIP 76692, so they all share one location
@@ -348,6 +348,19 @@ Everything in `PHASE-12-HANDOFF.md` §7 still applies. Phase 12 adds four.
   precisely the thing §7.3 forbids, and it looks like a z-index bug rather than
   like a wrong constant. It also controls legend order, which is why "Logged"
   used to appear first in the legend.
+- **`PHASE-N-HANDOFF.md` is written BY phase N-1, FOR phase N.** Every one of
+  these documents opens "Phase N-1 is built and green" and its §3 is titled
+  "Phase N — what is left", which means the file you are reading is not named
+  for the phase that wrote it. Phase 12 got this backwards while writing it and
+  labelled its own work "Phase 13" in twenty places -- comments, the migration
+  header, two `docs/CARL-HANDOFF.md` sections and the `weather.md` annotation
+  -- because the file it was writing was called `PHASE-13-HANDOFF.md`. It was
+  corrected in a follow-up commit; the merged pull request for the work is
+  still titled "Phase 13" and cannot be, so **the PR titles are not the phase
+  record and this series is.** The tell, if it happens again, is
+  `git log --oneline` on the previous phase's last commit: it is titled
+  "Phase N handoff", and N is the phase about to start, not the one finishing.
+
 - **A subject series is sparse and a weather series is not.** Event markers
   used to sit *on* the series at the day's value, which worked when the series
   was the weather and had a value every day. A plant is measured eight times a

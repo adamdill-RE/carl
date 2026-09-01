@@ -240,7 +240,7 @@ $placeOf = static function (array $row): string {
 $range = $series['range'];
 $totals = $series['totals'];
 $hasWeather = $series['days'] !== [];
-/* Something to chart is not the same as weather to chart, from Phase 13. A
+/* Something to chart is not the same as weather to chart, from Phase 12. A
    plant measured this morning has numbers of its own and no weather row yet
    -- the archive's last day is yesterday (Series::coveredRange) -- and its
    growth curve is a chart. The weather TOTALS below still need weather, and
@@ -272,7 +272,7 @@ $hasChart = ($series['plant']['dates'] ?? []) !== [];
       ]) ?>
 <?php endif; ?>
 <?php if ($hasWeather): ?>
-  <?php /* Under the chart from Phase 13, not over it. The totals are the
+  <?php /* Under the chart from Phase 12, not over it. The totals are the
          no-JavaScript version of the weather panels and they are still true;
          what they are not is the first thing to read about a plant, which is
          how the plant did. */ ?>

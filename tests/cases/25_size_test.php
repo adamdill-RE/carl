@@ -1,7 +1,7 @@
 <?php
 
 /**
- * How big is it? (Phase 13, migration 024.) And the way back to the menu.
+ * How big is it? (Phase 12, migration 024.) And the way back to the menu.
  *
  * Two changes, one file, because both are small and both fail the same way if
  * they fail at all -- quietly, on a screen nobody is looking at.

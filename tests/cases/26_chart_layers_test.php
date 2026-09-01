@@ -1,13 +1,13 @@
 <?php
 
 /**
- * Layered charts: the plant as the subject of its own report (Phase 13).
+ * Layered charts: the plant as the subject of its own report (Phase 12).
  *
  * weather.md Section 7.3 is the authority on charting and it has said the same
  * thing since before any chart existed: **weather is context, not the
  * subject.** On a plant-performance chart it belongs "as a muted background
  * band or a secondary axis, never competing with the performance line for
- * attention". Phases 4 to 12 had it exactly the other way round -- three
+ * attention". Phases 4 to 11 had it exactly the other way round -- three
  * weather panels with the plant reduced to identical triangles -- because
  * until size (migration 024) the plant had almost no number of its own.
  *
@@ -17,7 +17,7 @@
  * attaches to. That is where the failures that matter live anyway:
  *
  *  1. **The statement count.** The whole design of this endpoint is one
- *     statement for weather and one for events, whatever the range. Phase 13
+ *     statement for weather and one for events, whatever the range. Phase 12
  *     adds five columns and a hundred derived numbers and must add no
  *     statement -- and the way that breaks is a helpful lookup inside the
  *     loop that builds the series.
@@ -396,7 +396,7 @@ $t->test('the plant report carries the panels, the pickers and the PDF fields',
 
 $t->test('a plant with measurements but no weather still gets a chart',
     function ($t) use ($client, $plantings, $plantTypeId, $gardenId, $today, $db, $owner): void {
-    // Before Phase 13 the whole block was gated on `days !== []`, so a plant
+    // Before Phase 12 the whole block was gated on `days !== []`, so a plant
     // in a county nobody has fetched weather for had no chart at all -- even
     // once it had a growth curve of its own, which needs no weather.
     $db->run('UPDATE `user` SET `weather_location_id` = NULL WHERE `id` = :i',

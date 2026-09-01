@@ -12,7 +12,7 @@
  *     which is exactly why it is written down.
  *  2. **Weather is context, not the subject** (weather.md Section 7.3). The
  *     plant's own numbers hold the left axis at full strength; the weather
- *     goes on the right, muted, thinner, behind. Until Phase 13 this file had
+ *     goes on the right, muted, thinner, behind. Until Phase 12 this file had
  *     it the other way round -- three weather panels with the plant reduced
  *     to identical triangles -- because until size (migration 024) the plant
  *     had almost nothing of its own to draw.
@@ -114,7 +114,7 @@
    * for convenience -- and if a sixth series is ever needed, add a
    * --carl-chart-* rather than borrowing --carl-accent again.
    *
-   * PHASE 13 ADDS NO COLOUR. The subject line is --carl-chart-event, which is
+   * PHASE 12 ADDS NO COLOUR. The subject line is --carl-chart-event, which is
    * already the token named for the plant's own record, and the second
    * subject series -- diameter beside height -- is --carl-primary. A
    * dedicated --carl-chart-subject would be tidier and is a design ask, not
