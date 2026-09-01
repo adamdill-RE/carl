@@ -155,10 +155,23 @@ $pageTitle = (string) $garden['name'];
 <?php
 $range = $series['range'];
 $hasWeather = $series['days'] !== [];
+/* A garden has no height and no harvest of its own, so its only subject
+   series is watering minutes -- but the pickers are built from what the
+   fetched document says the subject HAS, so this needs no branch of its own
+   (charts.js, PLANT_LAYERS `need`). What it needs is a spine. */
+$hasChart = ($series['plant']['dates'] ?? []) !== [];
 ?>
-<?php if ($hasWeather): ?>
+<?php if ($hasChart): ?>
 <section class="card">
-  <h2>Weather over this garden</h2>
+  <h2>How this garden did, and the weather over it</h2>
+  <?= $view->partial('partials/charts', [
+        'seriesUrl' => $seriesUrl,
+        'pdfUrl'    => $pdfUrl,
+        'range'     => $range,
+        'csrf'      => $csrf,
+      ]) ?>
+<?php if ($hasWeather): ?>
+  <h3>Weather over this garden</h3>
   <table class="data">
     <tbody>
       <tr><th>Days covered</th><td><?= $e($range['days_held']) ?></td></tr>
@@ -169,12 +182,7 @@ $hasWeather = $series['days'] !== [];
       <tr><th>Hottest / coldest</th><td><?= $e($series['totals']['temp_range']) ?></td></tr>
     </tbody>
   </table>
-  <?= $view->partial('partials/charts', [
-        'seriesUrl' => $seriesUrl,
-        'pdfUrl'    => $pdfUrl,
-        'range'     => $range,
-        'csrf'      => $csrf,
-      ]) ?>
+<?php endif; ?>
 </section>
 <?php endif; ?>
 
@@ -232,7 +240,7 @@ $hasWeather = $series['days'] !== [];
 
 <?php /* Scripts last, as everywhere else; the vendored library before the
        file that uses it. Both are deferred, so this is the run order. */ ?>
-<?php if ($series['days'] !== []): ?>
+<?php if ($hasChart): ?>
 <script src="<?= $e($app->asset('assets/vendor/chart.umd.js')) ?>" defer></script>
 <script src="<?= $e($app->asset('assets/js/charts.js')) ?>" defer></script>
 <?php endif; ?>

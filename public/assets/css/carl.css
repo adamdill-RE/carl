@@ -493,7 +493,11 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
   border-color: var(--carl-primary);
 }
 
-.chart-stack { position: relative; }
+/* A floor under the stack. Every panel but the active one is absolutely
+   positioned, and which one is active is decided by the script AFTER the
+   series has been fetched -- so without a minimum the block collapses to
+   nothing between first paint and the fetch landing, and the page jumps. */
+.chart-stack { position: relative; min-height: 240px; }
 .chart-panel { position: absolute; inset: 0; visibility: hidden; height: 240px; }
 .chart-panel.is-active { position: relative; visibility: visible; }
 .chart-panel > canvas { display: block; width: 100%; height: 100%; }
@@ -505,8 +509,24 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
 .charts.is-ready .chart-tabs { display: flex; }
 .charts.is-ready [data-chart-pdf] { display: block; }
 
+/* The pickers under the chart (Phase 13). Three fields on one line at any
+   width that has room, wrapping to two before anything is squeezed below a
+   thumb's width. Hidden until the script has filled the selects in, for the
+   reason the tabs are: an empty dropdown is worse than no dropdown. */
+.chart-layers { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.chart-layers .field { flex: 1 1 150px; min-width: 0; margin-bottom: 0; }
+.chart-layers label { font-size: 12px; color: var(--carl-text-muted); }
+.chart-layers select { min-height: 38px; padding: 6px 8px; font-size: 14px; }
+
+/* The correlation note. It is a sentence about how much six points are
+   worth, so it is prose width and not a caption under an axis. */
+.charts [data-chart-note]:empty { display: none; }
+.charts [data-chart-note] { margin: 8px 0 0; }
+
+
 @media (min-width: 560px) {
   .chart-panel { height: 300px; }
+  .chart-stack { min-height: 300px; }
 }
 
 /* ---------- Recommendations (Phase 5 handoff Section 3.1) ---------- */

@@ -240,10 +240,16 @@ $placeOf = static function (array $row): string {
 $range = $series['range'];
 $totals = $series['totals'];
 $hasWeather = $series['days'] !== [];
+/* Something to chart is not the same as weather to chart, from Phase 13. A
+   plant measured this morning has numbers of its own and no weather row yet
+   -- the archive's last day is yesterday (Series::coveredRange) -- and its
+   growth curve is a chart. The weather TOTALS below still need weather, and
+   still say so. */
+$hasChart = ($series['plant']['dates'] ?? []) !== [];
 ?>
-<?php if ($hasWeather || $range['days_missing'] > 0): ?>
+<?php if ($hasChart || $range['days_missing'] > 0): ?>
 <section class="card">
-  <h2>Weather while it was in the ground</h2>
+  <h2>How it did, and the weather it did it in</h2>
 <?php if ($range['days_missing'] > 0): ?>
   <p class="notice notice-info small">
     <?= $e($range['days_missing']) ?> day<?= $range['days_missing'] === 1 ? '' : 's' ?> in this range have not been
@@ -257,7 +263,20 @@ $hasWeather = $series['days'] !== [];
     <?= $e($U::longDate($range['from'])) ?> onwards.
   </p>
 <?php endif; ?>
+<?php if ($hasChart): ?>
+  <?= $view->partial('partials/charts', [
+        'seriesUrl' => $seriesUrl,
+        'pdfUrl'    => $pdfUrl,
+        'range'     => $range,
+        'csrf'      => $csrf,
+      ]) ?>
+<?php endif; ?>
 <?php if ($hasWeather): ?>
+  <?php /* Under the chart from Phase 13, not over it. The totals are the
+         no-JavaScript version of the weather panels and they are still true;
+         what they are not is the first thing to read about a plant, which is
+         how the plant did. */ ?>
+  <h3>Weather while it was in the ground</h3>
   <table class="data">
     <tbody>
       <tr><th>Days covered</th><td><?= $e($range['days_held']) ?></td></tr>
@@ -268,13 +287,6 @@ $hasWeather = $series['days'] !== [];
       <tr><th>Hottest / coldest</th><td><?= $e($totals['temp_range']) ?></td></tr>
     </tbody>
   </table>
-
-  <?= $view->partial('partials/charts', [
-        'seriesUrl' => $seriesUrl,
-        'pdfUrl'    => $pdfUrl,
-        'range'     => $range,
-        'csrf'      => $csrf,
-      ]) ?>
 <?php endif; ?>
 </section>
 <?php endif; ?>
@@ -305,7 +317,7 @@ $hasWeather = $series['days'] !== [];
 <?php /* Scripts last, as everywhere else. The vendored library first:
        charts.js checks for window.Chart and does nothing without it, and
        both are deferred so the order here is the execution order. */ ?>
-<?php if ($series['days'] !== []): ?>
+<?php if ($hasChart): ?>
 <script src="<?= $e($app->asset('assets/vendor/chart.umd.js')) ?>" defer></script>
 <script src="<?= $e($app->asset('assets/js/charts.js')) ?>" defer></script>
 <?php endif; ?>

@@ -154,6 +154,30 @@ final class Units
     }
 
     /**
+     * Harvest weight as a NUMBER, for a chart axis. See rainValue().
+     *
+     * One unit per system, and deliberately not the scale weight() switches
+     * at: a cumulative harvest line that is ounces to sixteen and pounds after
+     * has two meanings and one axis label. Pounds and kilograms, all the way
+     * up -- a single pick reads 0.28 lb and the season reads 14.60 lb, and
+     * both are the same axis.
+     */
+    public function weightValue(int|float|string|null $grams, ?int $decimals = null): ?float
+    {
+        if ($grams === null || $grams === '') {
+            return null;
+        }
+        $value = (float) $grams;
+        $converted = $this->isUs() ? $value / 453.59237 : $value / 1000.0;
+        return $decimals === null ? $converted : \round($converted, $decimals);
+    }
+
+    public function weightUnit(): string
+    {
+        return $this->isUs() ? 'lb' : 'kg';
+    }
+
+    /**
      * How big a plant is: millimetres in the database, inches or centimetres
      * on the page (migration 024).
      *

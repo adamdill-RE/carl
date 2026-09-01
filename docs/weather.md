@@ -456,6 +456,35 @@ overlaid weather variables is unreadable at 380 px and nobody will pinch-zoom it
 > on the one where they were first drawn, because the note under the chart
 > says they are and the note sits under whichever panel is showing.
 
+> **Annotation, Claude Code, Phase 13, 2026-09-01.** The first paragraph above
+> is the one this project took nine phases to actually build. Phases 4 to 12
+> drew three *weather* panels with the plant reduced to identical triangles —
+> the subject was the context and the context was the subject — and the honest
+> reason is that until plant size existed (migration 024) the plant had almost
+> no number of its own to put on an axis. It now has height, diameter, harvest
+> weight, harvest count and watering minutes, so the plant report leads with a
+> subject series on the left axis at full strength and a weather series on the
+> right, muted, thinner, behind. Presets ("Growth", "Harvest") are pairs of
+> picks, so nothing a preset shows is unreachable from the two pickers.
+>
+> **The one-series rule was kept and read narrowly.** What §7.3 and the Phase 4
+> annotation establish is that two *weather* series overlaid are unreadable at
+> 380 px, and that finding is why the pickers offer one subject and one context
+> rather than a set of checkboxes: it is deliberately impossible to rebuild the
+> chart this section says does not work. Height and diameter are the one pair
+> drawn together, and they are one measurement of one plant sharing one axis
+> and one unit.
+>
+> **A time-series overlay does not show correlation**, which is what the eye
+> reads into any two rising lines, so there is a scatter beside it: one point
+> per harvest against the weather over the days *leading up to it*, with the
+> lag window adjustable per §7.2 rather than fixed at seven days. Pearson's r
+> is printed with n and with a sentence saying that six points under a moving
+> season are a shape to look at and not a result. §7.1 is followed for the GDD
+> layer — accumulated at read time, never stored, and its base printed on the
+> axis, because nothing in the research tables carries a per-crop base and an
+> unlabelled GDD curve is a claim about a particular plant.
+
 ---
 
 ## 8. Failure modes

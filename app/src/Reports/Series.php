@@ -47,6 +47,18 @@ final class Series
      */
     public const MAX_DAYS = 1100;
 
+    /**
+     * The base temperature growing degree days accumulate above, in Celsius.
+     *
+     * Ten degrees is the warm-season default and it is a DEFAULT, not a fact
+     * about any particular plant -- weather.md Section 7.1 says a single
+     * stored GDD assumption is wrong for every crop it was not chosen for. It
+     * is a constant here rather than a column because the research tables
+     * carry no per-crop base yet, and it is printed beside the curve so that
+     * the curve never claims to be more specific than it is.
+     */
+    public const GDD_BASE_C = 10.0;
+
     public function __construct(
         private PlantingRepository $plantings,
         private EventRepository $events,
@@ -256,9 +268,193 @@ final class Series
             ],
             'days'        => $days,
             'events'      => $this->markers($markers),
+            // The subject's OWN numbers, on their own spine. See subject().
+            'plant'       => $this->subject($markers, $days),
             'sources'     => $sources,
             'attribution' => Attribution::lines($sources),
         ];
+    }
+
+    /**
+     * The subject's own measured numbers, ready to draw.
+     *
+     * WHY THIS EXISTS. weather.md Section 7.3 is the authority on charting and
+     * it says weather is CONTEXT, NOT THE SUBJECT: on a plant-performance
+     * chart it belongs as a muted band or a secondary axis, "never competing
+     * with the performance line for attention". Phases 4 to 12 had it the
+     * other way round -- three weather panels, with the plant reduced to
+     * identical triangles that said only that something happened -- because
+     * until Phase 13 the plant had almost no number of its own to draw. Size
+     * (migration 024) is what changed that.
+     *
+     * TWO SPINES, DELIBERATELY. `days` is the weather spine: one entry per day
+     * the archive holds, which is what the three weather panels and the
+     * days_held / days_missing counts have always meant. This spine is the
+     * UNION of that and the dates the plant has numbers on, because a plant
+     * measured this morning has no weather row yet -- `to` is yesterday for a
+     * living subject (coveredRange below), so a same-day measurement would
+     * simply not be drawn. Two spines rather than one is the cost of not
+     * changing what days_missing means to the page, the PDF and the tests that
+     * count it.
+     *
+     * Everything here is derived from rows already in hand: no statement is
+     * spent, which is what 11_reports_test.php asserts about this class.
+     *
+     * @param list<array<string,mixed>> $markers
+     * @param list<array<string,mixed>> $days
+     * @return array<string,mixed>
+     */
+    private function subject(array $markers, array $days): array
+    {
+        // Sums, not last-wins: two harvests on one day are one day's harvest
+        // and two waterings are one day's watering. A SIZE is the exception --
+        // measuring the same plant twice in a day is a correction, not two
+        // plants, so the later reading wins.
+        $height = [];
+        $diameter = [];
+        $yieldG = [];
+        $yieldCount = [];
+        $waterMin = [];
+
+        foreach ($markers as $row) {
+            $date = (string) $row['event_date'];
+
+            if (($row['height_mm'] ?? null) !== null) {
+                $height[$date] = (float) $row['height_mm'];
+            }
+            if (($row['diameter_mm'] ?? null) !== null) {
+                $diameter[$date] = (float) $row['diameter_mm'];
+            }
+            if (($row['weight_g'] ?? null) !== null) {
+                $yieldG[$date] = ($yieldG[$date] ?? 0.0) + (float) $row['weight_g'];
+            }
+            // Only a HARVEST's count is a harvest. `count_qty` also carries how
+            // many germinated and how many were culled (LogController::
+            // eventData), and adding those to a yield line would draw six dead
+            // seedlings as six tomatoes.
+            if ((string) $row['event_type'] === EventType::YIELDED
+                && ($row['count_qty'] ?? null) !== null) {
+                $yieldCount[$date] = ($yieldCount[$date] ?? 0) + (int) $row['count_qty'];
+            }
+            if ((string) $row['event_type'] === EventType::WATERED
+                && ($row['duration_min'] ?? null) !== null) {
+                $waterMin[$date] = ($waterMin[$date] ?? 0) + (int) $row['duration_min'];
+            }
+        }
+
+        $weatherByDate = [];
+        foreach ($days as $day) {
+            $weatherByDate[(string) $day['date']] = $day;
+        }
+
+        $spine = \array_keys(
+            $weatherByDate + $height + $diameter + $yieldG + $yieldCount + $waterMin
+        );
+        \sort($spine);
+
+        $out = [
+            'dates'            => \array_values($spine),
+            'height'           => [],
+            'diameter'         => [],
+            'yield'            => [],
+            'yield_count'      => [],
+            'yield_cumulative' => [],
+            'water_min'        => [],
+            // Weather, projected onto the same spine, so the browser never has
+            // to join two lists by date to lay one over the other. A spine day
+            // the archive has no row for is null, and Chart.js spans the gap
+            // rather than drawing a cliff to zero.
+            'temp_max'         => [],
+            'temp_min'         => [],
+            'rain'             => [],
+            'et0'              => [],
+            'balance'          => [],
+            'gdd'              => [],
+            'provisional'      => [],
+        ];
+
+        // Growing degree days, accumulated across the spine.
+        //
+        // Computed HERE and never stored: weather.md Section 7.1 is explicit
+        // that a stored GDD column bakes in one crop's base temperature and is
+        // wrong for every other crop. The base is named on the chart for the
+        // same reason -- an unlabelled GDD curve is a claim about this
+        // particular plant that nothing in the research tables backs.
+        $accumulated = 0.0;
+        $runningYield = 0.0;
+
+        foreach ($spine as $date) {
+            $day = $weatherByDate[$date] ?? null;
+
+            $out['height'][] = isset($height[$date])
+                ? $this->units->sizeValue($height[$date], 1) : null;
+            $out['diameter'][] = isset($diameter[$date])
+                ? $this->units->sizeValue($diameter[$date], 1) : null;
+
+            // A harvest line is ZERO on a day with no harvest, not null: the
+            // bars are a record of picking, and a gap in them reads as a day
+            // that was not covered rather than a day nothing was picked.
+            $picked = $yieldG[$date] ?? 0.0;
+            $runningYield += $picked;
+            $out['yield'][]            = $this->units->weightValue($picked, 3);
+            $out['yield_count'][]      = $yieldCount[$date] ?? 0;
+            $out['yield_cumulative'][] = $this->units->weightValue($runningYield, 3);
+            $out['water_min'][]        = $waterMin[$date] ?? 0;
+
+            $out['temp_max'][]    = $day === null ? null : $day['temp_max'];
+            $out['temp_min'][]    = $day === null ? null : $day['temp_min'];
+            $out['rain'][]        = $day === null ? null : $day['rain'];
+            $out['et0'][]         = $day === null ? null : $day['et0'];
+            $out['balance'][]     = $day === null ? null : $day['balance'];
+            $out['provisional'][] = $day !== null && $day['provisional'] === true;
+
+            // A day missing either half of the pair is skipped rather than
+            // guessed at -- the same rule ReminderBuilder::gddCrossing()
+            // follows, and for the same reason.
+            $maxC = $this->toCelsius($day === null ? null : $day['temp_max']);
+            $minC = $this->toCelsius($day === null ? null : $day['temp_min']);
+            if ($maxC !== null && $minC !== null) {
+                $accumulated += \max(0.0, (($maxC + $minC) / 2) - self::GDD_BASE_C);
+            }
+            $out['gdd'][] = \round($accumulated, 1);
+        }
+
+        // What the plant actually HAS. A picker offering "Height" for a plant
+        // nobody has measured is a menu of empty charts, so the browser is
+        // told which layers have something in them.
+        $out['has'] = [
+            'height'   => $height !== [],
+            'diameter' => $diameter !== [],
+            'yield'    => $yieldG !== [] || $yieldCount !== [],
+            'water'    => $waterMin !== [],
+            'weather'  => $days !== [],
+        ];
+        $out['units'] = [
+            'size'     => $this->units->sizeUnit(),
+            'weight'   => $this->units->weightUnit(),
+            'gdd_base' => $this->units->temperature(self::GDD_BASE_C, 0),
+        ];
+
+        return $out;
+    }
+
+    /**
+     * A display temperature back to Celsius, for the one calculation that
+     * cannot be done in display units.
+     *
+     * GDD is a sum of degrees ABOVE A BASE, and a Fahrenheit degree is not a
+     * Celsius degree: accumulating one against the other gives a number 1.8
+     * times off, which is not obviously wrong on a page. The days have already
+     * been converted for the chart by the time this runs, so this converts one
+     * back rather than carrying a second copy of every temperature through the
+     * assembler.
+     */
+    private function toCelsius(int|float|null $shown): ?float
+    {
+        if ($shown === null) {
+            return null;
+        }
+        return $this->units->isUs() ? ((float) $shown - 32) * 5 / 9 : (float) $shown;
     }
 
     /**
