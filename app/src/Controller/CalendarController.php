@@ -26,12 +26,13 @@ use Carl\Support\Clock;
  * the digest decides when to SPEAK, this one draws WHEN IT IS -- so the
  * "seven days out" gates are absent here on purpose.
  *
- * **Statement budget: six, and three for an unresearched county.** One reads
- * the plantings, two read what was logged over the drawn month, and three
- * read the research the projections come out of -- which are skipped
+ * **Statement budget: six of its own, and three for an unresearched county.**
+ * One reads the plantings, two read what was logged over the drawn month, and
+ * three read the research the projections come out of -- which are skipped
  * entirely without a region, because every one of them would return nothing.
- * The plant filter costs no statement at all: the rows it filters and the
- * options it offers are the same array.
+ * Seven measured end to end, the seventh being the one `Auth::user()` makes
+ * on every request in the application. The plant filter costs no statement at
+ * all: the rows it filters and the options it offers are the same array.
  */
 final class CalendarController extends Controller
 {

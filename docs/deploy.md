@@ -951,8 +951,13 @@ with `Pest catalogue seed file is missing`, which is the good failure. Nothing
 is written; deploy again and re-run.
 
 Nothing else needs a deploy step: no new cron job, no new directory, no new
-vendored file. The client shell went from 19.1 KB to 19.9 KB gzipped against a
+vendored file. The client shell went from 19.1 KB to 20.5 KB gzipped against a
 150 KB budget, all of it CSS — the three new screens add no JavaScript.
+
+The one page worth knowing the size of is `/pests`: 57 KB of HTML, 11 KB
+gzipped, for the whole seventy-six-entry list. Drawn as full cards it was
+202 KB, which is why it is a list that expands one entry rather than a wall of
+them.
 
 #### The catalogue is editorial content, and there is a button for that
 

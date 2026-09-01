@@ -34,11 +34,18 @@ $U = Carl\Support\Units::class;
     <?php if ($filters['category'] !== '' || $filters['search'] !== ''): ?>
       or <a href="<?= $e($app->url($target)) ?>">clear the filters</a>
     <?php endif; ?>.</p>
-<?php if ($filters['search'] !== ''): ?>
-    <?php /* A well-formed code that matched nothing falls through to here
-           rather than to a message, because a code that is not yours and a
-           code that does not exist must look the same (QR-TAGS-SPEC 6.2) --
-           and because real words collide with the alphabet. */ ?>
+<?php
+    /* A well-formed code that matched nothing falls through to here rather
+       than to a message, because a code that is not yours and a code that
+       does not exist must look the same (QR-TAGS-SPEC Section 6.2) -- and
+       because real words collide with the alphabet. The line is only offered
+       when the query could BE a code, so an ordinary failed search is not
+       told about a feature it was not using. */
+    $looksLikeCode = Carl\Repo\TagRepository::isWellFormed(
+        Carl\Repo\TagRepository::normalise((string) $filters['search'])
+    );
+?>
+<?php if ($looksLikeCode): ?>
     <p class="tiny muted flush">If that was a tag code, check it on the
       <a href="<?= $e($app->url('tags')) ?>">plant tags</a> screen.</p>
 <?php endif; ?>

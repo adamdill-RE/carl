@@ -219,6 +219,18 @@ button:focus-visible, a:focus-visible {
  * mean; "bee care" borrows the accent because it is a caution about somebody
  * else's animals rather than about your crop.
  */
+/*
+ * The list of names, before anybody has asked for a card. The signs line is
+ * clamped to two lines: it is there to be searched and to be recognised, not
+ * to be read in full, and unclamped it makes every row a different height.
+ */
+.pest-list .name { font-weight: 600; }
+.pest-list .meta { font-size: 12px; color: var(--carl-text-muted); }
+.pest-list .meta:last-child {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .sev-cosmetic   { background: var(--carl-surface-sunk); color: var(--carl-text-muted); }
 .sev-manageable { background: var(--carl-info-soft);  color: var(--carl-info); }
 .sev-serious    { background: var(--carl-warn-soft);  color: var(--carl-warn); }

@@ -366,7 +366,7 @@ $t->test('an entry you type yourself still works and is marked as yours',
     $t->same(200, $screen->status);
     $t->contains('Something Carl has never heard of', $screen->body);
     $t->contains('>yours<', $screen->body, 'the screen says which entries are the account\'s own');
-    $t->contains('#pest-aphid', $screen->body, 'and links the reference ones to their card');
+    $t->contains('key=aphid', $screen->body, 'and links the reference ones to their card');
 });
 
 $t->test('an entry you typed that turns out to be in the catalogue is ADOPTED, not duplicated',
@@ -426,18 +426,46 @@ $t->test('it filters by kind, by search, and shows the whole catalogue on reques
     $diseases = $client->get('/pests', ['all' => '1', 'kind' => 'disease']);
     $t->same(200, $diseases->status);
     $t->contains('Early blight', $diseases->body);
-    $t->notContains('id="pest-aphid"', $diseases->body, 'an insect is not a disease');
+    $t->notContains('key=aphid', $diseases->body, 'an insect is not a disease');
 
+    // Searching by what you can SEE, which is the only thing somebody
+    // standing at a plant actually has, is why `signs` is in the statement.
     $search = $client->get('/pests', ['all' => '1', 'q' => 'webbing']);
-    $t->contains('id="pest-spider_mite"', $search->body, 'searching what you can SEE finds it');
+    $t->contains('key=spider_mite', $search->body);
 
     $latin = $client->get('/pests', ['all' => '1', 'q' => 'Melittia']);
-    $t->contains('id="pest-squash_vine_borer"', $latin->body);
+    $t->contains('key=squash_vine_borer', $latin->body);
+});
+
+$t->test('the page is a list until somebody asks for a card', function ($t) use ($client): void {
+    // Seventy-six full cards is 202 KB of HTML -- ten times the whole client
+    // shell, on the connection somebody standing in a garden actually has.
+    $list = $client->get('/pests', ['all' => '1']);
+    $t->ok(\strlen($list->body) < 90000,
+        'the list is ' . \strlen($list->body) . ' bytes, which is a page and not a download');
+    $t->same(0, \substr_count($list->body, 'class="card pest"'), 'no cards until asked');
+    // A pest the Hill County dataset does not name, so the sentence on the
+    // page is the catalogue's own however the import and the catalogue last
+    // took turns writing `signs`.
+    $t->contains('Silvery dried slime trails', $list->body,
+        'and the line you would search by is still on it');
+});
+
+$t->test('a link to one entry opens it whatever the filters would have shown',
+    function ($t) use ($client): void {
+    // The Lists screen and a bookmark both link straight to a card. Picking
+    // the entry out of the filtered list would make those links depend on
+    // filters the person following them never chose.
+    $response = $client->get('/pests', ['key' => 'clubroot', 'kind' => 'pest']);
+    $t->same(200, $response->status);
+    $t->contains('id="pest-clubroot"', $response->body,
+        'a disease opens even under a filter that says pests only');
+    $t->contains('back to the list', $response->body);
 });
 
 $t->test('an entry carries its consequence and its controls, in the IPM order',
     function ($t) use ($client): void {
-    $response = $client->get('/pests', ['all' => '1', 'q' => 'squash vine borer']);
+    $response = $client->get('/pests', ['key' => 'squash_vine_borer']);
     $body = $response->body;
 
     foreach (['What you will see', 'What it costs to ignore', 'Confused with',
@@ -461,7 +489,7 @@ $t->test('the default view is what can affect the plants you grow',
     $mine = $client->get('/pests');
     $all = $client->get('/pests', ['all' => '1']);
 
-    $count = static fn (string $body): int => \substr_count($body, 'class="card pest"');
+    $count = static fn (string $body): int => \substr_count($body, '#pest-');
     $t->ok($count($mine->body) < $count($all->body), 'narrowed by default');
     $t->ok($count($mine->body) > 0, 'and not narrowed to nothing');
     $t->contains('Show the whole', $mine->body, 'with the way out named on the page');
@@ -474,9 +502,8 @@ $t->test('an entry that affects EVERYTHING survives the narrowing',
     // and are exactly the entries a gardener most needs. A filter that
     // dropped them would hide the general answers and keep the specific ones.
     $mine = $client->get('/pests');
-    foreach (['pest-slug_snail', 'pest-cutworm', 'pest-frost_damage',
-              'pest-herbicide_drift'] as $anchor) {
-        $t->contains($anchor, $mine->body, $anchor . ' is shown whatever you grow');
+    foreach (['slug_snail', 'cutworm', 'frost_damage', 'herbicide_drift'] as $key) {
+        $t->contains('key=' . $key, $mine->body, $key . ' is shown whatever you grow');
     }
 });
 

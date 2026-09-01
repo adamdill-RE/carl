@@ -59,7 +59,8 @@ $attr2 = $L::attr2Label($type);
         <?php /* Phase 9: which entries came with Carl and which you added.
                Both are yours to archive; only the reference ones have a card
                to read. */ ?>
-        <a class="tiny" href="<?= $e($app->url('pests') . '#pest-' . $item['pest_key']) ?>">reference</a>
+        <a class="tiny"
+           href="<?= $e($app->url('pests', ['key' => (string) $item['pest_key']])) ?>">reference</a>
 <?php elseif ($type === Carl\Domain\ListType::PEST_DISEASE): ?>
         <span class="badge badge-muted">yours</span>
 <?php endif; ?>
