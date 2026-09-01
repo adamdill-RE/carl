@@ -71,6 +71,32 @@ final class ListRepository extends Repository
         return $out;
     }
 
+    /**
+     * The pests-and-diseases list, with the catalogue entry each row points
+     * at (Phase 9).
+     *
+     * ONE STATEMENT AND ONE LEFT JOIN, replacing the ofType() read rather
+     * than adding to it. The Lists screen has to be able to say which entries
+     * came with Carl and which the account typed for itself -- that is the
+     * visible half of "we load a list AND you can add to it", and without it
+     * the two are indistinguishable rows of text. LEFT, because a row the
+     * account added has no `pest_id` and is exactly the case being shown.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function pestListWithReference(bool $activeOnly = false): array
+    {
+        return $this->db->all(
+            'SELECT u.*, p.`pest_key`, p.`kind` AS pest_kind, p.`severity`, p.`is_builtin`'
+            . ' FROM `user_list_item` u'
+            . ' LEFT JOIN `pest` p ON p.`id` = u.`pest_id`'
+            . ' WHERE u.`user_id` = :' . self::SCOPE . ' AND u.`list_type` = :list_type'
+            . ($activeOnly ? ' AND u.`is_active` = 1' : '')
+            . ' ORDER BY u.`sort_order`, u.`name`',
+            $this->bind(['list_type' => ListType::PEST_DISEASE])
+        );
+    }
+
     /** @return array<string,mixed>|null */
     public function findInType(int $id, string $listType): ?array
     {
@@ -145,6 +171,10 @@ final class ListRepository extends Repository
         $now = $this->now();
         $rows = [];
 
+        // Every pest in the global catalogue. Since Phase 9 that is never
+        // empty on a fresh install -- db/seed/pest_catalog.csv ships with
+        // Carl -- so this is the first release in which a new account opens a
+        // populated dropdown rather than a blank one.
         $pests = $this->db->all('SELECT id, name FROM `pest` ORDER BY name');
         foreach ($pests as $pest) {
             $rows[] = [
@@ -156,6 +186,17 @@ final class ListRepository extends Repository
             $rows[] = [
                 $this->userId, ListType::CULL_REASON, $reason,
                 null, null, null, 1, $index, $now, $now,
+            ];
+        }
+        // The treatment shelf (Phase 9). The pests half of a pest log has
+        // come from the reference table since Phase 1; this is the other
+        // half, asked at the same moment, and it was the only one of the two
+        // still starting empty. attr_1 is the ACTIVE INGREDIENT -- see
+        // ListType::seedPestTreatments().
+        foreach (ListType::seedPestTreatments() as $index => [$name, $active]) {
+            $rows[] = [
+                $this->userId, ListType::PEST_TREATMENT, $name,
+                $active, null, null, 1, $index, $now, $now,
             ];
         }
 

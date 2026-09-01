@@ -191,12 +191,16 @@ $hasWeather = $weather['recent'] !== [] || $weather['forecast'] !== [];
     <span class="hint">Water, yield, pests, cull</span></a>
   <a href="<?= $e($app->url('plants')) ?>">View Plants
     <span class="hint">Timeline and photos</span></a>
+  <a href="<?= $e($app->url('calendar')) ?>">Calendar
+    <span class="hint">The month ahead, and what is due</span></a>
   <a href="<?= $e($app->url('gardens/new')) ?>">Build Garden
     <span class="hint">Rows, zones and soil</span></a>
   <a href="<?= $e($app->url('gardens')) ?>">Garden Actions
     <span class="hint">Water a zone, mulch, fertilise</span></a>
   <a href="<?= $e($app->url('lists')) ?>">Lists
     <span class="hint">Your seeds, soils, fertilisers</span></a>
+  <a href="<?= $e($app->url('pests')) ?>">Pests and diseases
+    <span class="hint">What it is, what it costs, what to do</span></a>
   <a href="<?= $e($app->url('reports')) ?>">Reports
     <span class="hint">Charts, PDFs, recommendations and exports</span></a>
   <a href="<?= $e($app->url('tags')) ?>">Plant tags

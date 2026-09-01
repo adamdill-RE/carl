@@ -7,6 +7,7 @@ namespace Carl\Core;
 use Carl\Controller\AdminController;
 use Carl\Controller\AdviceController;
 use Carl\Controller\AuthController;
+use Carl\Controller\CalendarController;
 use Carl\Controller\DigestController;
 use Carl\Controller\ExportController;
 use Carl\Controller\GardenController;
@@ -14,6 +15,7 @@ use Carl\Controller\ListController;
 use Carl\Controller\LogController;
 use Carl\Controller\MenuController;
 use Carl\Controller\OnboardingController;
+use Carl\Controller\PestController;
 use Carl\Controller\PhotoController;
 use Carl\Controller\PlantController;
 use Carl\Controller\ReportController;
@@ -115,6 +117,14 @@ final class Routes
         $r->post('/log/{id:\d+}', LogController::class, 'record');
         $r->post('/log/batch', LogController::class, 'batch');
 
+        // -- Calendar (Phase 9) ---------------------------------------------
+        // A month of the garden, and the table of what is coming. One GET,
+        // and a GET on purpose: a filtered month has to be bookmarkable and
+        // reachable with the back button, which a POST is not. Nothing here
+        // writes and nothing here computes anything the digest does not --
+        // see Carl\Planting\Calendar.
+        $r->get('/calendar', CalendarController::class, 'index');
+
         // -- Gardens --------------------------------------------------------
         $r->get('/gardens', GardenController::class, 'index');
         $r->get('/gardens/new', GardenController::class, 'newForm');
@@ -180,6 +190,12 @@ final class Routes
 
         // -- Companion planting reference (handoff Section 14 v2, Phase 6) --
         $r->get('/companions', CompanionController::class, 'index');
+
+        // -- Pest and disease reference (Phase 9) ---------------------------
+        // Global reference data, read-only, like /companions. One statement
+        // and no pagination: it is seventy-odd rows the browser can search.
+        // db/migrations/022_pest_reference.sql is why it exists at all.
+        $r->get('/pests', PestController::class, 'index');
 
         // -- Recommendations (handoff Section 14 v2; Phase 5 Section 3.1) ---
         // The POST queues an `analysis` row and returns. It does NOT call the
@@ -252,6 +268,11 @@ final class Routes
         $r->get('/admin/research-import', AdminController::class, 'researchImport', Route::ADMIN_ACCESS);
         $r->post('/admin/research-import', AdminController::class, 'researchPreview', Route::ADMIN_ACCESS);
         $r->post('/admin/research-import/confirm', AdminController::class, 'researchConfirm', Route::ADMIN_ACCESS);
+        // Phase 9: re-apply db/seed/pest_catalog.csv and put it in front of
+        // every account. A POST because it writes, admin-only because it
+        // writes to every account, and idempotent because it will be pressed
+        // twice by somebody who is not sure it worked.
+        $r->post('/admin/reference-sync', AdminController::class, 'referenceSync', Route::ADMIN_ACCESS);
         $r->get('/admin/regions', AdminController::class, 'regions', Route::ADMIN_ACCESS);
         // Handoff Section 12.1 step 7 calls this "/admin/mail-test?key=".
         // It is admin-only instead: a key-guarded route that sends mail to an

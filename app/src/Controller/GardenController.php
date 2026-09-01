@@ -17,13 +17,6 @@ use Carl\Domain\SoilType;
  */
 final class GardenController extends Controller
 {
-    private ?\Carl\Repo\TagRepository $tagRepo = null;
-
-    private function tags(): \Carl\Repo\TagRepository
-    {
-        return $this->tagRepo ??= new \Carl\Repo\TagRepository($this->app->db(), $this->userId());
-    }
-
     public function index(Request $request): Response
     {
         $gardens = $this->gardens()->activeGardens();

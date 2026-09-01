@@ -169,6 +169,58 @@ final class EventRepository extends Repository
         );
     }
 
+    /**
+     * Every plant event in a date range, for the calendar grid (Phase 9).
+     *
+     * ONE STATEMENT AND ONE JOIN. The grid draws a chip per event and needs
+     * only a date, a type and a name for it; timeline()'s six LEFT JOINs
+     * exist to print the fertiliser on one plant's page, which a chip does
+     * not have room for.
+     *
+     * THE FANNED-OUT COPIES ARE LEFT OUT, the same way gardenSeriesMarkers()
+     * leaves them out and for the same reason: watering a zone writes one
+     * derived plant_event per living plant in it (handoff Section 4.7), so a
+     * calendar that read them would draw one Tuesday watering as forty chips.
+     * calendarGardenEvents() reads the side that has one row per thing that
+     * actually happened. `source_garden_event_id` is what tells them apart.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function calendarEvents(string $from, string $to): array
+    {
+        return $this->db->all(
+            'SELECT e.`id`, e.`planting_id`, e.`event_type`, e.`event_date`, e.`narrative`,'
+            . ' p.`label`, pt.`category`, pt.`type`'
+            . ' FROM `plant_event` e'
+            . ' JOIN `planting` p ON p.`id` = e.`planting_id`'
+            . ' JOIN `plant_type` pt ON pt.`id` = p.`plant_type_id`'
+            . ' WHERE e.`user_id` = :' . self::SCOPE
+            . ' AND e.`source_garden_event_id` IS NULL'
+            . ' AND e.`event_date` BETWEEN :from AND :to'
+            . ' ORDER BY e.`event_date`, e.`id`',
+            $this->bind(['from' => $from, 'to' => $to])
+        );
+    }
+
+    /**
+     * The garden actions in the same range: the other half of what happened.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function calendarGardenEvents(string $from, string $to): array
+    {
+        return $this->db->all(
+            'SELECT e.`id`, e.`garden_id`, e.`event_type`, e.`event_date`, e.`narrative`,'
+            . ' e.`fanout_count`, g.`name` AS garden_name'
+            . ' FROM `garden_event` e'
+            . ' JOIN `garden` g ON g.`id` = e.`garden_id`'
+            . ' WHERE e.`user_id` = :' . self::SCOPE
+            . ' AND e.`event_date` BETWEEN :from AND :to'
+            . ' ORDER BY e.`event_date`, e.`id`',
+            $this->bind(['from' => $from, 'to' => $to])
+        );
+    }
+
     /** @return list<array<string,mixed>> the most recent events across everything */
     public function recent(int $limit = 20): array
     {

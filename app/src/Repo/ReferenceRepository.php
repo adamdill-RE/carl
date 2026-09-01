@@ -342,6 +342,55 @@ final class ReferenceRepository
         return $out;
     }
 
+    /**
+     * Every window this region carries, joined to the plant it is about.
+     *
+     * sowingWindows() is next door and is NOT this: it answers the succession
+     * planner\'s question and so drops transplant rows, trees and perennials.
+     * A calendar draws "the transplant window opens" as well as "sow by", so
+     * it needs the unfiltered set -- one statement for a table that is a few
+     * hundred rows for a whole county.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function windowsForRegion(?int $regionId): array
+    {
+        if ($regionId === null) {
+            return [];
+        }
+        return $this->db->all(
+            'SELECT pr.*, pt.category, pt.type, pt.plant_family,'
+            . ' pt.dtm_days_min, pt.dtm_days_max, pt.dtm_counted_from,'
+            . ' pt.weeks_before_transplant_to_start'
+            . ' FROM `plant_region` pr JOIN `plant_type` pt ON pt.id = pr.plant_type_id'
+            . ' WHERE pr.region_id = :region_id'
+            . ' ORDER BY pt.category, pt.type, pr.window_start',
+            ['region_id' => $regionId]
+        );
+    }
+
+    /**
+     * Every pest window this region carries, whether or not it is open today.
+     *
+     * activePests() answers "what should the MOTD say this morning" and
+     * filters to today; a calendar is asking when the window OPENS, which is
+     * by definition a date that is not today.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function pestWindowsForRegion(?int $regionId): array
+    {
+        if ($regionId === null) {
+            return [];
+        }
+        return $this->db->all(
+            'SELECT pr.*, p.name, p.kind, p.signs, p.pest_key FROM `pest_region` pr'
+            . ' JOIN `pest` p ON p.id = pr.pest_id'
+            . ' WHERE pr.region_id = :region_id ORDER BY pr.active_start, p.name',
+            ['region_id' => $regionId]
+        );
+    }
+
     /** @return list<array<string,mixed>> pests active now for these categories */
     public function activePests(?int $regionId, array $categories, string $today): array
     {
@@ -374,6 +423,131 @@ final class ReferenceRepository
             $out[] = $row;
         }
         return $out;
+    }
+
+    /**
+     * The pest and disease reference screen (Phase 9).
+     *
+     * ONE STATEMENT FOR THE WHOLE CATALOGUE, and the whole catalogue is the
+     * right read: it is seventy-odd rows of prose, the screen is a reference
+     * somebody scrolls and searches rather than pages, and filtering by
+     * category cannot be done in SQL anyway -- `affects_categories` is a
+     * semicolon-separated cell (research-template/README.md), so matching
+     * "Tomato" against it in SQL would also match "Tomatillo" through a LIKE.
+     * The kind and the text search go in the statement; the category is a
+     * PHP intersection, the same way guidanceFor() and activePests() do it.
+     *
+     * @param array{kind?:string,search?:string,category?:string} $filters
+     * @return list<array<string,mixed>>
+     */
+    public function pestCatalogue(array $filters = []): array
+    {
+        $predicates = [];
+        $params = [];
+
+        $kind = (string) ($filters['kind'] ?? '');
+        if (\in_array($kind, ['pest', 'disease', 'disorder'], true)) {
+            $predicates[] = '`kind` = :kind';
+            $params['kind'] = $kind;
+        }
+
+        $search = \trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            // Four names for one value: emulation is off, so a placeholder
+            // cannot be reused within a statement (hosting Section 7).
+            $predicates[] = '(`name` LIKE :s1 OR `also_called` LIKE :s2'
+                . ' OR `latin_name` LIKE :s3 OR `signs` LIKE :s4)';
+            $like = '%' . $search . '%';
+            $params['s1'] = $like;
+            $params['s2'] = $like;
+            $params['s3'] = $like;
+            $params['s4'] = $like;
+        }
+
+        $rows = $this->db->all(
+            'SELECT * FROM `pest`'
+            . ($predicates === [] ? '' : ' WHERE ' . \implode(' AND ', $predicates))
+            . " ORDER BY FIELD(`kind`, 'pest', 'disease', 'disorder'), `name`",
+            $params
+        );
+
+        $category = \strtolower(\trim((string) ($filters['category'] ?? '')));
+        if ($category === '') {
+            return $rows;
+        }
+
+        $out = [];
+        foreach ($rows as $row) {
+            $affects = \array_filter(\array_map(
+                static fn (string $c): string => \strtolower(\trim($c)),
+                \explode(';', (string) ($row['affects_categories'] ?? ''))
+            ));
+            // An empty cell means "anything", which is true of slugs and of
+            // frost and is the difference between a useful filter and one
+            // that hides the things that matter most.
+            if ($affects === [] || \in_array($category, $affects, true)) {
+                $out[] = $row;
+            }
+        }
+        return $out;
+    }
+
+    /** How many pest rows came with Carl rather than from a county dataset. */
+    public function builtinPestCount(): int
+    {
+        return (int) $this->db->value('SELECT COUNT(*) FROM `pest` WHERE `is_builtin` = 1', [], 0);
+    }
+
+    /**
+     * Put every catalogue entry in front of every account (Phase 9).
+     *
+     * The set-based twin of `ListRepository::syncPestsFromReference()`, which
+     * does one account at a time and is what keeps a NEW account current.
+     * This is what runs after the catalogue itself changes -- a corrected
+     * entry, a re-applied seed file, or a county dataset that added a pest --
+     * and it is here rather than on ListRepository because it crosses every
+     * account, which is exactly what that class exists to make impossible.
+     *
+     * TWO STATEMENTS AND THE ORDER MATTERS, the same order and for the same
+     * reason as `023_pest_catalog.php`: adopt the rows an account typed for
+     * itself that happen to name a catalogue entry, and only then insert what
+     * is missing. Reversed, the insert would collide with the unique key on
+     * (user_id, list_type, name) and the account would keep its orphan row
+     * forever.
+     *
+     * @return int rows the insert created
+     */
+    public function syncPestListsForAllUsers(): int
+    {
+        $listType = \Carl\Domain\ListType::PEST_DISEASE;
+
+        $this->db->run(
+            'UPDATE `user_list_item` u JOIN `pest` p ON p.`name` = u.`name`'
+            . ' SET u.`pest_id` = p.`id`, u.`updated_at` = UTC_TIMESTAMP()'
+            . ' WHERE u.`list_type` = :list_type AND u.`pest_id` IS NULL',
+            ['list_type' => $listType]
+        );
+
+        return $this->db->run(
+            'INSERT INTO `user_list_item`'
+            . ' (`user_id`, `list_type`, `name`, `pest_id`, `is_active`, `sort_order`,'
+            . '  `created_at`, `updated_at`)'
+            . ' SELECT u.`id`, :list_type, p.`name`, p.`id`, 1, 0,'
+            . '        UTC_TIMESTAMP(), UTC_TIMESTAMP()'
+            . ' FROM `user` u CROSS JOIN `pest` p'
+            . ' WHERE NOT EXISTS ('
+            . '   SELECT 1 FROM `user_list_item` x'
+            . '   WHERE x.`user_id` = u.`id` AND x.`list_type` = :existing_type'
+            . '     AND x.`pest_id` = p.`id`'
+            . ' )',
+            ['list_type' => $listType, 'existing_type' => $listType]
+        )->rowCount();
+    }
+
+    /** @return array<string,mixed>|null */
+    public function findPestByKey(string $pestKey): ?array
+    {
+        return $this->db->one('SELECT * FROM `pest` WHERE `pest_key` = :key', ['key' => $pestKey]);
     }
 
     /**

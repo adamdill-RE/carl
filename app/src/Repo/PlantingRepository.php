@@ -43,12 +43,22 @@ final class PlantingRepository extends Repository
         'SELECT p.*, pt.category, pt.type, pt.plant_family, pt.dtm_days_min, pt.dtm_days_max,'
         . ' pt.dtm_counted_from, pt.is_tree,'
         . ' g.name AS garden_name, g.is_indoor, gr.name AS row_name, gr.ordinal AS row_ordinal,'
-        . ' c.name AS container_name'
+        . ' c.name AS container_name, qt.code AS tag_code'
         . ' FROM `planting` p'
         . ' JOIN `plant_type` pt ON pt.id = p.plant_type_id'
         . ' LEFT JOIN `garden` g ON g.id = p.garden_id'
         . ' LEFT JOIN `garden_row` gr ON gr.id = p.garden_row_id'
-        . ' LEFT JOIN `container` c ON c.id = p.container_id';
+        . ' LEFT JOIN `container` c ON c.id = p.container_id'
+        // The tag on this plant right now, if any (docs/QR-TAGS-SPEC.md).
+        // Two more LEFT JOINs and no more statements, and the row cannot
+        // fan out: `unbound_at IS NULL` is the live binding and there is at
+        // most one per planting, which TagRepository::bindTo() closes both
+        // sides of in one transaction. Closed bindings -- a tag that was
+        // moved to another plant -- are exactly what the predicate excludes,
+        // and without it a rebound stake would list its old plant twice.
+        . ' LEFT JOIN `qr_tag_binding` qb'
+        . '   ON qb.planting_id = p.id AND qb.unbound_at IS NULL'
+        . ' LEFT JOIN `qr_tag` qt ON qt.id = qb.tag_id';
 
     /**
      * Every planting is its own root until it is split off something.
@@ -114,13 +124,18 @@ final class PlantingRepository extends Repository
             $params['ended_state'] = PlantingState::ENDED;
         }
         if (($filters['search'] ?? '') !== '') {
-            $predicates[] = '(pt.category LIKE :search1 OR pt.type LIKE :search2 OR p.label LIKE :search3)';
+            $predicates[] = '(pt.category LIKE :search1 OR pt.type LIKE :search2'
+                . ' OR p.label LIKE :search3 OR qt.code LIKE :search4)';
             $like = '%' . $filters['search'] . '%';
             // Emulation is off, so a placeholder cannot be reused within one
-            // statement -- three names for one value (hosting Section 7).
+            // statement -- four names for one value (hosting Section 7).
             $params['search1'] = $like;
             $params['search2'] = $like;
             $params['search3'] = $like;
+            // The tag code, so four characters read off a faded stake narrow
+            // the list. A WHOLE code does not come through here at all: the
+            // controller recognises it first and goes straight to the plant.
+            $params['search4'] = $like;
         }
 
         return $this->db->all(
