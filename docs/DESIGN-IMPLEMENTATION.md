@@ -62,8 +62,10 @@ Two small things I noticed that are **not** defects:
 
 ## 2. The work
 
-Eight files. Nothing here is architectural; the palette was designed as a
-one-file swap and it mostly is.
+Nothing here is architectural; the palette was designed as a one-file swap
+and it mostly is. §2.1–§2.8 are the whole job apart from the web manifest,
+which is specified in §3.2 and is blocked on icons we have to ask Claude
+Design for — land everything else first and add it when they arrive.
 
 ### 2.1 The palette — `public/assets/css/tokens.css`
 
@@ -98,8 +100,9 @@ This is what frees `--carl-accent` to be only the focus ring. **Nothing else
 may use `--carl-accent`** — if a future feature wants another data colour, add
 a `--carl-chart-*`, don't borrow it back.
 
-See §3 for the two shape requests, which need a decision rather than a
-transcription.
+Two shape changes go with this, settled in §3.3: **add `borderDash` to the
+ET₀ line**, and **leave the event markers as triangles** — do not change them
+to circles.
 
 ### 2.3 PDF fallbacks — `app/src/Reports/Document.php`
 
@@ -200,9 +203,9 @@ is right on the server, where `public/` is not under the app root.
 automatically. Do not add a task for it — the file is lint-checked and a
 needless task is a needless risk.
 
-### 2.7 Dark mode — only if Adam says yes (see §3)
+### 2.7 Dark mode — **decided: ship it**
 
-If shipping: add `public/assets/css/tokens-dark.css` from
+Add `public/assets/css/tokens-dark.css` from
 `design/return/tokens-dark.css`, link it in `layout.php` **after**
 `tokens.css`, and change line 17 to
 `<meta name="color-scheme" content="light dark">`.
@@ -227,56 +230,52 @@ Then mark §13.5 **built** in `docs/CARL-HANDOFF.md`, and drop it from the
 
 ---
 
-## 3. Decisions before you start
+## 3. Decisions — all three answered
 
-Three things are genuinely Adam's call, not yours.
+Adam settled these on 1 September. Nothing here is open; implement as stated.
 
-### 3.1 Ship dark mode? — Claude Design says yes
+### 3.1 Dark mode — **yes, ship it**
 
-It was optional in the brief; they built it and argued for it. Their argument
-is a functional one, not a taste one: people log evening waterings, and a
-full-white 380 px screen at dusk ruins the night vision you need to see the
-bed you are standing in.
+Implement §2.7. Grep for `text-inverse` before you ship it: in dark,
+`--carl-primary` is a light green and `--carl-text-inverse` is near-black, so
+any code assuming `text-inverse` is white will show it.
 
-The costs are real but small: one more stylesheet, a meta change, and the
-`text-inverse` inversion above. **Ask Adam.** If the answer is no, leave
-`design/return/tokens-dark.css` in place — it costs nothing sitting there and
-the decision may change.
+### 3.2 Web manifest — **yes, and it needs one thing we don't have**
 
-### 3.2 Add a web manifest? — needs a round-trip
+Add `public/manifest.webmanifest` with `theme_color: #265c37`,
+`background_color: #f4f3ee`, the app name, `display: standalone` and a
+`start_url` matching the `/carl/` base path. Link it from `layout.php`
+alongside the icons.
 
-Claude Design will supply 192/512 maskable icons if we want a proper
-home-screen identity, with theme colour `#265c37` and background `#f4f3ee`.
-They deliberately did not build them speculatively, and a maskable icon needs
-~20% safe-area padding, so it is a third drawing rather than a resize.
+**It needs 192 and 512 maskable icons, which are not in the delivery.** Claude
+Design deliberately did not build them speculatively and has offered to; a
+maskable icon needs ~20% safe-area padding, so it is a third drawing rather
+than a resize of the favicon. **Ask Claude Design for them, and do not ship a
+manifest that points at scaled-up favicons** — a maskable icon without the
+safe area gets its edges cropped by the launcher.
 
-**Ask Adam**, and if yes, go back to Claude Design for the icons rather than
-scaling the favicon.
+If you want to land everything else first, ship §2.1–§2.8 without the manifest
+and add it when the icons arrive. That ordering costs nothing.
 
-### 3.3 The two chart shape requests — I'd part-decline these
+### 3.3 The two chart shape requests — **part-declined, as recommended**
 
-`DESIGN-NOTES.md` §7.2 makes two requests that don't match the code. Both come
-from Claude Design's mockup, which composites every series onto **one** chart.
-The real app has three separate tabs — temperature, rain, ET₀ — so the series
-they were reasoning about never share a visual field.
+Adam agreed with the reading in §3.3 of the original plan:
 
-- **"Keep ET₀ dashed."** It is not dashed today; `borderDash` appears nowhere
-  in `charts.js`. And the stated reason — the dash tells a red-green-blind
-  reader it isn't a temperature line — doesn't apply, because ET₀ is alone on
-  its own panel with its own axis. **My recommendation: add the dash anyway.**
-  It costs one property, it is harmless on a solo panel, and it is already
-  right if those panels are ever merged.
-- **"Keep event markers as filled circles distinct in size from the
-  temperature points."** They are currently `pointStyle: 'triangle'` at
-  `pointRadius: 4`, while temperature points use a computed `pointSize(days)`.
-  **My recommendation: keep the triangle.** A different *shape* is strictly
-  better shape-encoding than the same shape at a different size, and Claude
-  Design asked for circles only because their mockup drew dots. This is the
-  one place I'd push back on the delivery.
+- **ET₀: add the dash.** It is not dashed today and `borderDash` appears
+  nowhere in `charts.js`, so this is a new property, not a preservation. The
+  reason Claude Design gave does not apply — ET₀ is alone on its own tab and
+  never shares a panel with a temperature line — but it costs one property and
+  is already right if those panels ever merge.
+- **Event markers: keep the triangle.** They are `pointStyle: 'triangle'`
+  today. A different shape beats the same shape at a different size, and
+  Claude Design asked for circles only because their mockup drew dots. Do not
+  change them to circles.
 
-Worth a line back to Claude Design either way, since it is their encoding.
+Worth a line back to Claude Design, since it is their encoding and the second
+point is a disagreement rather than a detail.
 
 ---
+
 
 ## 4. Constraints that will bite
 
@@ -380,18 +379,22 @@ grep -n 'rel="icon"\|color-scheme' app/views/layout.php
 
 ---
 
-## 8. Unrelated, still open
+## 8. The nightly test failures — fixed, and now guarded
 
-The four date-boundary test failures from PR #11 are **not fixed**. Tests in
-`06_backfill_test.php:104`, `11_reports_test.php:147` and
-`20_split_test.php:83` compare a UTC `gmdate()` against dates the app computes
-in `America/Chicago`, so the suite fails on any CI run between 00:00 and 05:00
-UTC and passes the rest of the day.
+This is resolved; the note is here so nobody re-diagnoses it.
 
-It has nothing to do with this work, but if the suite goes red on you at an odd
-hour, that is why — check the clock before you go looking in the palette. The
-fix is one line per file, using the idiom already at `03_flow_test.php:146`:
+Four assertions used to compare a UTC `gmdate()` against dates the app
+computes in `America/Chicago`, so the suite was green all afternoon and red
+between 00:00 and 05:00 UTC. Commit `c97dee9` fixed those four. A fifth was
+still latent in `23_calendar_test.php`, where the month-boundary case would
+have been considerably more confusing — the events land outside the drawn
+month entirely and the count chip simply vanishes — and that is fixed now too.
 
-```php
-$today = $app->clock()->todayFor('America/Chicago');
-```
+`tests/check_test_clocks.php` runs in CI's static job and makes the pattern
+unmergeable: a case file that onboards with ZIP 76692 may not take `$today`
+from the server clock unless the line carries a `// utc-ok: <reason>` marker.
+Four files legitimately do and now say why.
+
+The rule is **not** "never call `gmdate()`". `04_weather_test.php` builds its
+locations in UTC, so the server's day is the correct one there. The rule is
+that one test must not mix two timezones' idea of today.
