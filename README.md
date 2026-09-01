@@ -185,10 +185,24 @@ And, from Phase 9, three refinements:
     with three ids, and none of them can answer what aphids cost you over three
     seasons.
 
-Not built yet, by design: the logo and the palette, which are Claude Design
-deliverables. `public/assets/css/tokens.css` is a neutral placeholder naming
-exactly the variables to deliver, and it is the only file that names a colour
-— including the two QR tokens, which are marked contrast-critical and must not
+And, from Phase 10, the last item in the specification:
+
+- **The logo and the palette** (§13.5), delivered by Claude Design and wired
+  in. A warm-paper ground, a deep forest brand, and everything pitched high
+  because the screen this runs on is a phone held in direct sun — contrast is
+  a functional requirement here, not a compliance box. The mark is a C with a
+  seedling in its opening, inline SVG in `currentColor`, so one drawing serves
+  the topbar and the login page. Seven chart tokens came with it, which freed
+  `--carl-accent` to be the focus ring and nothing else, and stopped a warm day
+  being painted in the error colour.
+- **Dark mode**, because people log evening waterings and a full-white screen
+  at dusk costs you the night vision you need to see the bed you are standing
+  in. `tokens-dark.css`, the same names under `prefers-color-scheme`.
+- **A web manifest and home-screen icons**, so the thing you use one-handed in
+  a garden can live on the home screen rather than in a browser tab.
+
+`public/assets/css/tokens.css` is still the only file that names a colour —
+including the two QR tokens, which are marked contrast-critical and must not
 be themed, because a code that is not near-black on near-white does not scan.
 
 ## Layout

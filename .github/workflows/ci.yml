@@ -67,6 +67,9 @@ jobs:
       - name: No test takes its "today" from the server clock
         run: php tests/check_test_clocks.php
 
+      - name: Brand assets survive the CSP, and the manifest points at real files
+        run: php tests/check_brand_assets.php
+
   database:
     name: Migrations and suite (${{ matrix.db.name }})
     runs-on: ubuntu-latest

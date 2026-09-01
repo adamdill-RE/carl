@@ -34,9 +34,14 @@
     { key: 'et0',  label: 'ET₀' }
   ];
 
-  /* Read a design token. Falls back to a neutral grey rather than to a
-   * colour of its own: an invented colour is a palette, and the palette is
-   * Claude Design's to deliver. */
+  /* Read a design token, falling back to the delivered value rather than to
+   * an invented one (handoff Section 13.5, built Phase 10). The fallbacks
+   * below are the real palette, so a failed lookup degrades to the right
+   * colour instead of to a scheme that no longer exists.
+   *
+   * The trim is load-bearing: getComputedStyle returns a custom property with
+   * its leading whitespace intact, and Chart.js takes " #b8460b" as invalid
+   * and silently draws its own default instead. */
   function token(name, fallback) {
     var value = getComputedStyle(document.documentElement).getPropertyValue(name);
     value = (value || '').trim();
@@ -53,15 +58,30 @@
       + parseInt(h.slice(2, 4), 16) + ',' + parseInt(h.slice(4, 6), 16) + ',' + alpha + ')';
   }
 
+  /* The series have their own tokens rather than borrowing the status ones
+   * (handoff Section 13.5, Claude Design). Three things that bought:
+   * --carl-accent is now ONLY the focus ring, where before it was also the
+   * ET0 line and was being tuned against two incompatible briefs; a warm day
+   * is no longer painted in --carl-error, which said "failure" about weather;
+   * and low temperature and rainfall are no longer the same colour, which
+   * they had been since Phase 4 without anybody deciding it.
+   *
+   * The set is built from Okabe-Ito and checked under deuteranope and
+   * protanope simulation, so DO NOT substitute a status token back in here
+   * for convenience -- and if a sixth series is ever needed, add a
+   * --carl-chart-* rather than borrowing --carl-accent again.
+   *
+   * The fallbacks are the delivered palette, so a failed getComputedStyle
+   * degrades to the right colours rather than to the 2026 placeholder. */
   function palette() {
     return {
-      hot:    token('--carl-error', '#a32020'),
-      cold:   token('--carl-info', '#1f4f77'),
-      water:  token('--carl-info', '#1f4f77'),
-      et0:    token('--carl-accent', '#7a5a1f'),
-      event:  token('--carl-primary', '#2f6b3f'),
-      grid:   token('--carl-border', '#d6d6cf'),
-      text:   token('--carl-text-muted', '#5c635d')
+      hot:    token('--carl-chart-hot', '#b8460b'),
+      cold:   token('--carl-chart-cold', '#00509a'),
+      water:  token('--carl-chart-water', '#0e8577'),
+      et0:    token('--carl-chart-et0', '#8d5bb5'),
+      event:  token('--carl-chart-event', '#2f3a33'),
+      grid:   token('--carl-chart-grid', '#d3d1c5'),
+      text:   token('--carl-chart-axis', '#545a52')
     };
   }
 
@@ -221,6 +241,12 @@
         {
           label: 'ET₀', data: days.map(function (d) { return d.et0; }),
           borderColor: colours.et0, backgroundColor: fade(colours.et0, 0.12),
+          /* Dashed on Claude Design's ask. ET0 has its own tab and so never
+           * shares a panel with a temperature line, which is the reason they
+           * gave and it does not apply here -- but it costs one property, it
+           * distinguishes the one series that is not a temperature at a
+           * glance, and it is already right if these panels are ever merged. */
+          borderDash: [5, 4],
           fill: 'origin', borderWidth: 1.5, tension: 0.2,
           pointRadius: pointSize(days), pointStyle: 'circle',
           pointBorderColor: colours.et0,

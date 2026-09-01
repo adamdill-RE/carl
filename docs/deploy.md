@@ -1242,9 +1242,10 @@ file is refused rather than silently re-run.
 8. Email Open-Meteo describing Carl (internal, unsold, no ads) and keep the
    reply in `docs/`. Attribution is already in the footer and is generated
    from `source_model`, so it stays honest if NCEI rows are ever mixed in.
-9. Claude Design: the logo and the palette. `public/assets/css/tokens.css` is
-   a neutral placeholder defining exactly the `--carl-*` names to deliver; it
-   is the only file that names a colour, so the palette is a one-file swap.
+9. ~~Claude Design: the logo and the palette.~~ **Done, Phase 10.** Delivered
+   and wired in. `public/assets/css/tokens.css` is still the only file that
+   names a colour; `tokens-dark.css` sits beside it for dark mode and the PDF
+   deliberately does not read it.
    ~~The field-recording sheet.~~ **Built, Phase 6** — designed and
    implemented as `Carl\Reports\FieldSheet`, and deliberately generated
    rather than checked in as a static PDF (handoff §13.4 explains why).
