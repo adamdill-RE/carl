@@ -1,0 +1,110 @@
+/*
+ * Carl The Garden Helper — design tokens.
+ * Delivered by Claude Design, <DATE>.
+ *
+ * This is the only stylesheet in the repository that names a colour. The web
+ * pages, the Chart.js report charts and the FPDF PDF reports all resolve their
+ * colours from here, so this file is the whole palette.
+ *
+ * TWO RULES, both load-bearing:
+ *
+ *  1. Colours MUST be 3- or 6-digit hex. `Carl\Support\Tokens` recovers them
+ *     for the PDF writer with a regex, and oklch()/hsl()/rgb()/color-mix()
+ *     do not match it — the PDF silently falls back to grey. Design in any
+ *     space you like and convert; keep the source values in a comment.
+ *
+ *  2. Do not rename or remove a token. The application references all 31 by
+ *     name. Adding is fine.
+ */
+
+:root {
+  /* ---- Surfaces ---------------------------------------------------------
+     bg           the page behind everything
+     surface      every card, input and menu tile
+     surface-sunk recessed: default notice, .badge-muted, .tier-skip, PDF row tint
+     border       card borders, table rules, timeline spine (decorative)
+     border-strong  FORM CONTROL BORDERS — needs 3:1 on surface, WCAG 1.4.11 */
+  --carl-bg:            #______;
+  --carl-surface:       #______;
+  --carl-surface-sunk:  #______;
+  --carl-border:        #______;
+  --carl-border-strong: #______;
+
+  /* ---- Text -------------------------------------------------------------
+     text          body copy and PDF ink
+     text-muted    help text, meta, table headers, citations
+     text-inverse  text sitting on --carl-primary (topbar, primary buttons) */
+  --carl-text:          #______;
+  --carl-text-muted:    #______;
+  --carl-text-inverse:  #______;
+
+  /* ---- Brand and action -------------------------------------------------
+     primary       topbar, primary buttons, timeline dots, PDF header rule
+     primary-dark  button :active, in-content links
+     primary-soft  .badge background
+     accent        the 3px focus ring (and currently the ET0 chart line —
+                   see BRIEF section 4.5, you are asked to split these) */
+  --carl-primary:       #______;
+  --carl-primary-dark:  #______;
+  --carl-primary-soft:  #______;
+  --carl-accent:        #______;
+
+  /* ---- Status -----------------------------------------------------------
+     Each pair renders as <colour> text on <colour>-soft fill with a
+     <colour> border: .notice-ok/-warn/-error/-info and the watering tiers. */
+  --carl-ok:            #______;
+  --carl-ok-soft:       #______;
+  --carl-warn:          #______;
+  --carl-warn-soft:     #______;
+  --carl-error:         #______;
+  --carl-error-soft:    #______;
+  --carl-info:          #______;
+  --carl-info-soft:     #______;
+
+  /* ---- Research confidence (handoff Section 9.1) ------------------------
+     Three tiers of epistemic confidence, NOT three status levels. "generic"
+     means nobody has measured this for your county yet — it is not a warning
+     and must not read as one. Rendered as pill badges with
+     `border: 1px solid currentColor`, so the token colours text and border. */
+  --carl-verified:      #______;
+  --carl-approx:        #______;
+  --carl-generic:       #______;
+
+  /* ---- Chart data series (OPTIONAL — BRIEF section 4.5) -----------------
+     Add these to free --carl-accent from doing double duty as both the focus
+     ring and the ET0 line. Must clear 3:1 on --carl-surface and be
+     distinguishable from each other under deuteranopia and protanopia.
+     Delete this block if you would rather keep reusing the status tokens. */
+/*--carl-chart-hot:     #______;*/  /* daily high temperature */
+/*--carl-chart-cold:    #______;*/  /* daily low temperature */
+/*--carl-chart-water:   #______;*/  /* rainfall and watering bars */
+/*--carl-chart-et0:     #______;*/  /* evapotranspiration line */
+/*--carl-chart-event:   #______;*/  /* logged action markers */
+/*--carl-chart-grid:    #______;*/  /* gridlines */
+/*--carl-chart-axis:    #______;*/  /* axis and legend text */
+
+  /* ---- QR plant tags (OPTIONAL) -----------------------------------------
+     Contrast-critical, NOT palette. Must not be themed: a QR tinted to brand
+     green silently fails to scan on every tag in every garden and nothing
+     reports it. Keep near-black on near-white. */
+/*--carl-qr-ink:        #______;*/
+/*--carl-qr-paper:      #______;*/
+
+  /* ---- Type -------------------------------------------------------------
+     Must be a system/web-safe stack. The CSP is default-src 'self', so a
+     Google Font or any CDN webfont will not load — you get the fallback.
+     Ask before proposing a self-hosted font file. */
+  --carl-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --carl-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* ---- Space and shape --------------------------------------------------
+     Yours to change. */
+  --carl-gap:       12px;
+  --carl-gap-lg:    20px;
+  --carl-radius:     8px;
+  --carl-radius-lg: 12px;
+  --carl-shadow:    0 1px 2px rgba(0, 0, 0, .08);
+
+  /* Gloved thumbs in a garden. Do not go below 44px. */
+  --carl-touch: 44px;
+}
