@@ -544,10 +544,26 @@ $t->test('a zone watering is one entry, not one per plant it reached',
 });
 
 $t->test('a repeated action collapses in a cell instead of stacking',
-    function ($t) use ($client, $today): void {
-    // Two plantings were watered today. The grid draws that as one line
-    // reading "Watered x2", because a month of individually listed waterings
-    // is a month nobody can read.
+    function ($t) use ($client): void {
+    // Two plantings were watered today, and the test above this one watered
+    // the whole zone on the same day, which is a third thing that happened.
+    // The grid draws all of it as ONE line reading "Watered xN", because a
+    // month of individually listed waterings is a month nobody can read.
+    //
+    // THE ASSERTION IS THE SHAPE AND NOT THE NUMBER, on purpose. How many
+    // waterings that day carries depends on which tests above this one have
+    // already run and on whether the account's local today and the UTC date
+    // the fixture was written with are the same day -- and neither of those
+    // is what this test is about. Pinning a literal count made it pass in the
+    // afternoon and fail at lunchtime, which is the shape of failure the
+    // Phase 9 handoff Section 2.4 is about. The invariant is that repeats
+    // collapse into one chip carrying a count, however many there were.
     $response = $client->get('/calendar');
-    $t->contains('&times;2', $response->body, 'two waterings on one day are one chip with a count');
+    \preg_match_all(
+        '/class="cal-chip[^"]*"[^>]*>\s*Watered\s*(?:&times;(\d+))?/',
+        $response->body,
+        $chips
+    );
+    $t->same(1, \count($chips[0]), 'one chip, however many waterings the day carries');
+    $t->ok((int) ($chips[1][0] ?? 0) >= 2, 'and it says how many, rather than repeating itself');
 });
