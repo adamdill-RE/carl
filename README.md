@@ -111,9 +111,47 @@ And, from Phase 6, the last of v2:
   section without losing a single citation; and `/admin/analysis` says what
   the month cost.
 
+And, from Phase 7, one thing the QR tags below were waiting on:
+
+- **A planting can be split.** Move six of a tray of a hundred into a bed and
+  the six become a planting of their own, descended from the tray. The word
+  "split" appears nowhere in the interface: you log a transplant and say how
+  many. Every planting still has exactly one location, which is what keeps the
+  weather series, the watering model, row occupancy, the zone fan-out and the
+  rotation warning all correct.
+
+And, from Phase 8, the thing you take out to the garden:
+
+- **QR plant tags** (`docs/QR-TAGS-SPEC.md`). A stake in the soil with a code
+  on it. Point a phone camera at one and you get that plant's logging screen:
+  **two taps to record a watering instead of six**, done standing in the mud
+  holding a hose. The code identifies a reusable physical tag rather than a
+  plant, so you print a stack of blank codes in January at a desk and take one
+  out of the box in April when a tray needs one — and the same stake goes into
+  the ground at transplant and gets reused next season.
+  - **The QR encoder is hand-written**, in `app/src/Qr/`, ~700 lines of ISO
+    18004 scoped to what a tag needs: alphanumeric with a byte fallback, error
+    levels M and Q, versions 1–4. No QR-image web service, because that would
+    put a third-party call on a request path and hand every plant URL in the
+    account to a stranger; no library, because there is no Composer here. It is
+    asserted bit for bit against fixtures that an independent decoder read back
+    correctly.
+  - **Sheets print at home**, on either of two Avery stocks, as vector
+    rectangles rather than an image — exact at whatever DPI the printer has,
+    no GD, no temp file. Every sheet carries a 100 mm calibration rule, because
+    "fit to page" is the single most likely reason a batch will not scan.
+  - **Tagging a tray of twelve is twelve scans and no taps**: Carl names the
+    next untagged plant and the scan is the confirm.
+  - **Tagging a plant Carl already knows about** is the same act from the other
+    end — a tag is offered on every plant page, and the bind screen lists every
+    untagged living plant rather than the recent ones, so the tomato that went
+    in the ground in May is on it.
+
 Not built yet, by design: the logo and the palette, which are Claude Design
 deliverables. `public/assets/css/tokens.css` is a neutral placeholder naming
-exactly the variables to deliver, and it is the only file that names a colour.
+exactly the variables to deliver, and it is the only file that names a colour
+— including the two QR tokens, which are marked contrast-critical and must not
+be themed, because a code that is not near-black on near-white does not scan.
 
 ## Layout
 
@@ -190,7 +228,7 @@ Every configuration value can be overridden by an environment variable with a
 ## Tests
 
 ```bash
-php tests/run.php --strict          # 335 cases; needs a database
+php tests/run.php --strict          # 517 cases; needs a database
 php tests/lint_cpanel_yml.php       # the host's parser rules
 php tests/check_collation.php       # utf8mb4_unicode_ci on every table
 php tests/check_asset_budget.php    # the client shell against 150 KB gzipped

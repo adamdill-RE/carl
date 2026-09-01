@@ -147,6 +147,28 @@ final class EventRepository extends Repository
         );
     }
 
+    /**
+     * The last few events on ONE planting, for the field screen.
+     *
+     * Not timeline(): that is the full log with six LEFT JOINs and no limit,
+     * which is the right read for a plant page and the wrong one for a screen
+     * hit forty times in a walk around a garden (QR-TAGS-SPEC Section 6.3).
+     * What the field screen answers is "did I already water this today?", and
+     * that needs a type and a date and nothing else.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function recentForPlanting(int $plantingId, int $limit = 6): array
+    {
+        return $this->db->all(
+            'SELECT `id`, `event_type`, `event_date`, `quantity_delta`'
+            . ' FROM `plant_event` WHERE ' . $this->scoped('`planting_id` = :planting_id')
+            . ' ORDER BY `event_date` DESC, `recorded_at` DESC, `id` DESC'
+            . ' LIMIT ' . (int) $limit,
+            $this->bind(['planting_id' => $plantingId])
+        );
+    }
+
     /** @return list<array<string,mixed>> the most recent events across everything */
     public function recent(int $limit = 20): array
     {

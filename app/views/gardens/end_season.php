@@ -11,7 +11,7 @@
  *
  * @var Carl\Core\App $app @var Carl\Core\View $view
  * @var array<string,mixed> $garden
- * @var list<array<string,mixed>> $plantings
+ * @var list<array<string,mixed>> $plantings @var int $tagged
  * @var list<string> $errors
  */
 $e = $view->e(...);
@@ -104,6 +104,22 @@ foreach ($plantings as $planting) {
               placeholder="First hard freeze; cleared everything but the garlic."></textarea>
     <p class="help">Written onto every one of these entries.</p>
   </div>
+
+<?php if (($tagged ?? 0) > 0): ?>
+  <h2>Tags</h2>
+  <div class="field">
+    <label class="check">
+      <input type="checkbox" name="release_tags" value="1">
+      <span>Put the <?= $e($tagged) ?> tag<?= $tagged === 1 ? '' : 's' ?> on these plants back
+        in the pool</span>
+    </label>
+    <p class="help">
+      Tick this once you have actually pulled the stakes. Each tag still remembers what it
+      was on, so an old photo of a stake does not lie about it; the code is simply free to
+      go on something else next season.
+    </p>
+  </div>
+<?php endif; ?>
 
   <h2>Confirm</h2>
   <div class="field">

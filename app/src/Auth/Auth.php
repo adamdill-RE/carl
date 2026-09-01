@@ -68,7 +68,8 @@ final class Auth
         $row = $this->app->db()->one(
             'SELECT id, username, email, name, role, must_reset_password, zip, county_fips,'
             . ' region_id, latitude, longitude, timezone, weather_location_id,'
-            . ' email_digest_enabled, onboarded_at, onboarding_step'
+            . ' email_digest_enabled, label_stock, tagging_started_at,'
+            . ' onboarded_at, onboarding_step'
             . ' FROM user WHERE id = :id',
             ['id' => $userId]
         );
@@ -142,7 +143,8 @@ final class Auth
         $row = $this->app->db()->one(
             'SELECT id, username, email, name, role, password_hash, must_reset_password, zip,'
             . ' county_fips, region_id, latitude, longitude, timezone, weather_location_id,'
-            . ' email_digest_enabled, onboarded_at, onboarding_step'
+            . ' email_digest_enabled, label_stock, tagging_started_at,'
+            . ' onboarded_at, onboarding_step'
             . ' FROM user WHERE username = :username',
             ['username' => $username]
         );

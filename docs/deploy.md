@@ -931,6 +931,81 @@ openssl rand -hex 24
 Push, then **Deploy HEAD Commit**. There is no build and no restart; the next
 request picks the files up, because there is no OPcache on this host.
 
+### The Phase 8 deploy adds ONE migration, and one decision to make afterwards
+
+Migration **021** (`qr_tags`), pure DDL: three new tables (`qr_tag_batch`,
+`qr_tag`, `qr_tag_binding`) and two columns on `user` (`label_stock`,
+`tagging_started_at`), both with defaults, so there is no backfill and no
+second file.
+
+**The usual window is unusually small this time, and it is not zero.** The two
+`user` columns are read by `Auth::user()`, which runs on **every request**, so
+between the deploy and `/setup?key=` **every signed-in page returns 500** —
+not just the new ones. It is the widest blast radius of any migration here
+even though it is the smallest migration, because of which query the columns
+land in. Check `/status?key=` first and run it immediately; it takes
+milliseconds.
+
+Nothing else needs a deploy step: no new cron job, no new directory, no new
+vendored file (the QR encoder is hand-written PHP under `app/src/Qr/`), and no
+template version change — a research zip that imported yesterday imports
+today. The client shell went from 17.4 KB to 18.3 KB gzipped against a 150 KB
+budget; the tags add no JavaScript at all, because the symbol is inline SVG
+and the scanner is the phone's own camera app.
+
+#### After the migration: print ONE sheet before printing thirty
+
+In this order, and it is worth the ten minutes:
+
+1. **Tags → Print a sheet of tags → mint one sheet.**
+2. On the sheet's page, download the **registration test** and print it on
+   **plain paper at 100% scale**. Hold it against a real sheet of the label
+   stock, up to a window. Every outline should sit on a label.
+   * Outlines that drift across the sheet mean the pitch is wrong.
+   * Outlines all shifted the same way mean the margin is wrong.
+   * Either is one edit to `Carl\Domain\LabelStock`, no migration, and every
+     batch already minted re-renders correctly afterwards.
+   * **This is not optional the first time a stock is used.** Half of each
+     stock's geometry is derived rather than published by Avery — the class
+     marks which numbers are which — and this sheet is what turns the
+     derivation into a measurement. It costs a sheet of paper against a wasted
+     sheet of polyester.
+3. Print the real sheet, **at 100% scale, from a PDF viewer, never "fit to
+   page"**. Measure the 100 mm rule at the foot before peeling anything.
+4. Scan one tag with a phone. It should open a Carl page, signed in.
+
+#### The one setting to decide, and how to decide it
+
+`tags.uppercase_url` in `config/app.php` is `null`, which means **off** here,
+and off is correct until somebody checks.
+
+Upper-casing the whole tag URL puts it in QR alphanumeric mode: version 3
+instead of version 4, and 0.649 mm modules instead of 0.585 on the same 1 in
+stake. That is worth having. It is only safe if the web server answers an
+upper-case address, and **it does not by default**: Carl is served from
+`public_html/carl/`, Apache and LiteSpeed map URL paths onto filesystem paths
+case-sensitively on Linux, and `/CARL/T/AB7K4M` therefore looks for a
+directory named `CARL`, does not find one, and returns the web server's own
+404 — the `.htaccess` inside `carl/` is never consulted and `index.php` never
+runs.
+
+To settle it: open `https://www.reshiftmanager.com/CARL/` in a browser.
+
+* **A Carl page** → set `'uppercase_url' => true` and reprint. Existing tags
+  keep working: the app matches both cases.
+* **A 404** → leave it off. 0.585 mm is still 2.3x ISO 18004's practical print
+  floor and gives a 600 dpi laser fourteen dots per module, and the thing that
+  limits a phone here is how close it can focus, not how small the modules
+  are.
+
+The Tags screen shows which encoding is in force, measured by encoding a real
+code rather than quoted from a spec, so this is never a silent difference.
+
+**A short domain beats both.** At `carl.garden` even lower case fits version 3,
+and upper case fits version 2 — 0.727 mm modules, 12% bigger than the best
+case on the current domain. That is a domain registration, not an engineering
+task, and it is the thing to do if a tag ever proves marginal in the field.
+
 ### The Phase 7 deploy adds TWO migrations, and they are a PAIR
 
 Migrations **019** (`planting_split`, DDL) and **020**
@@ -1062,36 +1137,53 @@ file is refused rather than silently re-run.
 | A message stuck in the outbox | Admin → Mail lists the last fifteen with the reason on each. `failed` after five attempts is a real refusal and the row says which; `queued` with attempts above zero is a backoff and will go by itself. |
 | Alerts never appear | `/status?key=` — "active nws alerts" per location. Zero is usually correct; most days have none. `/tasks/alerts-poll?key=` runs it on demand and prints what it found. |
 | `apache_php_fpm` shows down in cPanel | Correct. It is not in use; the server is LiteSpeed over LSAPI. |
+| A printed tag will not scan | Measure the 100 mm rule at the foot of the sheet. If it is short, the print was scaled — reprint at 100%, never "fit to page". If the rule measures 100 mm, wipe the code and try again in better light; then read the six characters underneath it into Tags → "Find a tag by its code", which is what they are printed for. |
+| Every label on a sheet is a few millimetres off | The sheet geometry, not the printer. Print the **registration test** for that stock on plain paper and hold it against a real sheet: drift across the sheet is the pitch, a uniform shift is the margin. Both are one edit to `Carl\Domain\LabelStock` and no migration. |
+| A scanned tag says "Not found" | Four things, in order: it is somebody else's tag (deliberately the same 404 as a code that does not exist — §6.2 of the spec says why); the sheet was retired; the URL is upper-case and the server does not answer upper-case paths (see the Phase 8 deploy section); or the code really was mistyped. |
+| Every page 500s and the only change was Phase 8 | Migration 021. Its two `user` columns are read by `Auth::user()`, which runs on every request, so a pending 021 takes down every signed-in page rather than only the tag screens. |
 
 ## Still open for the owner
 
-1. Settle spike 0.5 — which IP Open-Meteo sees — whenever convenient. One
+1. **Print one tag sheet and scan it** (the Phase 8 deploy section, steps 1–4).
+   Mint one sheet, print the registration test on plain paper, hold it against
+   a real label sheet, then print the real one and scan a tag. Ten minutes, and
+   it is the only thing that verifies the half of each stock's geometry that is
+   derived rather than published. Do this before buying a hundred stakes, and
+   before printing more than one sheet.
+2. **Decide `tags.uppercase_url`** — open `https://www.reshiftmanager.com/CARL/`
+   and see whether it is a Carl page or a 404. Two minutes; the Phase 8 deploy
+   section has what each answer means.
+3. **§1.7 of the QR spec, if a hundred stakes are going to be bought:** make
+   five tags, put one in full sun, one half-buried in wet soil, one under grow
+   lights, one on a car dashboard and one indoors as a control, and scan all
+   five weekly for four weeks. Then buy the rest.
+4. Settle spike 0.5 — which IP Open-Meteo sees — whenever convenient. One
    line of curl; nothing depends on the answer. Spikes 1, 2, 3 and 5 are done
    and recorded in §0.
-2. ~~The §12.1 mailbox and DNS steps.~~ **Done 2026-08-31**, and spike 4's
+5. ~~The §12.1 mailbox and DNS steps.~~ **Done 2026-08-31**, and spike 4's
    SMTP half with it — mailbox, SPF, DKIM, DMARC with `rua=`, credentials in
    `local.php`, and a Gmail-authenticated send. §7.5 records the headers.
    What is left there is small: the DMARC `rua=` reports start arriving at
    `carl@reshiftmanager.com`, and moving `p=none` to `p=quarantine` is worth
    doing once a few weeks of them look clean.
-3. Ask Ahosting whether `ea-php82-php-opcache` can be enabled. If it is,
+6. Ask Ahosting whether `ea-php82-php-opcache` can be enabled. If it is,
    `opcache.validate_timestamps` becomes a deploy concern — a file-copy deploy
    may not take effect until revalidation.
-4. Leave the account's default PHP version alone in MultiPHP Manager, or if it
+7. Leave the account's default PHP version alone in MultiPHP Manager, or if it
    moves, revisit the cron command in §7. It is pinned to 8.2 for that reason.
-5. Email Open-Meteo describing Carl (internal, unsold, no ads) and keep the
+8. Email Open-Meteo describing Carl (internal, unsold, no ads) and keep the
    reply in `docs/`. Attribution is already in the footer and is generated
    from `source_model`, so it stays honest if NCEI rows are ever mixed in.
-6. Claude Design: the logo and the palette. `public/assets/css/tokens.css` is
+9. Claude Design: the logo and the palette. `public/assets/css/tokens.css` is
    a neutral placeholder defining exactly the `--carl-*` names to deliver; it
    is the only file that names a colour, so the palette is a one-file swap.
    ~~The field-recording sheet.~~ **Built, Phase 6** — designed and
    implemented as `Carl\Reports\FieldSheet`, and deliberately generated
    rather than checked in as a static PDF (handoff §13.4 explains why).
-7. **An Anthropic API key**, if Recommendations is wanted (§7.6). One line in
+10. **An Anthropic API key**, if Recommendations is wanted (§7.6). One line in
    `config/local.php`. Nothing breaks without it — requests queue and wait —
    and it is the only owner action Phase 5 added.
-8. **Rotate `cron_key`** (visible in a Phase 3 screenshot, and it travels in
+11. **Rotate `cron_key`** (visible in a Phase 3 screenshot, and it travels in
    URLs) and **delete `diag_key`** so `/diag` shuts. Both were on the Phase 4
    list and both are still outstanding; Phase 5 added a sixth route behind
    `cron_key`, which does not change the argument but does add one more thing

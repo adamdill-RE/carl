@@ -719,7 +719,27 @@ $t->test('every GET route a user can reach returns 200',
     ) ?? 0);
     $plantTypeId = (int) ($db->value('SELECT id FROM `plant_type` ORDER BY id LIMIT 1') ?? 0);
 
+    // QR tags: one printed sheet, one tag on a plant and one still free, so
+    // the substitutions below reach BOTH screens /t/{code} can land on -- the
+    // field screen and the bind screen are different templates and the same
+    // route (docs/QR-TAGS-SPEC.md Section 6.2).
+    $tags = new Carl\Repo\TagRepository($db, $alice['id']);
+    $minted = $tags->mint(1, Carl\Domain\LabelStock::AVERY_00757);
+    $sheet = $tags->batchTags($minted['batch_id']);
+    $tags->bindTo((int) $sheet[0]['id'], $plantIds['sow']);
+    $boundCode = (string) $sheet[0]['code'];
+    $freeCode = (string) $sheet[1]['code'];
+
     $substitutions = [
+        // The lower-case route is the bound tag, so the field screen renders;
+        // the upper-case one -- which exists because a printed URL may be
+        // upper-cased for QR alphanumeric mode -- is the free tag, so the bind
+        // screen renders too.
+        '/t/{code:[0-9A-Za-z]+}'          => $boundCode,
+        '/T/{code:[0-9A-Za-z]+}'          => $freeCode,
+        '/tags/batches/{id:\d+}'          => (string) $minted['batch_id'],
+        '/tags/batches/{id:\d+}.pdf'      => (string) $minted['batch_id'],
+        '/tags/batches/{id:\d+}/registration.pdf' => (string) $minted['batch_id'],
         '/plants/{id:\d+}'                => (string) $plantIds['sow'],
         '/log/{id:\d+}'                   => (string) $plantIds['sow'],
         '/gardens/{id:\d+}'               => (string) $garden['id'],

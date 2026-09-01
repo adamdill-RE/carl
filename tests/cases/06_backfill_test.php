@@ -97,17 +97,27 @@ $locationId = (int) ($db->value(
     'SELECT weather_location_id FROM `user` WHERE id = :id', ['id' => $userId]
 ) ?? 0);
 
+$timezone = (string) $db->value(
+    'SELECT timezone FROM `weather_location` WHERE id = :id', ['id' => $locationId]
+);
+// THE USER'S LOCAL TODAY, NEVER THE SERVER'S -- handoff Section 6, and the
+// suite has to obey it as much as the application does. Every event Carl
+// writes is dated in the account's own timezone; this account is in
+// America/Chicago, so between UTC midnight and local midnight gmdate() and
+// the right answer are DIFFERENT DAYS. Asserting the UTC one gives a suite
+// that is green all afternoon and red for six hours every night, which is
+// worse than a suite that is simply wrong.
+// The fixture below and the assertion above it were written with two
+// different "today"s -- gmdate() here, todayFor() there -- and agreed all
+// afternoon.
+$today = $app->clock()->todayFor($timezone);
+
 // The location is shared by everyone at this ZIP, and other tests plant
 // there too. Park it far in the future so this test's backdate is the thing
 // that moves it, and clear the series so "filled in" means filled by us.
 $db->run('UPDATE `weather_location` SET `backfill_from` = :d WHERE `id` = :id',
-    ['d' => \gmdate('Y-m-d'), 'id' => $locationId]);
+    ['d' => $today, 'id' => $locationId]);
 $db->run('DELETE FROM `weather_daily` WHERE `location_id` = :id', ['id' => $locationId]);
-
-$timezone = (string) $db->value(
-    'SELECT timezone FROM `weather_location` WHERE id = :id', ['id' => $locationId]
-);
-$today = $app->clock()->todayFor($timezone);
 $backdatedTo = (string) Clock::addDays($today, -60);
 $plantTypeId = (int) ($db->value('SELECT id FROM `plant_type` ORDER BY id LIMIT 1') ?? 0);
 

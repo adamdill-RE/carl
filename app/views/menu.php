@@ -199,4 +199,6 @@ $hasWeather = $weather['recent'] !== [] || $weather['forecast'] !== [];
     <span class="hint">Your seeds, soils, fertilisers</span></a>
   <a href="<?= $e($app->url('reports')) ?>">Reports
     <span class="hint">Charts, PDFs, recommendations and exports</span></a>
+  <a href="<?= $e($app->url('tags')) ?>">Plant tags
+    <span class="hint">Print QR stakes, scan one to log in two taps</span></a>
 </nav>

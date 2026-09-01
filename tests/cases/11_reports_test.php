@@ -144,7 +144,16 @@ $login = static function (array $user) use ($client): void {
 
 $onboard($owner, 'Report Bed' . $suffix);
 
-$today = \gmdate('Y-m-d');
+// THE USER'S LOCAL TODAY, NEVER THE SERVER'S -- handoff Section 6, and the
+// suite has to obey it as much as the application does. Every event Carl
+// writes is dated in the account's own timezone; this account is in
+// America/Chicago, so between UTC midnight and local midnight gmdate() and
+// the right answer are DIFFERENT DAYS. Asserting the UTC one gives a suite
+// that is green all afternoon and red for six hours every night, which is
+// worse than a suite that is simply wrong.
+$today = $app->clock()->todayFor(
+    (string) $db->value('SELECT timezone FROM `user` WHERE id = :i', ['i' => $owner['id']])
+);
 $start = (string) Clock::addDays($today, -60);
 
 $locationId = (int) ($db->value(

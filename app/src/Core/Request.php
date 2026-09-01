@@ -36,8 +36,19 @@ final class Request
         $path   = \is_string($path) ? \rawurldecode($path) : '/';
 
         // Strip the mount point; everything downstream is subpath-agnostic.
+        //
+        // CASE-INSENSITIVELY, and only here. A printed QR tag may carry an
+        // all-uppercase URL, because uppercase is what keeps it in QR's
+        // alphanumeric mode (docs/QR-TAGS-SPEC.md Section 2.2), and that
+        // includes the mount segment. Whether /CARL/ ever reaches PHP is the
+        // web server's decision -- Carl\Qr\TagUrl is the docblock about that
+        // -- but when it does, the prefix must come off or nothing matches.
+        //
+        // This loosens the strip and nothing else: what is removed is a known
+        // prefix, and every route below still matches case-sensitively, so
+        // /ADMIN is as much a 404 as it ever was.
         $trimmedBase = \rtrim($basePath, '/');
-        if ($trimmedBase !== '' && \str_starts_with($path, $trimmedBase)) {
+        if ($trimmedBase !== '' && \strncasecmp($path, $trimmedBase, \strlen($trimmedBase)) === 0) {
             $path = \substr($path, \strlen($trimmedBase));
         }
         if ($path === '' || $path[0] !== '/') {

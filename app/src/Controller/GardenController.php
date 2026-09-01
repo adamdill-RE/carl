@@ -17,6 +17,13 @@ use Carl\Domain\SoilType;
  */
 final class GardenController extends Controller
 {
+    private ?\Carl\Repo\TagRepository $tagRepo = null;
+
+    private function tags(): \Carl\Repo\TagRepository
+    {
+        return $this->tagRepo ??= new \Carl\Repo\TagRepository($this->app->db(), $this->userId());
+    }
+
     public function index(Request $request): Response
     {
         $gardens = $this->gardens()->activeGardens();
@@ -369,11 +376,18 @@ final class GardenController extends Controller
         $gardenId = (int) $params['id'];
         $garden = $this->gardens()->findOrFail($gardenId);
 
+        $living = $this->plantings()->listWithDetail(
+            ['garden_id' => $gardenId, 'living' => true]
+        );
+
         return $this->render('gardens/end_season', [
             'garden'    => $garden,
-            'plantings' => $this->plantings()->listWithDetail(
-                ['garden_id' => $gardenId, 'living' => true]
-            ),
+            'plantings' => $living,
+            // One statement, and only to decide whether to offer the tick at
+            // all: an account with no tags should not be asked about them.
+            'tagged'    => \count($this->tags()->codesForPlantings(
+                \array_map(static fn (array $p): int => (int) $p['id'], $living)
+            )),
             'errors'    => [],
         ]);
     }
@@ -422,6 +436,9 @@ final class GardenController extends Controller
             return $this->render('gardens/end_season', [
                 'garden'    => $garden,
                 'plantings' => $living,
+                'tagged'    => \count($this->tags()->codesForPlantings(
+                    \array_map(static fn (array $p): int => (int) $p['id'], $living)
+                )),
                 'errors'    => $errors,
             ]);
         }
@@ -441,9 +458,28 @@ final class GardenController extends Controller
             ]
         );
 
+        // Return the stakes to the pool (docs/QR-TAGS-SPEC.md Section 8).
+        // Opt-in, because it is a physical claim -- it says you walked the bed
+        // and pulled the tags -- and a gardener who leaves them in over winter
+        // to know what was where is doing a reasonable thing.
+        //
+        // The bindings are CLOSED, never deleted, so each tag still remembers
+        // what it was on: "this stake was Cherokee Purple in 2026" is a fact
+        // about a real object and it is the reason the binding is a period of
+        // time rather than a pointer.
+        $released = 0;
+        if ($request->checkbox('release_tags')) {
+            $released = $this->tags()->releaseForPlantings(
+                \array_map(static fn (array $p): int => (int) $p['id'], $living)
+            );
+        }
+
         $this->flash(
             'Season ended for ' . $written . ' planting' . ($written === 1 ? '' : 's')
             . ' in ' . $garden['name'] . ', dated ' . $eventDate . '. '
+            . ($released > 0
+                ? $released . ' tag' . ($released === 1 ? '' : 's') . ' back in the pool. '
+                : '')
             . 'The log is append-only: every one of them is still on its timeline, and a '
             . 'later event brings a planting back if you ended one by mistake.'
         );

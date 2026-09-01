@@ -21,6 +21,7 @@
  * @var string $seriesUrl @var string $pdfUrl
  * @var list<array{label:string,date:string,days:?int}> $countdowns
  * @var array{parent:?array<string,mixed>,children:list<array<string,mixed>>} $lineage
+ * @var array<string,mixed>|null $tag
  */
 $e = $view->e(...);
 $S = Carl\Domain\PlantingState::class;
@@ -92,6 +93,32 @@ $placeOf = static function (array $row): string {
 <?php endforeach; ?>
     </tbody>
   </table>
+</section>
+
+<?php /* The tag panel: the DESK half of QR-TAGS-SPEC Section 5.2, whose other
+       half is the scan. You planned the season in Carl in February; here is
+       where a stake gets attached to what you planned. */ ?>
+<section class="card card-tight">
+<?php if ($tag !== null): ?>
+  <h2>Tag <span class="mono"><?= $e($tag['code']) ?></span></h2>
+  <p class="muted small">
+    On this plant since <?= $e($U::longDate((string) $tag['bound_at'])) ?>.
+    Scanning it opens a logging screen for this plant.
+<?php if ($tag['retired_at'] !== null): ?>
+    The sheet it came from is retired.
+<?php endif; ?>
+  </p>
+  <p><a class="btn btn-secondary btn-small"
+        href="<?= $e($app->url('t/' . $tag['code'])) ?>">Open its field screen</a></p>
+<?php else: ?>
+  <h2>No tag on this plant</h2>
+  <p class="muted small">
+    A tag is a stake with a code on it. Scan a free one and pick this plant from the
+    list, or type the code into "Find a tag" and do the same &mdash; the binding is the
+    same either way.
+  </p>
+  <p><a class="btn btn-secondary btn-small" href="<?= $e($app->url('tags')) ?>">Plant tags</a></p>
+<?php endif; ?>
 </section>
 
 <?php /* Lineage: a LINK, never a merged timeline. The child's history before

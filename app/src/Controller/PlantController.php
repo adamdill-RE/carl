@@ -20,6 +20,8 @@ use Carl\Support\Clock;
  */
 final class PlantController extends Controller
 {
+    private ?\Carl\Repo\TagRepository $tagRepo = null;
+
     private const KINDS = [
         'indoor_seed' => [
             'title' => 'Indoor seed start',
@@ -40,7 +42,14 @@ final class PlantController extends Controller
 
     public function chooseKind(Request $request): Response
     {
-        return $this->render('plants/choose', ['kinds' => self::KINDS]);
+        return $this->render('plants/choose', [
+            'kinds' => self::KINDS,
+            // "Start a new plant with this tag" from a scan lands here
+            // (docs/QR-TAGS-SPEC.md Section 6.4 item 2). The code rides
+            // through the kind choice and the form as a value, and binds
+            // when the plant is saved.
+            'tag'   => \Carl\Repo\TagRepository::normalise((string) ($request->query('tag', '') ?? '')),
+        ]);
     }
 
     public function newForm(Request $request, array $params): Response
@@ -175,7 +184,20 @@ final class PlantController extends Controller
         // nightly run fetches the gap (handoff Section 8.1).
         $this->extendWeatherBackfill($startDate);
 
-        $this->flash('Plant recorded. Log what happens to it from Log Plant Activity.');
+        // The sow-as-you-go case: a tag was scanned, Carl said it was not
+        // assigned, and the answer was "start a new plant with this tag"
+        // (QR-TAGS-SPEC Section 6.4). Binding happens HERE, on submit, because
+        // until now there was no planting to bind to.
+        //
+        // A tag that has gone missing between the scan and the save is not an
+        // error worth losing the plant over: the plant is recorded either way
+        // and the flash says which happened.
+        $tagged = $this->bindScannedTag($request, $plantingId);
+
+        $this->flash($tagged === null
+            ? 'Plant recorded. Log what happens to it from Log Plant Activity.'
+            : 'Plant recorded, and tag ' . $tagged . ' is on it. Scan that tag to log anything.');
+
         return $this->redirect('plants/' . $plantingId);
     }
 
@@ -242,7 +264,39 @@ final class PlantController extends Controller
             'seriesUrl'     => $this->app->url('api/plant/' . $plantingId . '/series'),
             'pdfUrl'        => $this->app->url('report/plant/' . $plantingId . '/pdf'),
             'countdowns'    => $this->countdowns($planting, $card),
+            // ONE statement, over (planting_id, unbound_at). The plant page is
+            // where a tag gets assigned from the desk -- the other half of
+            // QR-TAGS-SPEC Section 5.2, whose first half is the scan.
+            'tag'           => $this->tags()->forPlanting($plantingId),
         ]);
+    }
+
+    /**
+     * Bind the tag the new-plant form carried, if it carried one and it is
+     * still free.
+     *
+     * @return string|null the code that was bound
+     */
+    private function bindScannedTag(Request $request, int $plantingId): ?string
+    {
+        $code = \Carl\Repo\TagRepository::normalise((string) ($request->input('tag', '') ?? ''));
+        if (!\Carl\Repo\TagRepository::isWellFormed($code)) {
+            return null;
+        }
+
+        $tags = $this->tags();
+        $tag = $tags->scan($code);
+        if ($tag === null || $tag['tag_retired_at'] !== null || $tag['planting_id'] !== null) {
+            return null;
+        }
+
+        $tags->bindTo((int) $tag['tag_id'], $plantingId);
+        return $code;
+    }
+
+    private function tags(): \Carl\Repo\TagRepository
+    {
+        return $this->tagRepo ??= new \Carl\Repo\TagRepository($this->app->db(), $this->userId());
     }
 
     /**
@@ -333,6 +387,9 @@ final class PlantController extends Controller
 
         return [
             'kind'       => $kind,
+            'tag'        => \Carl\Repo\TagRepository::normalise(
+                (string) ($request->input('tag', $request->query('tag', '') ?? '') ?? '')
+            ),
             'meta'       => self::KINDS[$kind],
             'plantTypes' => $this->reference()->plantTypesForRegion($user->regionId, $this->today()),
             'hasRegion'  => $user->hasRegion(),

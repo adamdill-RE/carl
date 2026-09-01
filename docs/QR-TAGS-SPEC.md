@@ -1,7 +1,16 @@
 # Carl — QR plant tags
 
-**Status: specification. Nothing here is built.** Written 2026-08-31 against
-the Phase 5 handoff. Read `docs/hosting.md` first; it overrides this file.
+**Status: BUILT, Phase 8 (2026-09-01).** Written 2026-08-31 against the Phase 5
+handoff; built against Phase 7, after the planting split its §10.1 asked for.
+Read `docs/hosting.md` first; it overrides this file.
+
+**Read §12 before reading anything else as a description of the code.** It is
+the seven places the build diverged from this document, and why. Everything
+else below is left exactly as written, including the parts §12 corrects — a
+spec edited to match what was built stops being a record of what was decided.
+
+5a and 5b (§11) are both in. Deferred, and still deferred: an in-app scanner
+(never — §7), NFC (§1.6), and a scan log (§3.1).
 
 A physical tag that lives with a plant from the seed cell to the end of the
 season, carrying a code that a phone camera turns into a one-tap logging
@@ -771,3 +780,191 @@ tag by code", retire a lost sheet, release-on-end-season, rebind.
 
 **Deferred.** In-app scanner (never — §7). NFC (§1.6). Scan log (§3.1).
 Anything that assumes a planting can split (§10.1).
+
+
+---
+
+## 12. Where the build diverged from this spec, and why
+
+Seven, in the order they will bite somebody reading the spec as if it were the
+code.
+
+### 12.1 The migration is `021`, not `016`
+
+§3.1 names `016_qr_tags.sql`. 016 is the analysis queue, applied in Phase 5;
+this spec was written when 015 was the last migration, and migrations are
+immutable once applied (hosting §7). Nothing else about §3.1 changes. §9 rule 7
+should read "migration 021 is immutable once applied".
+
+### 12.2 There is a third table, and §5.4 already required it
+
+§3.1 says "two tables, plus two columns on `user`". §5.4 then asks for
+`/tags/batches/{id}.pdf`, `/tags/batches/{id}/retire`, and says "`stock_sku` is
+recorded on the batch". That is a `qr_tag_batch` row, and it is built:
+`id`, `user_id`, `stock_sku`, `tag_count`, `retired_at`.
+
+It has to exist for the reason §5.4 gives for the GET/POST split. The mint is a
+POST and the render a GET so that a paper jam costs a sheet of paper rather
+than thirty codes — and a reprint is only identical to the first print if the
+stock comes from the batch rather than from the user's current preference. A
+user who printed on 60517 in January and has since switched to 00757 must get
+60517 back, or the reprint is misaligned against the half-used sheet in their
+hand.
+
+### 12.3 `qr_tag_binding` carries `user_id`
+
+§3.1 gives it `tag_id` and `planting_id` and no scope column. Handoff §5 says
+every user-owned table carries `user_id` and every query filters on it,
+enforced in one base class — and a binding table that can only be scoped by
+joining through `qr_tag` is a table whose next query is the one that forgets
+to. It is `NOT NULL` with the same `ON DELETE CASCADE` as everything else.
+
+### 12.4 THE UPPERCASE URL IS OFF BY DEFAULT, AND §2.2 IS HALF WRONG
+
+This is the one that matters, and it is the one place the spec would have
+produced tags that do not work.
+
+§2.2's encoding argument is exactly right: alphanumeric mode packs two
+characters into 11 bits against byte mode's 8, so an all-uppercase URL buys
+version 3 at level Q where lower case needs version 4, and 0.649 mm modules
+against 0.585 on the same 24 mm tag face. The measurements in
+`21_tags_test.php` reproduce every number in §2.2 and §2.3.
+
+Its conclusion does not follow. **"DNS is case-insensitive and we choose the
+path"** — half of that path is not ours to choose. Carl is served from
+`public_html/carl/` (hosting §5.1), and Apache and LiteSpeed map URL paths onto
+filesystem paths case-sensitively on Linux. `/CARL/T/AB7K4M` looks for a
+directory named `CARL`, does not find one, and gets the web server's own 404:
+the `.htaccess` inside `carl/` is never consulted and `index.php` never runs.
+The scheme and the host are case-insensitive by specification; **the mount
+point is a directory.**
+
+So `Carl\Qr\TagUrl` owns the decision and makes it once:
+
+- `tags.uppercase_url` is `null` by default, which upper-cases only when
+  `base_path` is the domain root — where there is no directory segment to get
+  wrong and every part of the path is one Carl routes itself.
+- Set it `true` after opening the upper-case URL in a browser and seeing a
+  page. `deploy.md` has the check.
+- The Tags screen shows which encoding is in force, the version, and the
+  millimetres per module, measured by encoding a real code rather than quoted
+  from this document — so the difference is never silent.
+
+**Lower case is not a failure.** 0.585 mm is 2.3x ISO 18004's practical print
+floor and gives a 600 dpi laser fourteen dots per module, and §2.3 already says
+the binding constraint on a phone is minimum focus distance rather than module
+size. It costs one symbol version.
+
+**§2.3's lever 1 gets better, not worse.** A short domain was already "by far
+the biggest lever available and not an engineering task". It now fixes this as
+well: at `carl.garden` even lower case fits version 3, and upper case fits
+version 2 at 0.727 mm — 12% larger than the best case this spec imagined on the
+current domain.
+
+The other half of §2.2's consequence for the router IS built, and more of it
+than asked: `/t/{code}` and `/T/{code}` are both registered, the code is
+matched `[0-9A-Za-z]+` and upper-cased before lookup, and `Request` now strips
+the mount point case-insensitively so that an upper-case address works the
+moment a server answers one.
+
+### 12.5 Half of each label sheet's geometry is derived, and the registration sheet is what settles it
+
+§5.6 says to take the layout constants from each manufacturer's published
+template and never from arithmetic, because Avery's pitches are not always
+label width plus gutter. That is right, and it was only half followable: Avery
+publishes the label size, the sheet size, the per-sheet count and (for 60517) a
+0.325 in margin, and does not publish the pitches or the origin anywhere
+reachable.
+
+`Carl\Domain\LabelStock` marks every number `[published]` or `[derived]`, the
+derived ones being the grid centred on the sheet at the published margin.
+
+§5.6 already named the acceptance test and the build takes it literally: the
+**registration test sheet** is built, it is linked from every batch page, the
+print screen puts it in front of the user before the first sheet on real stock,
+and `deploy.md` makes it step 2 of the deploy. A correction is one edit to one
+class — no migration, and every batch already minted re-renders correctly,
+because a batch stores only which stock it was for. `21_tags_test.php` asserts
+that every stock's geometry fits on Letter, which is the failure the sheet
+cannot show you: `SetAutoPageBreak(false)` means a row past the paper does not
+error and does not spill to page two, it simply does not print.
+
+### 12.6 `?next=` on login was already there, and is better than `?next=`
+
+§6.1 lists "a signed-out scan needs login to return to where it was going" as
+a dependency, with a warning that an open redirect on a URL printed on a
+physical object is worse than the usual kind.
+
+It needs nothing. `App::guard()` already stores the intended path in the
+session and `AuthController` already returns to it, requiring it to start with
+`/`. That is strictly safer than the query parameter the spec asked for,
+because the value never leaves the server and there is no open-redirect surface
+to get wrong at all.
+
+### 12.7 The field screen offers fewer actions than §7 lists, on purpose
+
+§7 says "exactly the actions the plant's current state allows — Water, Photo,
+Note, Harvest, Pest, Died".
+
+`PlantingState::actionsFor()` is still the authority and the field screen still
+starts from it, but it drops the actions that need a **second answer**: how
+many died, where it was transplanted to, which pest, how heavy the pick. A
+one-tap screen cannot ask, and a default guessed on the user's behalf writes a
+number nobody said — which is worse in a log that everything else is derived
+from. They are one tap away on `/log/{id}`, linked under the fold, which §7
+already puts there.
+
+Photo went the same way for a duller reason: `<input type="file"
+capture="environment">` is one tap to open the camera and several more to
+choose and upload, so it is not a one-tap action and it belongs with the form
+that already handles uploads.
+
+`21_tags_test.php` asserts both halves — that the buttons are absent, and that
+the POST refuses the type even if the form is forged.
+
+### 12.8 One thing §6.5 asked for costs three statements, so it is on two screens instead
+
+§6.5 wants "a persistent `Tagging · 4 bound · stop` strip on every page while
+it runs", and argues correctly that it costs nothing because
+`tagging_started_at` rides along on the user row `Auth::user()` already
+selects.
+
+That is true of the *flag* and not of the *cursor*. "Next: Cherokee Purple" and
+the two counts are three more statements. So the strip is on every page,
+rendered from the layout off the row Auth already loaded, and says a session is
+running and offers the stop — which is what the rule is for. The cursor and the
+counts appear on the tag screens, which were making those reads anyway.
+
+---
+
+## 13. What was built beyond the spec, and what was left
+
+### 13.1 Beyond
+
+- **A `Carl\Qr\Svg` renderer**, one `<svg>` with one `<path>`, from the same
+  merged runs the PDF draws. §4.2 asked for it; it is worth naming because the
+  merge is shared and a version 3 symbol is ~150 subpaths instead of 841
+  elements.
+- **`EventRepository::recentForPlanting()`**, so the field screen can answer
+  "did I already water this today?" without the six-join timeline.
+- **The encoder's fixtures are validated by a decoder as well as an encoder.**
+  §4.1 says "a PHP decoder does not exist to round-trip against", which is true
+  of PHP and not of the offline generator: `tests/fixtures/qr/generate.py`
+  refuses to write a fixture unless an independent decoder reads the exact
+  payload back out of it AND an independent encoder agrees module for module —
+  or differs only in the one documented place where that encoder appends a pad
+  codeword ISO 18004 §7.4.10 does not call for.
+
+### 13.2 Left, deliberately
+
+- **No scan log.** §3.1, unchanged: a row per scan is a write on every page
+  view for a fact nothing yet reads. The event the user records is the trail.
+- **No in-app scanner, ever.** §7.
+- **No per-tag notes, no NFC, no tag groups.**
+- **The named-label queue is every bound tag**, not a queue of ones that have
+  not had a named label printed yet. Tracking "printed a named label for this
+  one" is a column and a write path for a case the start-at-position control
+  already covers: print the ones you want, start where the sheet is empty.
+- **Retire is per sheet, not per tag.** §5.4 asks for the sheet, which is the
+  thing that actually goes missing. A single ruined stake is thrown away and
+  its code sits unbound in the pool, which is the correct state for it.
