@@ -413,15 +413,32 @@ final class TagRepository extends Repository
     private function insertCodes(int $batchId, int $count, string $now): array
     {
         for ($attempt = 0; $attempt < self::MINT_ATTEMPTS; $attempt++) {
+            // A LIST plus a separate seen-map, and NOT a map keyed by the
+            // code with array_keys() over it.
+            //
+            // PHP casts a canonical decimal string used as an array key to an
+            // integer, so the day a generated code comes out all digits with
+            // no leading zero -- "123456", about one code in twelve hundred,
+            // which is a couple of times a sheet over a season -- array_keys()
+            // hands back an int where every signature here says string. It
+            // reaches the database intact and breaks at the far end instead:
+            // isWellFormed() rejects it, a strict comparison against a scanned
+            // code fails, and the tag on the stake is the one Carl cannot
+            // find. 21_tags_test.php caught this on its first run.
+            //
+            // The seen-map is still keyed by the code, which is fine and is
+            // the point: both sides of the lookup cast identically, so the
+            // dedupe is exact while the list keeps real strings.
             $codes = [];
-            // A set, so a collision WITHIN the batch is impossible before the
-            // statement runs. The unique index is what catches a collision
-            // with a code minted months ago, and it is the only one that can
-            // survive to the database.
+            $seen = [];
             while (\count($codes) < $count) {
-                $codes[self::generate()] = true;
+                $code = self::generate();
+                if (isset($seen[$code])) {
+                    continue;
+                }
+                $seen[$code] = true;
+                $codes[] = $code;
             }
-            $codes = \array_keys($codes);
 
             // EVERY value gets its own placeholder name, including the ones
             // that are the same in every row. Emulation is off, so these are
