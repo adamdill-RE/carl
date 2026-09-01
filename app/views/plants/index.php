@@ -95,11 +95,14 @@ $U = Carl\Support\Units::class;
 <?php if (($photoCounts[$id] ?? 0) > 0): ?>
           &middot; <?= $e($photoCounts[$id]) ?> photo<?= $photoCounts[$id] === 1 ? '' : 's' ?>
 <?php endif; ?>
-<?php if (!empty($planting['tag_code'])): ?>
+<?php if ((int) ($planting['tag_count'] ?? 0) > 0): ?>
           <?php /* The code on the stake, so the list and the thing in your
                  hand carry the same identifier -- and so that typing it into
-                 the box above is a discoverable act rather than a secret. */ ?>
-          &middot; <span class="mono tag-ref"><?= $e($planting['tag_code']) ?></span>
+                 the box above is a discoverable act rather than a secret. A
+                 tray with a stake per cell says how many rather than listing
+                 twenty-four codes in a line. */ ?>
+          &middot; <?php if ((int) $planting['tag_count'] <= 2): ?><span class="mono tag-ref"><?= $e($planting['tag_codes']) ?></span><?php
+                   else: ?><?= $e((int) $planting['tag_count']) ?> stakes<?php endif; ?>
 <?php endif; ?>
         </span>
       </a>

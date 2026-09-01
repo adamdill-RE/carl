@@ -22,8 +22,8 @@
  * @var string $seriesUrl @var string $pdfUrl
  * @var list<array{label:string,date:string,days:?int}> $countdowns
  * @var array{parent:?array<string,mixed>,children:list<array<string,mixed>>} $lineage
- * @var array<string,mixed>|null $tag
- * @var list<array{batch_id:int,stock_sku:string,sheet:int,tags:list<array{id:int,code:string,row:int,column:int}>}> $freeTags
+ * @var list<array<string,mixed>> $tags
+ * @var array{sheet:list<array<string,mixed>>,loose:list<array<string,mixed>>} $free
  */
 $e = $view->e(...);
 $S = Carl\Domain\PlantingState::class;
@@ -152,91 +152,87 @@ $placeOf = static function (array $row): string {
 
 <?php /* The tag panel: the DESK half of QR-TAGS-SPEC Section 5.2, whose other
        half is the scan. You planned the season in Carl in February; here is
-       where a stake gets attached to what you planned -- picked off the
-       sheet in front of you -- and where it comes off again in October.
-       Every form here posts back to #tag, so the page comes back to this
-       panel and not to the top of the report. */ ?>
+       where stakes get attached to what you planned -- ticked off the
+       sheet in front of you, as many as the tray has cells (Section 14.7)
+       -- and where they come off again in October. Every form here posts
+       back to #tag, so the page comes back to this panel and not to the
+       top of the report. */ ?>
 <section class="card card-tight" id="tag">
-<?php if ($tag !== null): ?>
-  <h2>Tag <span class="mono"><?= $e($tag['code']) ?></span></h2>
+<?php $stakes = \count($tags); $hasFree = $free['sheet'] !== [] || $free['loose'] !== []; ?>
+<?php if ($stakes > 0): ?>
+  <h2><?= $stakes === 1 ? 'Tag <span class="mono">' . $e($tags[0]['code']) . '</span>' : $e($stakes) . ' stakes on this plant' ?></h2>
   <p class="muted small">
-    On this plant since <?= $e($U::longDate((string) $tag['bound_at'])) ?>.
-    Scanning it opens a logging screen for this plant.
-<?php if ($tag['retired_at'] !== null): ?>
-    The sheet it came from is retired.
+    Scanning <?= $stakes === 1 ? 'it' : 'any of them' ?> opens a logging screen for this plant.
+<?php if ($stakes < (int) $planting['quantity_live']): ?>
+    <?= $e($live) ?> living, so there is room for more.
 <?php endif; ?>
   </p>
-  <p><a class="btn btn-secondary btn-small"
-        href="<?= $e($app->url('t/' . $tag['code'])) ?>">Open its field screen</a></p>
+  <ul class="list small">
+<?php foreach ($tags as $tag): ?>
+    <li>
+      <a class="grow" href="<?= $e($app->url('t/' . $tag['code'])) ?>" title="The one-tap logging screen">
+        <span class="mono tag-ref"><?= $e($tag['code']) ?></span>
+        <span class="muted">&middot; since <?= $e($U::shortDate((string) $tag['bound_at'])) ?></span>
+<?php if ($tag['retired_at'] !== null): ?>
+        <span class="badge badge-muted">sheet retired</span>
+<?php endif; ?>
+      </a>
+      <form method="post" action="<?= $e($app->url('plants/' . $planting['id'] . '/tag/release')) ?>" class="flush">
+        <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+        <input type="hidden" name="tag_id" value="<?= $e($tag['id']) ?>">
+        <button type="submit" class="btn-link small" title="Frees the stake; the plant is untouched">Take off</button>
+      </form>
+      <form method="post" action="<?= $e($app->url('plants/' . $planting['id'] . '/tag/release')) ?>" class="flush">
+        <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+        <input type="hidden" name="tag_id" value="<?= $e($tag['id']) ?>">
+        <input type="hidden" name="retire" value="1">
+        <button type="submit" class="btn-link small muted"
+                title="Off and retired, so a stake that is in the bin stops counting as free">Lost</button>
+      </form>
+    </li>
+<?php endforeach; ?>
+  </ul>
+  <p class="help small">
+    <strong>Take off</strong> frees the stake for another plant; <strong>Lost</strong> also retires
+    the code, for a stake that snapped or a label that tore. The plant keeps its whole history
+    either way, and each tag remembers it was here.
+  </p>
+<?php if ($stakes > 1): ?>
+  <form method="post" action="<?= $e($app->url('plants/' . $planting['id'] . '/tag/release')) ?>" class="flush">
+    <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+    <button type="submit" class="btn btn-secondary btn-small">Take all <?= $e($stakes) ?> off</button>
+  </form>
+<?php endif; ?>
+<?php else: ?>
+  <h2>No stake on this plant</h2>
+<?php endif; ?>
 
-  <details>
-    <summary>Take this tag off</summary>
-    <form method="post" action="<?= $e($app->url('plants/' . $planting['id'] . '/tag/release')) ?>"
-          class="stack">
-      <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
-      <p class="help small flush">
-        Frees the stake for another plant. The plant keeps its whole history, and the tag
-        remembers it was here.
-      </p>
-      <label class="check">
-        <input type="checkbox" name="retire" value="1">
-        <span>The stake is lost or ruined &mdash; retire the code as well, so it stops
-          counting as free</span>
-      </label>
-      <button type="submit" class="btn btn-secondary btn-small">Take it off</button>
-    </form>
-  </details>
-
-<?php if ($freeTags !== []): ?>
-  <details>
-    <summary>Swap for a different tag</summary>
+<?php if ($hasFree): ?>
+  <details<?= $stakes === 0 ? ' open' : '' ?>>
+    <summary><?= $stakes === 0 ? 'Put stakes on it' : 'Add more stakes' ?></summary>
     <form method="post" action="<?= $e($app->url('plants/' . $planting['id'] . '/tag')) ?>"
           class="stack">
       <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
       <p class="help small flush">
-        For a stake that broke or a label that faded. The new code goes on and
-        <span class="mono"><?= $e($tag['code']) ?></span> goes back in the pool, in one step.
+        <?= $e(Carl\Repo\TagRepository::countFree($free)) ?> printed and free. Tick the ones you are
+        putting in &mdash; one for the whole planting, or one a plant &mdash; and each one you scan
+        will open this plant.
       </p>
-      <label class="field">
-        <span>New code</span>
-        <?= $view->partial('partials/tag_picker', [
-              'sheets' => $freeTags, 'name' => 'code', 'selected' => '',
-              'allowNone' => false, 'id' => 'swap-code']) ?>
-      </label>
-      <button type="submit" class="btn btn-secondary btn-small">Swap</button>
+      <?= $view->partial('partials/tag_picker', [
+            'free' => $free, 'name' => 'tags', 'checked' => [],
+            'wanted' => \max(1, $live - $stakes)]) ?>
+      <button type="submit" class="btn btn-secondary">Put them on this plant</button>
     </form>
   </details>
-<?php endif; ?>
-
-<?php else: ?>
-  <h2>No tag on this plant</h2>
-<?php if ($freeTags !== []): ?>
-  <form method="post" action="<?= $e($app->url('plants/' . $planting['id'] . '/tag')) ?>"
-        class="stack">
-    <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
-    <label class="field">
-      <span>Pick a free code</span>
-      <?= $view->partial('partials/tag_picker', [
-            'sheets' => $freeTags, 'name' => 'code', 'selected' => '',
-            'allowNone' => false, 'id' => 'attach-code']) ?>
-      <span class="help small">
-        <?= $e(Carl\Repo\TagRepository::countFree($freeTags)) ?> printed and free, listed by
-        sheet in the order they sit on it. Peel that label, stick it on a stake, and the
-        stake is this plant's.
-      </span>
-    </label>
-    <button type="submit" class="btn btn-secondary">Put it on this plant</button>
-  </form>
   <p class="help small">
     Or, standing at the plant: scan any free tag and pick this plant from the list.
   </p>
-<?php else: ?>
+<?php elseif ($stakes === 0): ?>
   <p class="muted small">
-    A tag is a stake with a code on it; scan it and you get this plant's logging screen.
+    A stake is a tag with a code on it; scan it and you get this plant's logging screen.
     There are no free codes to put on one &mdash;
     <a href="<?= $e($app->url('tags/print')) ?>">print a sheet</a> and come back here.
   </p>
-<?php endif; ?>
 <?php endif; ?>
 </section>
 
@@ -386,3 +382,6 @@ $hasChart = ($series['plant']['dates'] ?? []) !== [];
 <script src="<?= $e($app->asset('assets/vendor/chart.umd.js')) ?>" defer></script>
 <script src="<?= $e($app->asset('assets/js/charts.js')) ?>" defer></script>
 <?php endif; ?>
+<?php /* For the stake grid's "tick the next N" and its count. Every
+       behaviour in it is an enhancement; the grid posts without it. */ ?>
+<script src="<?= $e($app->asset('assets/js/forms.js')) ?>" defer></script>

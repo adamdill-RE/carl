@@ -490,7 +490,7 @@ $t->test('the batch remembers its stock, so a reprint cannot drift',
 
 $t->group('Binding is a period of time, not a pointer');
 
-$t->test('a tag on a plant, and only ever one live binding for each',
+$t->test('a tag is on one plant at a time; a plant carries as many tags as it has cells',
     function ($t) use ($tags, $sow, $db): void {
     $minted = $tags->mint(1, LabelStock::AVERY_00757);
     $sheet = $tags->batchTags($minted['batch_id']);
@@ -500,22 +500,29 @@ $t->test('a tag on a plant, and only ever one live binding for each',
     $bound = $tags->forPlanting($plant);
     $t->same((string) $sheet[0]['code'], (string) $bound['code']);
 
-    // Move the SAME tag to another plant: the first binding closes.
+    // Move the SAME tag to another plant: the first binding closes. A
+    // stake is in one place.
     $other = $sow('Provider');
     $tags->bindTo((int) $sheet[0]['id'], $other);
 
     $t->same(null, $tags->forPlanting($plant), 'the first plant has no tag now');
     $t->same((string) $sheet[0]['code'], (string) $tags->forPlanting($other)['code']);
 
-    // Put a DIFFERENT tag on a plant that already has one: that closes too.
+    // Put a DIFFERENT tag on a plant that already has one: it ADDS. A
+    // planting is a tray of cells and the stake goes in the cell
+    // (QR-TAGS-SPEC Section 14.7). Phase 8 closed the first binding here,
+    // so the second stake in a tray silently pulled the first one off.
     $tags->bindTo((int) $sheet[1]['id'], $other);
-    $t->same((string) $sheet[1]['code'], (string) $tags->forPlanting($other)['code']);
+    $on = $tags->tagsOn($other);
+    $t->same(2, \count($on), 'two stakes on one plant');
+    $t->same((string) $sheet[0]['code'], (string) $on[0]['code'], 'in the order they went on');
+    $t->same((string) $sheet[1]['code'], (string) $on[1]['code']);
 
     $live = (int) $db->value(
-        'SELECT COUNT(*) FROM `qr_tag_binding` WHERE `planting_id` = :p AND `unbound_at` IS NULL',
-        ['p' => $other], 0
+        'SELECT COUNT(*) FROM `qr_tag_binding` WHERE `tag_id` = :tag AND `unbound_at` IS NULL',
+        ['tag' => (int) $sheet[0]['id']], 0
     );
-    $t->same(1, $live, 'never two live tags on one plant');
+    $t->same(1, $live, 'never two live plants for one tag');
 });
 
 $t->test('a closed binding is kept, because it is a fact about a real object',
@@ -607,11 +614,12 @@ $t->test('nothing ties binding to a life stage', function ($t) use ($tags, $sow,
     $t->ok($tags->forPlanting($plant) !== null, 'and takes one');
 });
 
-$t->test('a rebound tag does not duplicate its plant in the untagged list',
+$t->test('a rebound tag does not duplicate its plant in the bind lists',
     function ($t) use ($tags, $sow): void {
-    // The reason untagged() uses NOT EXISTS and not a LEFT JOIN: a tag that
-    // has been rebound leaves CLOSED rows behind for the same planting, and a
-    // join would return the plant once per closed row.
+    // The reason the counts are subqueries and not a LEFT JOIN: a tag that
+    // has been rebound leaves CLOSED rows behind for the same planting, and
+    // a join would return the plant once per row -- and once per LIVE stake
+    // too, now that a tray carries several.
     $plant = $sow('Rebound', 4, 10);
     $minted = $tags->mint(1, LabelStock::AVERY_00757);
     $sheet = $tags->batchTags($minted['batch_id']);
@@ -621,13 +629,19 @@ $t->test('a rebound tag does not duplicate its plant in the untagged list',
     $tags->bindTo((int) $sheet[2]['id'], $plant);
     $tags->unbind((int) $sheet[2]['id']);
 
+    $candidates = $tags->bindCandidates('', 500);
     $appearances = 0;
-    foreach ($tags->untagged('', 500) as $row) {
+    foreach (\array_merge($candidates['wants'], $candidates['full']) as $row) {
         if ((int) $row['id'] === $plant) {
             $appearances++;
+            $t->same(2, (int) $row['tag_count'], 'two live stakes, the closed one not counted');
         }
     }
     $t->same(1, $appearances, 'once, not three times');
+
+    // And it is still on the "wants" list: two stakes for four plants.
+    $t->ok(\in_array($plant, \array_column($candidates['wants'], 'id'), false),
+        'a part-staked tray still wants stakes');
 });
 
 $t->group('Retiring a sheet is not deleting it');

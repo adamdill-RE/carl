@@ -99,28 +99,27 @@ final class PlantController extends Controller
             $errors[] = 'Say where it went in: a garden row, or a container.';
         }
 
-        // The tag, if one was chosen -- off the picker at the foot of the
-        // form, or carried in from a scan (QR-TAGS-SPEC Section 5.2, both
-        // ends). Checked HERE, before anything is written: this used to be a
-        // silent best-effort bind after the insert, which was right when the
-        // only way a code got here was a scan Carl had just said was free,
-        // and wrong once a person can pick one deliberately. A choice that is
-        // quietly dropped is the field that "stays null on every plant"
-        // (PHASE-13-HANDOFF Section 8); a choice that is refused with the
-        // reason is a form that can be corrected.
-        $tagRow = null;
-        $tagCode = \Carl\Repo\TagRepository::normalise((string) ($request->input('tag', '') ?? ''));
-        if ($tagCode !== '') {
+        // The stakes, if any were ticked -- off the grid at the foot of the
+        // form, or one carried in from a scan (QR-TAGS-SPEC Section 5.2,
+        // both ends). A tray of twenty-four cells takes twenty-four
+        // (Section 14.7). Checked HERE, before anything is written: a
+        // choice that is quietly dropped is the field that "stays null on
+        // every plant" (PHASE-13-HANDOFF Section 8); a choice refused with
+        // the reason is a form that can be corrected.
+        $tagRows = [];
+        foreach ($this->chosenTagCodes($request) as $tagCode) {
             $tagRow = \Carl\Repo\TagRepository::isWellFormed($tagCode) ? $this->tags()->scan($tagCode) : null;
             if ($tagRow === null) {
                 $errors[] = 'No free tag of yours has the code ' . $tagCode . '.';
             } elseif ($tagRow['tag_retired_at'] !== null) {
-                $errors[] = 'Tag ' . $tagCode . ' is retired. Pick another, or none.';
+                $errors[] = 'Tag ' . $tagCode . ' is retired. Untick it, or put it back first.';
             } elseif ($tagRow['planting_id'] !== null) {
                 $onName = \trim((string) $tagRow['label']) !== ''
                     ? \trim((string) $tagRow['label'])
                     : \trim((string) $tagRow['category'] . ' ' . (string) $tagRow['type']);
-                $errors[] = 'Tag ' . $tagCode . ' is already on ' . $onName . '. Pick another, or none.';
+                $errors[] = 'Tag ' . $tagCode . ' is already on ' . $onName . '. Untick it.';
+            } else {
+                $tagRows[] = $tagRow;
             }
         }
 
@@ -215,16 +214,20 @@ final class PlantController extends Controller
         $this->extendWeatherBackfill($startDate);
 
         // Binding happens HERE, on submit, because until now there was no
-        // planting to bind to -- whether the code came from a scan ("start a
+        // planting to bind to -- whether the codes came from a scan ("start a
         // new plant with this tag", QR-TAGS-SPEC Section 6.4) or off the
-        // picker. It was checked free above, before the plant was written.
-        if ($tagRow !== null) {
+        // grid. Every one was checked free above, before the plant was
+        // written.
+        foreach ($tagRows as $tagRow) {
             $this->tags()->bindTo((int) $tagRow['tag_id'], $plantingId);
         }
 
-        $this->flash($tagRow === null
+        $stakes = \count($tagRows);
+        $this->flash($stakes === 0
             ? 'Plant recorded. Log what happens to it from Log Plant Activity.'
-            : 'Plant recorded, and tag ' . $tagCode . ' is on it. Scan that tag to log anything.');
+            : ($stakes === 1
+                ? 'Plant recorded, and tag ' . $tagRows[0]['code'] . ' is on it. Scan it to log anything.'
+                : 'Plant recorded with ' . $stakes . ' stakes on it. Scan any of them to log anything.'));
 
         return $this->redirect('plants/' . $plantingId);
     }
@@ -302,16 +305,17 @@ final class PlantController extends Controller
             'seriesUrl'     => $this->app->url('api/plant/' . $plantingId . '/series'),
             'pdfUrl'        => $this->app->url('report/plant/' . $plantingId . '/pdf'),
             'countdowns'    => $this->countdowns($planting, $card),
-            // ONE statement, over (planting_id, unbound_at). The plant page is
-            // where a tag gets assigned from the desk -- the other half of
-            // QR-TAGS-SPEC Section 5.2, whose first half is the scan.
-            'tag'           => $this->tags()->forPlanting($plantingId),
+            // ONE statement, over (planting_id, unbound_at): every stake on
+            // the plant. The plant page is where stakes get assigned from
+            // the desk -- the other half of QR-TAGS-SPEC Section 5.2, whose
+            // first half is the scan.
+            'tags'          => $this->tags()->tagsOn($plantingId),
             // And one more for the codes still in the box, so "assign a tag"
             // here is a picker and not a link to another screen. The
             // statement-count tests on this page compare a big plant with a
             // small one and a split with an unsplit; a constant on both
             // sides is what they allow.
-            'freeTags'      => $this->tags()->freeBySheet(),
+            'free'          => $this->tags()->free(),
         ]);
     }
 
@@ -403,13 +407,16 @@ final class PlantController extends Controller
 
         return [
             'kind'       => $kind,
-            'tag'        => \Carl\Repo\TagRepository::normalise(
-                (string) ($request->input('tag', $request->query('tag', '') ?? '') ?? '')
-            ),
+            // A code carried in from a scan ("start a new plant with this
+            // tag"), and on a POST the codes that were ticked, so the form
+            // comes back with them still ticked.
+            'tag'        => \Carl\Repo\TagRepository::normalise((string) ($request->query('tag', '') ?? '')),
+            'chosenTags' => $request->isPost()
+                ? $this->chosenTagCodes($request)
+                : \array_values(\array_filter([\Carl\Repo\TagRepository::normalise((string) ($request->query('tag', '') ?? ''))])),
             // "At the foot of Start a New Plant: assign a tag" (QR-TAGS-SPEC
-            // Section 5.2). The picker shows the codes still in the box, by
-            // sheet, and a code carried in from a scan is preselected.
-            'freeTags'   => $this->tags()->freeBySheet(),
+            // Section 5.2). The grid shows the codes still in the box.
+            'free'       => $this->tags()->free(),
             'meta'       => self::KINDS[$kind],
             'plantTypes' => $this->reference()->plantTypesForRegion($user->regionId, $this->today()),
             'hasRegion'  => $user->hasRegion(),
@@ -439,6 +446,30 @@ final class PlantController extends Controller
                 ? $request->post
                 : self::prefillFrom($request),
         ];
+    }
+
+    /**
+     * The tag codes ticked on the form, normalised and de-duplicated, in the
+     * order they were ticked. `tags[]` from the grid; `tag` is the single
+     * hidden value an older link may still carry.
+     *
+     * @return list<string>
+     */
+    private function chosenTagCodes(Request $request): array
+    {
+        $raw = $request->inputList('tags');
+        $single = (string) ($request->input('tag', '') ?? '');
+        if ($single !== '') {
+            $raw[] = $single;
+        }
+        $out = [];
+        foreach ($raw as $code) {
+            $code = \Carl\Repo\TagRepository::normalise($code);
+            if ($code !== '' && !\in_array($code, $out, true)) {
+                $out[] = $code;
+            }
+        }
+        return $out;
     }
 
     /** @param list<array<string,mixed>> $gardens */

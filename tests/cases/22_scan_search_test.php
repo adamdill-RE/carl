@@ -222,27 +222,33 @@ $t->test('the log form names the stake, and it costs no extra statement',
     // The code rides in on the row the form was built from -- LIST_SELECT
     // carries it -- so naming the stake is free.
     $row = $plantings->findWithDetail($plantingId);
-    $t->same($boundCode, $row['tag_code'] ?? null, 'findWithDetail carries the live code');
+    $t->same($boundCode, $row['tag_codes'] ?? null, 'findWithDetail carries the live code');
+    $t->same(1, (int) ($row['tag_count'] ?? 0), 'and how many stakes there are');
 
     $response = $client->get('/log/' . $plantingId);
     $t->contains($boundCode, $response->body);
 });
 
 $t->test('a rebound tag does not list the plant twice',
-    function ($t) use ($db, $tags, $plantings, $plantingId, $suffix): void {
-    // The join is to the LIVE binding only. A closed binding -- a stake moved
-    // to another plant -- would otherwise fan the row out, and a planting
-    // rebound three times would appear three times in View Plants.
+    function ($t) use ($db, $tags, $plantings, $plantingId, $boundCode, $suffix): void {
+    // The codes are subqueries over the LIVE bindings, not a join. A join
+    // would fan the row out once per stake -- and a tray now carries a stake
+    // per cell (QR-TAGS-SPEC Section 14.7) -- so a planting with three would
+    // appear three times in View Plants.
     $extra = $tags->mint(1, \Carl\Domain\LabelStock::AVERY_60517)['codes'][0];
     $extraId = (int) $db->value('SELECT id FROM `qr_tag` WHERE code = :code', ['code' => $extra]);
 
-    $tags->bindTo($extraId, $plantingId);   // closes the old binding, opens this one
+    $tags->bindTo($extraId, $plantingId);   // a second stake on the same plant
     $rows = $plantings->listWithDetail(['search' => 'Scanned Plant ' . $suffix]);
 
-    $t->same(1, \count($rows), 'one row for one planting, however many stakes it has worn');
-    $t->same($extra, $rows[0]['tag_code'], 'and it is the code on it now');
+    $t->same(1, \count($rows), 'one row for one planting, however many stakes it wears');
+    $t->same(2, (int) $rows[0]['tag_count'], 'both stakes counted');
+    $t->contains($extra, (string) $rows[0]['tag_codes'], 'and both codes on the row');
+    $t->contains($boundCode, (string) $rows[0]['tag_codes']);
 
-    // Put it back, so the assertions above stay true for anything that reads
-    // this account afterwards.
+    // And a closed binding is not a stake: take the extra off again.
     $tags->unbind($extraId);
+    $rows = $plantings->listWithDetail(['search' => 'Scanned Plant ' . $suffix]);
+    $t->same(1, \count($rows));
+    $t->same($boundCode, (string) $rows[0]['tag_codes'], 'only the live one');
 });

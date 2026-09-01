@@ -84,7 +84,19 @@ final class LogController extends Controller
             throw HttpException::notFound('That is not one of your plants.');
         }
 
-        return $this->render('plants/log', $this->logFormData([$planting]));
+        $data = $this->logFormData([$planting]);
+
+        // The stakes on this plant, for the move block: a transplant that
+        // takes six of twenty-four out of the tray takes their stakes with
+        // them, and the form is where the gardener says which
+        // (docs/QR-TAGS-SPEC.md Section 14.8). One statement, single-plant
+        // form only -- a batch cannot say which stake went where.
+        $data['tags'] = $this->tags()->tagsOn($plantingId);
+        // Reached from a tag's field screen: that stake is pre-ticked,
+        // because the person scanned it standing where the plant is now.
+        $data['preTag'] = \Carl\Repo\TagRepository::normalise((string) ($request->query('tag', '') ?? ''));
+
+        return $this->render('plants/log', $data);
     }
 
     public function record(Request $request, array $params): Response
@@ -114,8 +126,21 @@ final class LogController extends Controller
                 // event they thought they were logging, which is the child's.
                 $this->afterRecord($request, $eventType, $moved['child_id'],
                     $moved['event_id'], $eventDate, $data);
+
+                // And so do the stakes that went with them. Ticked on the
+                // form; only stakes actually on this planting move, and each
+                // move is a closed binding and a new one, so the stake's
+                // history reads "the tray, then bed two" (Section 14.8).
+                $stakes = $this->tags()->moveTags(
+                    $request->intList('move_tags'), $plantingId, $moved['child_id']
+                );
+
                 $this->flash($moved['quantity'] . ' of the ' . $planting['category'] . ' '
-                    . $planting['type'] . ' moved out and are now tracked on their own.');
+                    . $planting['type'] . ' moved out and are now tracked on their own.'
+                    . ($stakes > 0
+                        ? ' ' . $stakes . ' stake' . ($stakes === 1 ? '' : 's')
+                          . ' went with them: scanning one opens the new planting.'
+                        : ''));
                 return $this->redirect('plants/' . $moved['child_id']);
             }
         }

@@ -120,8 +120,11 @@ if ($tag['row_name'] !== null) {
 <?php /* Secondary, below the fold (Section 7). */ ?>
 <section class="card card-tight">
   <ul class="list">
-    <li><a class="grow" href="<?= $e($app->url('log/' . $tag['planting_id'])) ?>">
-      Full log form <span class="hint">Backdate, add a photo, write a sentence</span></a></li>
+    <?php /* ?tag= so that a transplant logged from here pre-ticks THIS
+           stake as one that went with the plants -- you scanned it standing
+           where they are now (QR-TAGS-SPEC Section 14.8). */ ?>
+    <li><a class="grow" href="<?= $e($app->url('log/' . $tag['planting_id'], ['tag' => $tag['code']])) ?>">
+      Full log form <span class="hint">Backdate, add a photo, write a sentence, move some of them</span></a></li>
     <li><a class="grow" href="<?= $e($app->url('plants/' . $tag['planting_id'])) ?>">
       The plant's own page <span class="hint">Timeline, charts, photos, PDF</span></a></li>
   </ul>
@@ -132,7 +135,8 @@ if ($tag['row_name'] !== null) {
   <div>
     <p class="mono qr-code"><?= $e($tag['code']) ?></p>
     <p class="muted small">
-      This tag. Bound <?= $e(Carl\Support\Units::shortDate((string) $tag['bound_at'])) ?>.
+      This tag. On the plant since <?= $e(Carl\Support\Units::shortDate((string) $tag['bound_at'])) ?>.
+      A plant can carry several; every one opens this screen.
     </p>
     <form method="post" action="<?= $e($app->url('t/' . $tag['code'] . '/release')) ?>" class="flush">
       <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">

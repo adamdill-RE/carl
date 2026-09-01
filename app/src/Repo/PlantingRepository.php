@@ -43,22 +43,23 @@ final class PlantingRepository extends Repository
         'SELECT p.*, pt.category, pt.type, pt.plant_family, pt.dtm_days_min, pt.dtm_days_max,'
         . ' pt.dtm_counted_from, pt.is_tree,'
         . ' g.name AS garden_name, g.is_indoor, gr.name AS row_name, gr.ordinal AS row_ordinal,'
-        . ' c.name AS container_name, qt.code AS tag_code'
+        . ' c.name AS container_name,'
+        // The stakes on this plant right now (docs/QR-TAGS-SPEC.md Section
+        // 14.7): how many, and the codes in one string. Two correlated
+        // subqueries and no more statements. NOT a LEFT JOIN: a planting can
+        // carry a stake per cell, and a join would return the tray once per
+        // stake. `unbound_at IS NULL` is the live binding; closed ones -- a
+        // stake that moved on with a split -- are exactly what it excludes.
+        . ' (SELECT COUNT(*) FROM `qr_tag_binding` qb'
+        . '   WHERE qb.planting_id = p.id AND qb.unbound_at IS NULL) AS tag_count,'
+        . ' (SELECT GROUP_CONCAT(qt.code ORDER BY qt.code SEPARATOR \' \')'
+        . '   FROM `qr_tag_binding` qb JOIN `qr_tag` qt ON qt.id = qb.tag_id'
+        . '   WHERE qb.planting_id = p.id AND qb.unbound_at IS NULL) AS tag_codes'
         . ' FROM `planting` p'
         . ' JOIN `plant_type` pt ON pt.id = p.plant_type_id'
         . ' LEFT JOIN `garden` g ON g.id = p.garden_id'
         . ' LEFT JOIN `garden_row` gr ON gr.id = p.garden_row_id'
-        . ' LEFT JOIN `container` c ON c.id = p.container_id'
-        // The tag on this plant right now, if any (docs/QR-TAGS-SPEC.md).
-        // Two more LEFT JOINs and no more statements, and the row cannot
-        // fan out: `unbound_at IS NULL` is the live binding and there is at
-        // most one per planting, which TagRepository::bindTo() closes both
-        // sides of in one transaction. Closed bindings -- a tag that was
-        // moved to another plant -- are exactly what the predicate excludes,
-        // and without it a rebound stake would list its old plant twice.
-        . ' LEFT JOIN `qr_tag_binding` qb'
-        . '   ON qb.planting_id = p.id AND qb.unbound_at IS NULL'
-        . ' LEFT JOIN `qr_tag` qt ON qt.id = qb.tag_id';
+        . ' LEFT JOIN `container` c ON c.id = p.container_id';
 
     /**
      * Every planting is its own root until it is split off something.
@@ -125,7 +126,9 @@ final class PlantingRepository extends Repository
         }
         if (($filters['search'] ?? '') !== '') {
             $predicates[] = '(pt.category LIKE :search1 OR pt.type LIKE :search2'
-                . ' OR p.label LIKE :search3 OR qt.code LIKE :search4)';
+                . ' OR p.label LIKE :search3'
+                . ' OR EXISTS (SELECT 1 FROM `qr_tag_binding` sb JOIN `qr_tag` st ON st.id = sb.tag_id'
+                . '   WHERE sb.planting_id = p.id AND sb.unbound_at IS NULL AND st.code LIKE :search4))';
             $like = '%' . $filters['search'] . '%';
             // Emulation is off, so a placeholder cannot be reused within one
             // statement -- four names for one value (hosting Section 7).

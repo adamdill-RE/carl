@@ -2,16 +2,17 @@
 /**
  * The bind screen: "Tag AB7K4M isn't assigned yet."
  *
- * THE LIST IS EVERY UNTAGGED LIVING PLANT, MOST RECENT FIRST -- not recent
- * plants (docs/QR-TAGS-SPEC.md Section 6.4). A tomato that went in the ground
- * in May has no tag and is not recent, so a recency filter would hide the
- * plant you are standing in front of. Recency is the sort; nothing is
- * filtered out; the search box finds the May tomato by name.
+ * THE LIST IS EVERY LIVING PLANT THAT STILL WANTS A STAKE, MOST RECENT FIRST
+ * -- not recent plants (docs/QR-TAGS-SPEC.md Section 6.4). A tomato that went
+ * in the ground in May has no tag and is not recent, so a recency filter
+ * would hide the plant you are standing in front of. Recency is the sort;
+ * nothing is filtered out; the search box finds the May tomato by name. And
+ * since a tray carries a stake per cell (Section 14.7), a plant part-way
+ * through its stakes is on the list too, after the ones with none.
  *
  * @var Carl\Core\App $app @var Carl\Core\View $view @var string $csrf
  * @var array<string,mixed> $tag @var string $qr
- * @var list<array<string,mixed>> $untagged @var string $search
- * @var list<array<string,mixed>> $tagged
+ * @var array{wants:list<array<string,mixed>>,full:list<array<string,mixed>>} $candidates @var string $search
  * @var array{next:?array<string,mixed>,bound:list<array<string,mixed>>,remaining:int}|null $session
  */
 $e = $view->e(...);
@@ -44,10 +45,31 @@ $placeOf = static function (array $p): string {
   </p>
 </section>
 
-<?php if ($untagged === [] && $search === ''): ?>
+<?php
+$wants = $candidates['wants'];
+$full = $candidates['full'];
+$rowFor = static function (array $planting) use ($e, $app, $csrf, $tag, $nameOf, $placeOf): string {
+    $place = $placeOf($planting);
+    $count = (int) $planting['tag_count'];
+    $live = (int) $planting['quantity_live'];
+    $stakes = $count === 0
+        ? 'no stake yet'
+        : $count . ' of ' . $live . ' stake' . ($live === 1 ? '' : 's');
+    return '<li><form method="post" action="' . $e($app->url('t/' . $tag['code'] . '/bind')) . '"'
+        . ' class="flush grow row-tight">'
+        . '<input type="hidden" name="_csrf" value="' . $e($csrf) . '">'
+        . '<input type="hidden" name="planting_id" value="' . $e($planting['id']) . '">'
+        . '<button type="submit" class="btn-link grow">'
+        . '<span class="name">' . $e($nameOf($planting)) . '</span>'
+        . '<span class="hint">' . $e($stakes)
+        . ' &middot; started ' . $e(Carl\Support\Units::shortDate((string) $planting['start_date']))
+        . ($place !== '' ? ' &middot; ' . $e($place) : '')
+        . '</span></button></form></li>';
+};
+?>
+<?php if ($wants === [] && $full === [] && $search === ''): ?>
 <div class="notice notice-info">
-  Every living plant you have already has a tag. Start a new plant and this tag goes
-  on it.
+  Nothing living to put it on. Start a new plant and this tag goes on it.
 </div>
 <?php else: ?>
 <section class="card">
@@ -59,27 +81,35 @@ $placeOf = static function (array $p): string {
     <button type="submit" class="btn btn-secondary">Search</button>
   </form>
 
-<?php if ($untagged === []): ?>
-  <p class="muted">Nothing untagged matches "<?= $e($search) ?>".</p>
+<?php if ($wants === [] && $full === []): ?>
+  <p class="muted">Nothing matches "<?= $e($search) ?>".</p>
+<?php elseif ($wants === []): ?>
+  <p class="muted small">Every plant has a stake for each of its plants. Any of them can still take another.</p>
 <?php else: ?>
+  <?php /* Plants with no stake first, then the ones part-way through a tray,
+         most recently started first within each (Section 14.7): the tray
+         you are working along with the fourth stake in your hand is on this
+         list, and so is the May tomato with none, four screens down. */ ?>
   <ul class="list">
-<?php foreach ($untagged as $planting): $place = $placeOf($planting); ?>
-    <li>
-      <form method="post" action="<?= $e($app->url('t/' . $tag['code'] . '/bind')) ?>"
-            class="flush grow row-tight">
-        <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
-        <input type="hidden" name="planting_id" value="<?= $e($planting['id']) ?>">
-        <button type="submit" class="btn-link grow">
-          <span class="name"><?= $e($nameOf($planting)) ?></span>
-          <span class="hint">
-            started <?= $e(Carl\Support\Units::shortDate((string) $planting['start_date'])) ?>
-<?php if ($place !== ''): ?> &middot; <?= $e($place) ?><?php endif; ?>
-          </span>
-        </button>
-      </form>
-    </li>
+<?php foreach ($wants as $planting): ?>
+    <?= $rowFor($planting) ?>
 <?php endforeach; ?>
   </ul>
+<?php endif; ?>
+
+<?php if ($full !== []): ?>
+  <details class="gap-sm">
+    <summary class="small">Plants with a stake for every plant (<?= $e(\count($full)) ?>)</summary>
+    <p class="help small">
+      The count is a guide, not a rule: a plant whose stake broke, or one you want a second
+      stake on, is here.
+    </p>
+    <ul class="list">
+<?php foreach ($full as $planting): ?>
+      <?= $rowFor($planting) ?>
+<?php endforeach; ?>
+    </ul>
+  </details>
 <?php endif; ?>
 </section>
 <?php endif; ?>
@@ -92,38 +122,3 @@ $placeOf = static function (array $p): string {
   </ul>
 </section>
 
-<?php /* Section 6.4 item 3: reassigning a tag to a plant that already has one
-        silently unbinds the old one, so it is behind a tick rather than in
-        the list above. This is the replacement-for-a-destroyed-tag path.
-        The plant is picked by NAME with its current code beside it -- the
-        first version asked for a plant id "from the plant's own page
-        address", which nobody knows. Not offered when nothing has a tag. */ ?>
-<?php if ($tagged !== []): ?>
-<details class="card card-tight">
-  <summary>Replace a tag that was lost or ruined</summary>
-  <form method="post" action="<?= $e($app->url('t/' . $tag['code'] . '/bind')) ?>" class="stack">
-    <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
-    <label class="field">
-      <span>The plant whose tag is gone</span>
-      <select name="planting_id" required>
-        <option value="">-- choose --</option>
-<?php foreach ($tagged as $planting): ?>
-        <option value="<?= $e($planting['id']) ?>">
-          <?= $e($nameOf($planting)) ?> &middot; now <?= $e($planting['code']) ?>
-          &middot; started <?= $e(Carl\Support\Units::shortDate((string) $planting['start_date'])) ?>
-        </option>
-<?php endforeach; ?>
-      </select>
-    </label>
-    <label class="check">
-      <input type="checkbox" name="replace" value="1">
-      <span>Replace the existing tag &mdash; the old one comes off and goes back in the pool</span>
-    </label>
-    <button type="submit" class="btn btn-secondary">Move this tag onto that plant</button>
-    <p class="help small">
-      The same swap is on every plant's own page, under its tag, if you are starting from
-      the plant rather than the stake.
-    </p>
-  </form>
-</details>
-<?php endif; ?>
