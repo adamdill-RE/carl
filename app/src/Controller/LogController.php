@@ -42,6 +42,15 @@ final class LogController extends Controller
             'living'        => $request->query('all') === null,
         ];
 
+        // A tag code in the search box goes straight to that plant's LOG
+        // form -- not to the field screen the camera opens, because somebody
+        // typing a code into this box is at a desk with a date to backdate.
+        // Controller::tagCodeJump() carries the reasoning.
+        $jump = $this->tagCodeJump((string) $filters['search'], 'log');
+        if ($jump !== null) {
+            return $jump;
+        }
+
         $plantings = $this->plantings()->listWithDetail($filters);
         $ids = \array_map(static fn (array $p): int => (int) $p['id'], $plantings);
 

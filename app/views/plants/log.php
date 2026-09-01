@@ -51,6 +51,13 @@ $action = $isBatch ? $app->url('log/batch') : $app->url('log/' . $single['id']);
   <?= $e((int) $single['quantity_live']) ?> of <?= $e((int) $single['quantity_initial']) ?> living
   &middot; started <?= $e($U::longDate((string) $single['start_date'])) ?>
   &middot; <a href="<?= $e($app->url('plants/' . $single['id'])) ?>">full report</a>
+<?php if (!empty($single['tag_code'])): ?>
+  <?php /* Free: the code rides in on the row the form was built from, so
+         naming the stake costs no statement -- and it is what makes the
+         search box on the list screen worth typing into. */ ?>
+  &middot; tag <a class="mono tag-ref"
+       href="<?= $e($app->url('t/' . $single['tag_code'])) ?>"><?= $e($single['tag_code']) ?></a>
+<?php endif; ?>
 <?php endif; ?>
 </p>
 
@@ -200,6 +207,15 @@ $action = $isBatch ? $app->url('log/batch') : $app->url('log/' . $single['id']);
     <?= $view->partial('partials/select_add', [
           'name' => 'pest_id', 'newName' => 'pest_new', 'label' => 'Pest or disease',
           'listType' => $L::PEST_DISEASE, 'items' => $lists[$L::PEST_DISEASE] ?? []]) ?>
+    <?php /* Phase 9: the dropdown names it and the reference says what it
+           does. The link is here rather than a panel because this form is
+           already long, and because the question -- "which of these is it,
+           and does it matter?" -- is asked once and then remembered. */ ?>
+    <p class="help">
+      Not sure which, or what it does?
+      <a href="<?= $e($app->url('pests')) ?>" target="_blank" rel="noopener">Open the pest
+      and disease reference</a> -- signs, what it costs to ignore, and what to do.
+    </p>
   </fieldset>
 
   <fieldset class="event-fields" data-for="<?= $e($E::PEST_TREATED) ?>">

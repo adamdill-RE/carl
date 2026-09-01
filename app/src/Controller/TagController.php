@@ -31,13 +31,6 @@ use Carl\Support\Clock;
  */
 final class TagController extends Controller
 {
-    private ?TagRepository $tags = null;
-
-    private function tags(): TagRepository
-    {
-        return $this->tags ??= new TagRepository($this->app->db(), $this->userId());
-    }
-
     // ==================================================================
     // The scan
     // ==================================================================

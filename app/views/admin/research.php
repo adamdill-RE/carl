@@ -7,6 +7,7 @@
  * @var Carl\Research\ImportResult|null $result
  * @var list<array<string,mixed>> $imports
  * @var array<string,int> $counts
+ * @var int $builtin @var int $shipped
  */
 $e = $view->e(...);
 $pageTitle = 'Research import';
@@ -85,6 +86,31 @@ $pageTitle = 'Research import';
   </div>
   <button type="submit" class="btn">Validate it</button>
 </form>
+
+<section class="card">
+  <h2>Built-in reference catalogue</h2>
+  <p class="small">
+    Carl ships a pest, disease and disorder catalogue in
+    <code>db/seed/pest_catalog.csv</code> so that the dropdown on the log form is never
+    empty and so two records of the same pest are the same record. It is
+    <strong>editorial content, not schema</strong> -- corrections ship in that file and
+    land here.
+  </p>
+  <p class="small">
+    <strong><?= $e($shipped) ?></strong> entries in the file;
+    <strong><?= $e($builtin) ?></strong> of the <?= $e($counts['pest']) ?> pest rows in the
+    database came from it.
+  </p>
+  <form method="post" action="<?= $e($app->url('admin/reference-sync')) ?>">
+    <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+    <button type="submit" class="btn btn-secondary">Re-apply and sync every account</button>
+    <p class="help">
+      Safe to press twice. Anything a county dataset said about a pest stays as that
+      dataset wrote it, and nothing anybody typed into their own list is touched or
+      duplicated.
+    </p>
+  </form>
+</section>
 
 <section class="card">
   <h2>Import history</h2>

@@ -34,6 +34,21 @@ $U = Carl\Support\Units::class;
     <?php if ($filters['category'] !== '' || $filters['search'] !== ''): ?>
       or <a href="<?= $e($app->url($target)) ?>">clear the filters</a>
     <?php endif; ?>.</p>
+<?php
+    /* A well-formed code that matched nothing falls through to here rather
+       than to a message, because a code that is not yours and a code that
+       does not exist must look the same (QR-TAGS-SPEC Section 6.2) -- and
+       because real words collide with the alphabet. The line is only offered
+       when the query could BE a code, so an ordinary failed search is not
+       told about a feature it was not using. */
+    $looksLikeCode = Carl\Repo\TagRepository::isWellFormed(
+        Carl\Repo\TagRepository::normalise((string) $filters['search'])
+    );
+?>
+<?php if ($looksLikeCode): ?>
+    <p class="tiny muted flush">If that was a tag code, check it on the
+      <a href="<?= $e($app->url('tags')) ?>">plant tags</a> screen.</p>
+<?php endif; ?>
   </div>
 <?php else: ?>
 
@@ -79,6 +94,12 @@ $U = Carl\Support\Units::class;
 <?php endif; ?>
 <?php if (($photoCounts[$id] ?? 0) > 0): ?>
           &middot; <?= $e($photoCounts[$id]) ?> photo<?= $photoCounts[$id] === 1 ? '' : 's' ?>
+<?php endif; ?>
+<?php if (!empty($planting['tag_code'])): ?>
+          <?php /* The code on the stake, so the list and the thing in your
+                 hand carry the same identifier -- and so that typing it into
+                 the box above is a discoverable act rather than a secret. */ ?>
+          &middot; <span class="mono tag-ref"><?= $e($planting['tag_code']) ?></span>
 <?php endif; ?>
         </span>
       </a>

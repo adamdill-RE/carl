@@ -129,6 +129,61 @@ final class ListType
     }
 
     /**
+     * The treatment shelf, seeded per user (Phase 9).
+     *
+     * The pests half of a pest log has come from the global catalogue since
+     * Phase 1 and now actually has something in it
+     * (db/migrations/022_pest_reference.sql). The TREATMENT half was still a
+     * blank box, and it is asked at the same moment and for the same reason:
+     * somebody standing at a plant with a bottle in their hand, deciding what
+     * to write down. A blank box there gets "soap" one week and "insecticidal
+     * soap" the next, and the two never join up again.
+     *
+     * ORDERED LEAST DRASTIC FIRST, which is not decoration -- it is the order
+     * an IPM programme puts them in, so the dropdown reads as the sequence a
+     * gardener is supposed to work through rather than as an alphabet.
+     * "Watched, not treated" is therefore FIRST, and it is the honest answer
+     * often enough to be worth a row of its own: a pest observed and
+     * deliberately left alone is a decision, and a log that cannot record it
+     * loses it.
+     *
+     * attr_1 is the ACTIVE INGREDIENT, because that is what a label carries
+     * and what the reference entries name -- never a brand, and never a rate.
+     * The label on the bottle is the legal authority on both
+     * (db/migrations/022_pest_reference.sql).
+     *
+     * They are ordinary user rows: archive any of them, add your own.
+     *
+     * @return list<array{0:string,1:?string}>
+     */
+    public static function seedPestTreatments(): array
+    {
+        return [
+            ['Watched, not treated',        null],
+            ['Removed by hand',             null],
+            ['Pruned out and binned',       null],
+            ['Strong water spray',          null],
+            ['Row cover or netting',        null],
+            ['Trap or barrier',             null],
+            ['Beneficial insects released', null],
+            ['Insecticidal soap',           'Potassium salts of fatty acids'],
+            ['Horticultural oil',           'Mineral or plant-derived oil'],
+            ['Neem',                        'Azadirachtin / clarified neem oil'],
+            ['Kaolin clay',                 'Kaolin'],
+            ['Bt for caterpillars',         'Bacillus thuringiensis kurstaki'],
+            ['Bt for beetle larvae',        'Bacillus thuringiensis tenebrionis'],
+            ['Spinosad',                    'Spinosad'],
+            ['Iron phosphate slug bait',    'Iron phosphate'],
+            ['Diatomaceous earth',          'Diatomaceous earth'],
+            ['Biofungicide',                'Bacillus subtilis'],
+            ['Potassium bicarbonate',       'Potassium bicarbonate'],
+            ['Sulfur',                      'Sulfur'],
+            ['Copper fungicide',            'Copper'],
+            ['Pyrethrin',                   'Pyrethrins'],
+        ];
+    }
+
+    /**
      * Cull reasons are seeded per user so the dropdown is not empty on the
      * first cull (handoff Section 5.6). Pests come from the global reference
      * table instead, so they are not listed here.

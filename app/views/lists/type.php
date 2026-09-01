@@ -55,6 +55,15 @@ $attr2 = $L::attr2Label($type);
         <?= $e($item['name']) ?>
 <?php if (!empty($item['attr_1'])): ?><span class="muted small"> &middot; <?= $e($item['attr_1']) ?></span><?php endif; ?>
 <?php if (!empty($item['attr_2'])): ?><br><span class="muted small"><?= $e($item['attr_2']) ?></span><?php endif; ?>
+<?php if (!empty($item['pest_key'])): ?>
+        <?php /* Phase 9: which entries came with Carl and which you added.
+               Both are yours to archive; only the reference ones have a card
+               to read. */ ?>
+        <a class="tiny"
+           href="<?= $e($app->url('pests', ['key' => (string) $item['pest_key']])) ?>">reference</a>
+<?php elseif ($type === Carl\Domain\ListType::PEST_DISEASE): ?>
+        <span class="badge badge-muted">yours</span>
+<?php endif; ?>
 <?php if (!$active): ?><span class="badge badge-muted">archived</span><?php endif; ?>
       </span>
       <form method="post" action="<?= $e($app->url('lists/archive')) ?>" class="flush">

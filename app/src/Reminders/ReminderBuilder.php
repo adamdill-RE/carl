@@ -1061,9 +1061,14 @@ final class ReminderBuilder
      * The date a DTM countdown is measured from: transplant or seed,
      * whichever the type says (handoff Section 9.1).
      *
+     * PUBLIC because `Planting\Calendar` draws the same two dates on a grid
+     * and must not re-derive this. Days to maturity counted from the wrong
+     * end is weeks out, silently, and the two screens disagreeing about the
+     * date of the same harvest is worse than either being wrong alone.
+     *
      * @param array<string,mixed> $planting
      */
-    private static function dtmAnchor(array $planting): ?string
+    public static function dtmAnchor(array $planting): ?string
     {
         $anchor = (string) $planting['dtm_counted_from'] === 'transplant'
             ? $planting['in_ground_date']

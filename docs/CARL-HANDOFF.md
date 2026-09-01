@@ -768,6 +768,54 @@ first design and implemented nowhere, finally means something. Nothing changes
 for an account that never splits, and `20_split_test.php` asserts that rather
 than trusting it. See `docs/PHASE-8-HANDOFF.md`.
 
+### Phase 8 — QR plant tags
+
+Specified and recorded elsewhere: `docs/QR-TAGS-SPEC.md` is the scope, its
+Section 12 is the seven places the build diverged from it, and `deploy.md`
+carries the deploy and the three owner actions. Migration 021.
+
+### Phase 9 — the refinements
+
+Three, and the third is a decision rather than a feature.
+
+1. **A tag code typed into the plant list's search box.** The spec rules out
+   an in-app scanner (Section 7) and that stands: a phone camera reads a QR
+   symbol from the lock screen better than anything that would fit in the
+   150 KB budget. What it cannot do is put six characters into a box on a page
+   you are already looking at. So the search on View Plants and Log Plant
+   Activity takes a code as well as a name, and lands on the screen you were
+   already on rather than on `/t/{code}` — the field screen is one hand and
+   mud, which is the right page in a garden and the wrong one at a desk. A
+   partial code narrows the list; a code that is not yours falls through to an
+   ordinary search in silence, because real words collide with the alphabet
+   and because a code that does not exist must be indistinguishable from
+   somebody else's.
+
+2. **A Calendar** (`/calendar`). A month grid of what was logged beside what
+   is projected, filterable by plant, with the upcoming-actions table beneath
+   it. `Carl\Planting\Calendar` is a pure calculator beside `Succession` and
+   computes nothing the digest does not: the digest decides when to SPEAK and
+   this draws WHEN IT IS, from the same research values, calling the digest's
+   own `dtmAnchor()` so there is one writer for the rule that decides which
+   end a days-to-maturity count starts from.
+
+3. **A pest and disease catalogue that ships with Carl.**
+   `db/migrations/022_pest_reference.sql` is the argument and it is worth
+   reading before touching any of this; `Carl\Research\PestCatalog` is the
+   argument for what is in it and what deliberately is not. The mechanism —
+   `ListRepository::seedForNewUser()` copying the global `pest` table into
+   each account's list, with `pest_id` as the join — has existed since Phase 1
+   and had nothing to copy, because `pest` is only ever written by a
+   per-county research import that is still an owner action. Seventy-six
+   entries in `db/seed/pest_catalog.csv` fix that; the twelve columns 022 adds
+   to `pest` give them the shape extension pest notes have used for decades;
+   and the user's own additions are unchanged and now visibly marked.
+
+**Built 2026-09-01.** Migrations 022 (DDL) and 023 (the catalogue and the
+backfill); three new screens; no new cron job, no new vendored file, no
+template version change — a research zip that imported yesterday imports
+today, which is why `pests.csv` still carries seven columns and not nineteen.
+
 ---
 
 ## 15. Explicitly deferred or dropped

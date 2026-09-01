@@ -157,6 +157,44 @@ final class Request
         return $out;
     }
 
+    /**
+     * The same pair, for the query string.
+     *
+     * A FILTER IS A GET, so `?plant_id[]=3&plant_id[]=7` is a shape this
+     * class has to read as well: a filtered calendar has to be bookmarkable,
+     * shareable and reachable with the back button, none of which is true of
+     * a POST. query() itself cannot serve it -- it trims a scalar and returns
+     * the default for an array, which is right for every other caller.
+     *
+     * @return list<string>
+     */
+    public function queryList(string $key): array
+    {
+        $value = $this->query[$key] ?? null;
+        if (!\is_array($value)) {
+            return [];
+        }
+        $out = [];
+        foreach ($value as $item) {
+            if (\is_scalar($item)) {
+                $out[] = \trim((string) $item);
+            }
+        }
+        return $out;
+    }
+
+    /** @return list<int> */
+    public function queryIntList(string $key): array
+    {
+        $out = [];
+        foreach ($this->queryList($key) as $item) {
+            if (\preg_match('/^\d+$/', $item) === 1) {
+                $out[] = (int) $item;
+            }
+        }
+        return $out;
+    }
+
     /** @return array<string,mixed>|null */
     public function file(string $key): ?array
     {

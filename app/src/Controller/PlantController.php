@@ -20,8 +20,6 @@ use Carl\Support\Clock;
  */
 final class PlantController extends Controller
 {
-    private ?\Carl\Repo\TagRepository $tagRepo = null;
-
     private const KINDS = [
         'indoor_seed' => [
             'title' => 'Indoor seed start',
@@ -205,6 +203,16 @@ final class PlantController extends Controller
     public function index(Request $request): Response
     {
         $filters = $this->readFilters($request);
+
+        // A tag code in the search box goes straight to that plant's report
+        // page. Controller::tagCodeJump() is the whole argument; it returns
+        // null for anything that is not one of this account's codes, and the
+        // search below then behaves exactly as it always did.
+        $jump = $this->tagCodeJump((string) $filters['search'], 'plants');
+        if ($jump !== null) {
+            return $jump;
+        }
+
         $plantings = $this->plantings()->listWithDetail($filters);
         $ids = \array_map(static fn (array $p): int => (int) $p['id'], $plantings);
 
@@ -292,11 +300,6 @@ final class PlantController extends Controller
 
         $tags->bindTo((int) $tag['tag_id'], $plantingId);
         return $code;
-    }
-
-    private function tags(): \Carl\Repo\TagRepository
-    {
-        return $this->tagRepo ??= new \Carl\Repo\TagRepository($this->app->db(), $this->userId());
     }
 
     /**

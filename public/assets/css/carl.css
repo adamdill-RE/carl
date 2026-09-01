@@ -191,6 +191,52 @@ button:focus-visible, a:focus-visible {
 .tier-likely { background: var(--carl-info-soft);  color: var(--carl-info); }
 .tier-skip   { background: var(--carl-surface-sunk); color: var(--carl-text-muted); }
 
+/*
+ * The pest reference card (Phase 9).
+ *
+ * A definition list rather than headings and paragraphs: eight labelled facts
+ * per entry, seventy-six entries, and a <dl> is what that IS. On a phone the
+ * term sits above its definition; from 560px they sit side by side, which
+ * makes the page skimmable by section -- "what does this one cost me" read
+ * down the column rather than hunted for in prose.
+ */
+.pest-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.pest-facts { margin: 10px 0 8px; font-size: 13px; }
+.pest-facts dt {
+  margin-top: 8px; font-weight: 700; color: var(--carl-text-muted);
+  font-size: 12px; text-transform: uppercase; letter-spacing: .03em;
+}
+.pest-facts dd { margin: 2px 0 0; line-height: 1.5; }
+@media (min-width: 560px) {
+  .pest-facts { display: grid; grid-template-columns: 170px 1fr; gap: 8px 14px; }
+  .pest-facts dt { margin-top: 0; text-align: right; }
+  .pest-facts dd { margin: 0; }
+}
+
+/*
+ * Severity is what it costs to ignore, not how unpleasant it looks. Fatal and
+ * serious borrow the error and warning colours because that is what they
+ * mean; "bee care" borrows the accent because it is a caution about somebody
+ * else's animals rather than about your crop.
+ */
+/*
+ * The list of names, before anybody has asked for a card. The signs line is
+ * clamped to two lines: it is there to be searched and to be recognised, not
+ * to be read in full, and unclamped it makes every row a different height.
+ */
+.pest-list .name { font-weight: 600; }
+.pest-list .meta { font-size: 12px; color: var(--carl-text-muted); }
+.pest-list .meta:last-child {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.sev-cosmetic   { background: var(--carl-surface-sunk); color: var(--carl-text-muted); }
+.sev-manageable { background: var(--carl-info-soft);  color: var(--carl-info); }
+.sev-serious    { background: var(--carl-warn-soft);  color: var(--carl-warn); }
+.sev-fatal      { background: var(--carl-error-soft); color: var(--carl-error); }
+.sev-bees       { background: var(--carl-warn-soft);  color: var(--carl-accent); }
+
 .confidence-verified { color: var(--carl-verified); }
 .confidence-approx   { color: var(--carl-approx); }
 .confidence-generic  { color: var(--carl-generic); }
@@ -245,6 +291,60 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
 .upload-progress > span { display: block; height: 100%; width: 0; background: var(--carl-primary); }
 
 /* ---------- Filters ---------- */
+
+/* -- Calendar (Phase 9) ------------------------------------------------
+ *
+ * A month grid on a 320px phone is the hard case: seven columns of a fixed
+ * table is 45px each, which fits a day number and a two-word chip and
+ * nothing else. So the chips are small, they wrap, and the cell scrolls
+ * horizontally with the rest of the table rather than squeezing the columns
+ * below legibility -- the same .matrix-scroll the weather matrix uses.
+ *
+ * The weekday headers show a single letter on a phone and the short name
+ * from 560px up. The <abbr title> is what keeps the letter readable to a
+ * screen reader, and the full name is hidden rather than absent so it is
+ * only ever one of the two.
+ */
+.cal-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.cal-head h2 { font-size: 17px; text-align: center; }
+
+.cal { width: 100%; min-width: 300px; border-collapse: collapse; table-layout: fixed; }
+.cal th, .cal td { border: 1px solid var(--carl-border); vertical-align: top; }
+.cal thead th {
+  padding: 4px 2px; font-size: 12px; font-weight: 600;
+  color: var(--carl-text-muted); text-align: center; border-bottom-width: 2px;
+}
+.cal thead abbr { text-decoration: none; }
+.cal-dayname { display: none; }
+@media (min-width: 560px) {
+  .cal thead abbr { display: none; }
+  .cal-dayname { display: inline; }
+}
+
+.cal-cell { padding: 3px; height: 62px; }
+.cal-num { display: block; font-size: 12px; font-weight: 600; line-height: 1.4; }
+.cal-outside { background: var(--carl-surface-sunk); }
+.cal-outside .cal-num { color: var(--carl-text-muted); font-weight: 400; }
+.cal-today { outline: 2px solid var(--carl-primary); outline-offset: -2px; }
+.cal-today .cal-num { color: var(--carl-primary-dark); }
+
+.cal-chip {
+  display: block; margin-top: 2px; padding: 1px 4px;
+  font-size: 11px; line-height: 1.35; border-radius: 4px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Logged and projected must not be told apart by colour alone: a border on
+ * one and a fill on the other survives a greyscale print and a reader who
+ * cannot see the difference between them. */
+.cal-done  { background: var(--carl-primary-soft); color: var(--carl-primary-dark); }
+.cal-ahead { background: transparent; color: var(--carl-text-muted);
+             border: 1px dashed var(--carl-border-strong); }
+
+/* Visible to a screen reader, not on the page. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
 
 .filters { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; }
 .filters .field { margin: 0; }
@@ -402,6 +502,13 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
 .tag-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (min-width: 520px) { .tag-actions { grid-template-columns: repeat(3, 1fr); } }
 .tag-action { min-height: 56px; font-size: 16px; }
+
+/*
+ * A tag code quoted in a list of plants. Letter-spaced because the whole
+ * point is reading it back off a stake and typing it into the box above --
+ * the alphabet drops I, L, O and U for the same reason.
+ */
+.tag-ref { letter-spacing: .06em; }
 
 /*
  * The session strip. The message is ONE flex item and the stop control is the

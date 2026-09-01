@@ -17,6 +17,7 @@ use Carl\Repo\PhotoRepository;
 use Carl\Repo\PlantingRepository;
 use Carl\Repo\ReferenceRepository;
 use Carl\Repo\ReminderRepository;
+use Carl\Repo\TagRepository;
 use Carl\Repo\UserRepository;
 use Carl\Repo\WateringRepository;
 use Carl\Repo\WeatherRepository;
@@ -37,6 +38,7 @@ abstract class Controller
     private ?PhotoRepository $photos = null;
     private ?ReferenceRepository $reference = null;
     private ?ReminderRepository $reminders = null;
+    private ?TagRepository $tags = null;
     private ?UserRepository $accounts = null;
     private ?WeatherRepository $weather = null;
     private ?WateringRepository $watering = null;
@@ -133,6 +135,20 @@ abstract class Controller
     }
 
     /**
+     * QR plant tags (docs/QR-TAGS-SPEC.md).
+     *
+     * Four controllers reach for this now -- the tag screens, the plant page,
+     * End Growing Season, and both plant lists since a tag code is something
+     * you can type into their search box -- so it belongs here beside the
+     * others rather than as a private copy in each. It was three copies
+     * before the fourth wanted one.
+     */
+    protected function tags(): TagRepository
+    {
+        return $this->tags ??= new TagRepository($this->app->db(), $this->userId());
+    }
+
+    /**
      * The data behind a report (handoff Section 13.1): the weather over a
      * subject's covered dates and the subject's own events, in one statement
      * each. The plant page, the JSON endpoint and the PDF all read it, which
@@ -179,6 +195,65 @@ abstract class Controller
                 $this->app->config()->string('weather.user_agent'),
                 $this->app->config()->int('weather.http_timeout', 20)
             )
+        );
+    }
+
+    // -- Shared screen behaviour -----------------------------------------
+
+    /**
+     * A tag code typed into the plant list's search box.
+     *
+     * docs/QR-TAGS-SPEC.md Section 7 rules out an in-app scanner and is right
+     * to: a phone camera reads a QR symbol from the lock screen better than
+     * anything that would fit in the 150 KB budget, and it lands on
+     * `/t/{code}` by itself. What a camera cannot do is put six characters
+     * into a box on a page you are already looking at -- so on these two
+     * screens the code arrives the way it does when the symbol is caked in
+     * soil: read off the stake and typed. `normalise()` is deliberately
+     * forgiving about case, spaces and hyphens, which is why the alphabet has
+     * no I, L, O or U.
+     *
+     * IT LANDS ON THE SCREEN YOU WERE ALREADY ON, and that is the whole
+     * reason this exists rather than a link to /tags/find. `/t/{code}` is the
+     * field screen: one hand, mud, six large buttons, today's date. It is the
+     * right page in a garden and the wrong one at a desk, where you came to
+     * this list to backdate a yield or read a timeline. From View Plants a
+     * code opens the report page; from Log Plant Activity it opens the log
+     * form. A code with no plant on it opens the bind screen, because typing
+     * a free tag's code is how you say "put this one on something".
+     *
+     * COSTS NOTHING WHEN IT IS NOT A CODE. The lookup only runs for a query
+     * that normalises to six characters of the tag alphabet, so an ordinary
+     * search pays no statement for this feature.
+     *
+     * A MISS IS SILENT AND FALLS THROUGH TO THE TEXT SEARCH. Two reasons, and
+     * the second is a rule: real words collide -- "pepper" and "garden" are
+     * both six characters of the tag alphabet -- so a code that matches no
+     * tag of yours has to keep behaving like a search. And a code that does
+     * not exist must be indistinguishable from one that is somebody else's
+     * (Section 6.2): saying nothing about either is the strongest form of
+     * that, and the list this falls through to is user-scoped anyway.
+     *
+     * @param string $target 'plants' or 'log' -- the list this was typed into
+     */
+    protected function tagCodeJump(string $search, string $target): ?Response
+    {
+        $code = TagRepository::normalise($search);
+        if (!TagRepository::isWellFormed($code)) {
+            return null;
+        }
+
+        $tag = $this->tags()->scan($code);
+        if ($tag === null) {
+            return null;
+        }
+
+        if ($tag['planting_id'] === null) {
+            return $this->redirect('t/' . $code);
+        }
+
+        return $this->redirect(
+            ($target === 'log' ? 'log/' : 'plants/') . (int) $tag['planting_id']
         );
     }
 

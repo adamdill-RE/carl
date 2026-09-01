@@ -46,9 +46,17 @@ final class ListController extends Controller
             throw HttpException::notFound('There is no such list.');
         }
 
+        // The pests list is read with its catalogue entry alongside, so the
+        // screen can show which rows came with Carl and which this account
+        // added -- one statement either way, and it is the same statement
+        // count as every other list.
+        $items = $type === ListType::PEST_DISEASE
+            ? $this->lists()->pestListWithReference()
+            : $this->lists()->ofType($type, false);
+
         return $this->render('lists/type', [
             'type'    => $type,
-            'items'   => $this->lists()->ofType($type, false),
+            'items'   => $items,
             'gardens' => $type === ListType::WATER_METHOD ? $this->gardens()->activeGardens() : [],
         ]);
     }

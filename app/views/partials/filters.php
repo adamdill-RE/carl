@@ -54,8 +54,17 @@ $e = $view->e(...);
     </div>
   </div>
   <div class="row gap-sm">
-    <input type="search" name="q" value="<?= $e($filters['search']) ?>" placeholder="Search" class="grow">
+    <input type="search" name="q" value="<?= $e($filters['search']) ?>"
+           placeholder="Search, or type a tag code" class="grow"
+           autocapitalize="characters" autocorrect="off" spellcheck="false">
     <button type="submit" class="btn btn-small">Filter</button>
     <a class="btn btn-secondary btn-small" href="<?= $e($app->url($target)) ?>">Clear</a>
   </div>
+  <?php /* The camera cannot type into this box -- it navigates to /t/{code}
+         by itself (docs/QR-TAGS-SPEC.md Section 7, no in-app scanner). This
+         is the other half: the six characters read off the stake in your
+         hand, which land on the plant's page on THIS screen rather than on
+         the field screen. Case, spaces and hyphens do not matter. */ ?>
+  <p class="help flush">Six characters off a plant tag jump straight to that plant.
+     Fewer than six narrows the list.</p>
 </form>

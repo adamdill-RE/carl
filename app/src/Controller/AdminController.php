@@ -374,7 +374,42 @@ final class AdminController extends Controller
             'result'  => $this->pendingResult(),
             'imports' => $this->reference()->imports(),
             'counts'  => $this->reference()->counts(),
+            // Phase 9: how many of the pest rows came with Carl rather than
+            // from a county dataset, so the panel below can say what pressing
+            // the button would actually do.
+            'builtin'  => $this->reference()->builtinPestCount(),
+            'shipped'  => \Carl\Research\PestCatalog::count($this->app->root()),
         ]);
+    }
+
+    /**
+     * Re-apply the built-in pest catalogue and put it in front of every
+     * account (Phase 9).
+     *
+     * THE MAINTENANCE PATH FOR EDITORIAL CONTENT, and the reason the
+     * catalogue is a seed file rather than a migration. A migration is
+     * immutable once applied (hosting Section 7); a corrected sentence about
+     * squash vine borer is not a schema change and must not need a schema
+     * version. So `db/seed/pest_catalog.csv` is edited, the deploy ships it,
+     * and this button lands it.
+     *
+     * IDEMPOTENT, and safe to press twice. The upsert converges on
+     * `pest_key`, it leaves the four columns a research import owns exactly
+     * as that import wrote them, and the list sync adopts before it inserts
+     * so nobody's own typed entry is duplicated beside the catalogue one.
+     */
+    public function referenceSync(Request $request): Response
+    {
+        $applied = \Carl\Research\PestCatalog::apply($this->app->db(), $this->app->root());
+        $added = $this->reference()->syncPestListsForAllUsers();
+
+        $this->flash(
+            $applied . ' catalogue entries applied; ' . $added
+            . ' added to accounts that did not have them. Nothing anybody typed was touched, '
+            . 'and anything a county dataset said still stands.'
+        );
+
+        return $this->redirect('admin/research-import');
     }
 
     /**
