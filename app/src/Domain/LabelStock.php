@@ -222,6 +222,32 @@ final class LabelStock
     }
 
     /**
+     * Where a label is on the physical sheet, in the words a person uses to
+     * find it: "sheet 2, row 3, column 1", all 1-based.
+     *
+     * The desk half of docs/QR-TAGS-SPEC.md Section 5.2 asks somebody to
+     * pick a free code off a list and then find that label on a sheet of
+     * twenty-four. The code is printed on the label, so it can be found by
+     * reading -- but a row and a column turn a scan of the sheet into a
+     * glance, and they cost nothing, because minting order IS sheet order
+     * (LabelSheet::sheetsOf() places tags in the order they were minted).
+     *
+     * @param int $ordinal the tag's 0-based position within its batch
+     * @return array{sheet:int,row:int,column:int}
+     */
+    public static function place(?string $sku, int $ordinal): array
+    {
+        $g = self::geometry($sku);
+        $within = $ordinal % $g['per_sheet'];
+
+        return [
+            'sheet'  => \intdiv($ordinal, $g['per_sheet']) + 1,
+            'row'    => \intdiv($within, $g['columns']) + 1,
+            'column' => $within % $g['columns'] + 1,
+        ];
+    }
+
+    /**
      * Does the last label fit on the page?
      *
      * Not decoration: AutoPageBreak is off on a label sheet (Section 5.5), so

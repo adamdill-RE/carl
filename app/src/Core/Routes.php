@@ -231,6 +231,18 @@ final class Routes
         $r->post('/t/{code:[0-9A-Za-z]+}/bind', TagController::class, 'bind');
         $r->post('/t/{code:[0-9A-Za-z]+}/undo', TagController::class, 'undo');
         $r->post('/t/{code:[0-9A-Za-z]+}/release', TagController::class, 'release');
+        // One code, not a sheet: the stake that snapped, the label that tore.
+        // Refused while the tag is on a plant -- take it off first.
+        $r->post('/t/{code:[0-9A-Za-z]+}/retire', TagController::class, 'retireTag');
+
+        // THE DESK HALF OF SECTION 5.2, from the plant's end: "here is a
+        // plant, which tag?" The scan answers the other question. Both land
+        // in TagRepository::bindTo(), which is what keeps one live binding a
+        // plant whichever way it was made. Under /plants/{id} and not /t/,
+        // because the code is the FORM's value here, not the address's --
+        // it was picked off a list of free codes or read off a stake.
+        $r->post('/plants/{id:\d+}/tag', TagController::class, 'attach');
+        $r->post('/plants/{id:\d+}/tag/release', TagController::class, 'detach');
 
         // The pool and the printing. Literal paths before the {id} ones: the
         // router returns the FIRST route whose regex matches, so a pattern

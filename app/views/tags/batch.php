@@ -41,15 +41,38 @@ $inUse = \count(\array_filter($tags, static fn (array $t): bool => $t['category'
 <section class="card">
   <h2>The codes</h2>
   <ul class="list small">
-<?php foreach ($tags as $tag): ?>
+<?php foreach ($tags as $i => $tag):
+    $place = $LS::place((string) $batch['stock_sku'], (int) $i);
+    $ownRetired = !$retired && $tag['retired_at'] !== null;
+?>
     <li>
-      <a class="grow mono" href="<?= $e($app->url('t/' . $tag['code'])) ?>"><?= $e($tag['code']) ?></a>
+      <a class="grow mono" href="<?= $e($app->url('t/' . $tag['code'])) ?>"><?= $e($tag['code']) ?>
+        <span class="muted small">
+<?php if ($place['sheet'] > 1): ?>page <?= $e($place['sheet']) ?>, <?php endif; ?>row <?= $e($place['row']) ?>, column <?= $e($place['column']) ?>
+        </span></a>
 <?php if ($tag['category'] !== null): ?>
-      <span class="muted"><?= $e(\trim((string) $tag['label']) !== ''
+      <a class="muted" href="<?= $e($app->url('plants/' . $tag['planting_id'])) ?>#tag"><?= $e(\trim((string) $tag['label']) !== ''
           ? (string) $tag['label']
-          : \trim((string) $tag['category'] . ' ' . (string) $tag['type'])) ?></span>
+          : \trim((string) $tag['category'] . ' ' . (string) $tag['type'])) ?></a>
+<?php elseif ($ownRetired): ?>
+      <?php /* Retired on its own -- a torn label, a snapped stake -- while
+             the sheet is still in use. Un-retiring the SHEET leaves it be;
+             this is the only place it comes back. */ ?>
+      <span class="badge badge-muted">retired</span>
+      <form method="post" action="<?= $e($app->url('t/' . $tag['code'] . '/retire')) ?>" class="flush">
+        <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+        <input type="hidden" name="return" value="batch">
+        <button type="submit" class="btn-link small">Put back</button>
+      </form>
+<?php elseif ($retired): ?>
+      <span class="muted">retired with the sheet</span>
 <?php else: ?>
       <span class="muted">free</span>
+      <form method="post" action="<?= $e($app->url('t/' . $tag['code'] . '/retire')) ?>" class="flush">
+        <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+        <input type="hidden" name="return" value="batch">
+        <button type="submit" class="btn-link small">Retire</button>
+      </form>
 <?php endif; ?>
     </li>
 <?php endforeach; ?>

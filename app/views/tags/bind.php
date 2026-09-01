@@ -11,6 +11,7 @@
  * @var Carl\Core\App $app @var Carl\Core\View $view @var string $csrf
  * @var array<string,mixed> $tag @var string $qr
  * @var list<array<string,mixed>> $untagged @var string $search
+ * @var list<array<string,mixed>> $tagged
  * @var array{next:?array<string,mixed>,bound:list<array<string,mixed>>,remaining:int}|null $session
  */
 $e = $view->e(...);
@@ -93,20 +94,36 @@ $placeOf = static function (array $p): string {
 
 <?php /* Section 6.4 item 3: reassigning a tag to a plant that already has one
         silently unbinds the old one, so it is behind a tick rather than in
-        the list above. This is the replacement-for-a-destroyed-tag path. */ ?>
+        the list above. This is the replacement-for-a-destroyed-tag path.
+        The plant is picked by NAME with its current code beside it -- the
+        first version asked for a plant id "from the plant's own page
+        address", which nobody knows. Not offered when nothing has a tag. */ ?>
+<?php if ($tagged !== []): ?>
 <details class="card card-tight">
   <summary>Replace a tag that was lost or ruined</summary>
   <form method="post" action="<?= $e($app->url('t/' . $tag['code'] . '/bind')) ?>" class="stack">
     <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
     <label class="field">
-      <span>Plant id</span>
-      <input type="number" name="planting_id" min="1" required inputmode="numeric">
-      <span class="help small">From the plant's own page address, or its list entry.</span>
+      <span>The plant whose tag is gone</span>
+      <select name="planting_id" required>
+        <option value="">-- choose --</option>
+<?php foreach ($tagged as $planting): ?>
+        <option value="<?= $e($planting['id']) ?>">
+          <?= $e($nameOf($planting)) ?> &middot; now <?= $e($planting['code']) ?>
+          &middot; started <?= $e(Carl\Support\Units::shortDate((string) $planting['start_date'])) ?>
+        </option>
+<?php endforeach; ?>
+      </select>
     </label>
     <label class="check">
       <input type="checkbox" name="replace" value="1">
       <span>Replace the existing tag &mdash; the old one comes off and goes back in the pool</span>
     </label>
     <button type="submit" class="btn btn-secondary">Move this tag onto that plant</button>
+    <p class="help small">
+      The same swap is on every plant's own page, under its tag, if you are starting from
+      the plant rather than the stake.
+    </p>
   </form>
 </details>
+<?php endif; ?>

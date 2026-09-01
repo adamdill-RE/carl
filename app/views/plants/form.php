@@ -15,6 +15,7 @@
  * @var int $rotationYears
  * @var array<string,list<array<string,mixed>>> $lists
  * @var string $today @var int|null $indoorGardenId @var string $tag
+ * @var list<array{batch_id:int,stock_sku:string,sheet:int,tags:list<array{id:int,code:string,row:int,column:int}>}> $freeTags
  * @var list<string> $errors @var array<string,mixed> $old
  */
 $e = $view->e(...);
@@ -43,15 +44,13 @@ foreach ($plantTypes as $type) {
 <?php if (($tag ?? '') !== ''): ?>
 <div class="notice notice-info">
   Tag <strong class="mono"><?= $e($tag) ?></strong> goes on this plant when you save it.
+  Change it, or pick none, at the foot of the form.
 </div>
 <?php endif; ?>
 
 <form method="post" action="<?= $e($app->url('plants')) ?>" class="card"
       data-research-url="<?= $e($app->url('research/')) ?>">
   <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
-<?php if (($tag ?? '') !== ''): ?>
-  <input type="hidden" name="tag" value="<?= $e($tag) ?>">
-<?php endif; ?>
   <input type="hidden" name="start_method" value="<?= $e($kind) ?>">
 
   <div class="field">
@@ -201,6 +200,28 @@ foreach ($plantTypes as $type) {
     <label for="notes">Notes</label>
     <textarea id="notes" name="notes"><?= $e($val('notes')) ?></textarea>
   </div>
+
+<?php /* "At the foot of Start a New Plant: assign a tag" (QR-TAGS-SPEC
+       Section 5.2). The picker is the codes still in the box, by sheet; a
+       code carried in from a scan ("start a new plant with this tag") is
+       preselected. Shown only when there is something to pick or something
+       was carried, so an account that has never printed a sheet is not asked
+       about a feature it does not use. The code is validated on submit and a
+       stale one is a form error, never a silent drop. */ ?>
+<?php $chosenTag = $val('tag', $tag ?? ''); ?>
+<?php if ($freeTags !== [] || $chosenTag !== ''): ?>
+  <div class="field">
+    <label for="tag">Tag (optional)</label>
+    <?= $view->partial('partials/tag_picker', [
+          'sheets' => $freeTags, 'name' => 'tag', 'selected' => $chosenTag,
+          'allowNone' => true, 'id' => 'tag']) ?>
+    <p class="help">
+      A stake with a code on it, going into the cell or the ground with this plant. Pick the
+      label off the sheet here, or leave it and put one on later from the plant's page
+      &mdash; or by scanning any free tag.
+    </p>
+  </div>
+<?php endif; ?>
 
   <?= $view->partial('partials/photo_uploader', ['plantingId' => null, 'gardenId' => null]) ?>
 

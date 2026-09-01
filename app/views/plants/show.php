@@ -23,6 +23,7 @@
  * @var list<array{label:string,date:string,days:?int}> $countdowns
  * @var array{parent:?array<string,mixed>,children:list<array<string,mixed>>} $lineage
  * @var array<string,mixed>|null $tag
+ * @var list<array{batch_id:int,stock_sku:string,sheet:int,tags:list<array{id:int,code:string,row:int,column:int}>}> $freeTags
  */
 $e = $view->e(...);
 $S = Carl\Domain\PlantingState::class;
@@ -151,8 +152,11 @@ $placeOf = static function (array $row): string {
 
 <?php /* The tag panel: the DESK half of QR-TAGS-SPEC Section 5.2, whose other
        half is the scan. You planned the season in Carl in February; here is
-       where a stake gets attached to what you planned. */ ?>
-<section class="card card-tight">
+       where a stake gets attached to what you planned -- picked off the
+       sheet in front of you -- and where it comes off again in October.
+       Every form here posts back to #tag, so the page comes back to this
+       panel and not to the top of the report. */ ?>
+<section class="card card-tight" id="tag">
 <?php if ($tag !== null): ?>
   <h2>Tag <span class="mono"><?= $e($tag['code']) ?></span></h2>
   <p class="muted small">
@@ -164,14 +168,75 @@ $placeOf = static function (array $row): string {
   </p>
   <p><a class="btn btn-secondary btn-small"
         href="<?= $e($app->url('t/' . $tag['code'])) ?>">Open its field screen</a></p>
+
+  <details>
+    <summary>Take this tag off</summary>
+    <form method="post" action="<?= $e($app->url('plants/' . $planting['id'] . '/tag/release')) ?>"
+          class="stack">
+      <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+      <p class="help small flush">
+        Frees the stake for another plant. The plant keeps its whole history, and the tag
+        remembers it was here.
+      </p>
+      <label class="check">
+        <input type="checkbox" name="retire" value="1">
+        <span>The stake is lost or ruined &mdash; retire the code as well, so it stops
+          counting as free</span>
+      </label>
+      <button type="submit" class="btn btn-secondary btn-small">Take it off</button>
+    </form>
+  </details>
+
+<?php if ($freeTags !== []): ?>
+  <details>
+    <summary>Swap for a different tag</summary>
+    <form method="post" action="<?= $e($app->url('plants/' . $planting['id'] . '/tag')) ?>"
+          class="stack">
+      <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+      <p class="help small flush">
+        For a stake that broke or a label that faded. The new code goes on and
+        <span class="mono"><?= $e($tag['code']) ?></span> goes back in the pool, in one step.
+      </p>
+      <label class="field">
+        <span>New code</span>
+        <?= $view->partial('partials/tag_picker', [
+              'sheets' => $freeTags, 'name' => 'code', 'selected' => '',
+              'allowNone' => false, 'id' => 'swap-code']) ?>
+      </label>
+      <button type="submit" class="btn btn-secondary btn-small">Swap</button>
+    </form>
+  </details>
+<?php endif; ?>
+
 <?php else: ?>
   <h2>No tag on this plant</h2>
-  <p class="muted small">
-    A tag is a stake with a code on it. Scan a free one and pick this plant from the
-    list, or type the code into "Find a tag" and do the same &mdash; the binding is the
-    same either way.
+<?php if ($freeTags !== []): ?>
+  <form method="post" action="<?= $e($app->url('plants/' . $planting['id'] . '/tag')) ?>"
+        class="stack">
+    <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+    <label class="field">
+      <span>Pick a free code</span>
+      <?= $view->partial('partials/tag_picker', [
+            'sheets' => $freeTags, 'name' => 'code', 'selected' => '',
+            'allowNone' => false, 'id' => 'attach-code']) ?>
+      <span class="help small">
+        <?= $e(Carl\Repo\TagRepository::countFree($freeTags)) ?> printed and free, listed by
+        sheet in the order they sit on it. Peel that label, stick it on a stake, and the
+        stake is this plant's.
+      </span>
+    </label>
+    <button type="submit" class="btn btn-secondary">Put it on this plant</button>
+  </form>
+  <p class="help small">
+    Or, standing at the plant: scan any free tag and pick this plant from the list.
   </p>
-  <p><a class="btn btn-secondary btn-small" href="<?= $e($app->url('tags')) ?>">Plant tags</a></p>
+<?php else: ?>
+  <p class="muted small">
+    A tag is a stake with a code on it; scan it and you get this plant's logging screen.
+    There are no free codes to put on one &mdash;
+    <a href="<?= $e($app->url('tags/print')) ?>">print a sheet</a> and come back here.
+  </p>
+<?php endif; ?>
 <?php endif; ?>
 </section>
 

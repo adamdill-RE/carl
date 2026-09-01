@@ -136,6 +136,13 @@ And, from Phase 8, the thing you take out to the garden:
     account to a stranger; no library, because there is no Composer here. It is
     asserted bit for bit against fixtures that an independent decoder read back
     correctly.
+  - **Binding works from both ends** (spec §5.2, finished in Phase 13). In the
+    garden: scan a free tag and pick the plant. At the desk: on any plant's
+    page, or at the foot of Start a New Plant, pick a free code off a list
+    that is shaped like the sheet in front of you — by sheet, in sheet order,
+    with the row and column of each label. The plant page also takes a tag
+    off, swaps it for another in one step, and retires a code whose stake is
+    gone; the Plant tags screen lists which stake is on which plant. Spec §14.
   - **Sheets print at home**, on either of two Avery stocks, as vector
     rectangles rather than an image — exact at whatever DPI the printer has,
     no GD, no temp file. Every sheet carries a 100 mm calibration rule, because

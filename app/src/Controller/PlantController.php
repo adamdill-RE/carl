@@ -99,9 +99,41 @@ final class PlantController extends Controller
             $errors[] = 'Say where it went in: a garden row, or a container.';
         }
 
+        // The tag, if one was chosen -- off the picker at the foot of the
+        // form, or carried in from a scan (QR-TAGS-SPEC Section 5.2, both
+        // ends). Checked HERE, before anything is written: this used to be a
+        // silent best-effort bind after the insert, which was right when the
+        // only way a code got here was a scan Carl had just said was free,
+        // and wrong once a person can pick one deliberately. A choice that is
+        // quietly dropped is the field that "stays null on every plant"
+        // (PHASE-13-HANDOFF Section 8); a choice that is refused with the
+        // reason is a form that can be corrected.
+        $tagRow = null;
+        $tagCode = \Carl\Repo\TagRepository::normalise((string) ($request->input('tag', '') ?? ''));
+        if ($tagCode !== '') {
+            $tagRow = \Carl\Repo\TagRepository::isWellFormed($tagCode) ? $this->tags()->scan($tagCode) : null;
+            if ($tagRow === null) {
+                $errors[] = 'No free tag of yours has the code ' . $tagCode . '.';
+            } elseif ($tagRow['tag_retired_at'] !== null) {
+                $errors[] = 'Tag ' . $tagCode . ' is retired. Pick another, or none.';
+            } elseif ($tagRow['planting_id'] !== null) {
+                $onName = \trim((string) $tagRow['label']) !== ''
+                    ? \trim((string) $tagRow['label'])
+                    : \trim((string) $tagRow['category'] . ' ' . (string) $tagRow['type']);
+                $errors[] = 'Tag ' . $tagCode . ' is already on ' . $onName . '. Pick another, or none.';
+            }
+        }
+
         if ($errors !== []) {
+            // The errors on the LEFT of the union. formData() carries an
+            // empty 'errors' key of its own and PHP's + keeps the left-hand
+            // value for a key both sides have, so the other way round -- which
+            // is how this read from Phase 1 to Phase 13 -- rendered the form
+            // with every error silently dropped. Nobody found out because
+            // the browser's own `required` caught the common cases first;
+            // the tag picker is the first check the browser cannot make.
             return $this->render('plants/form',
-                $this->formData($kind, $request) + ['errors' => $errors]);
+                ['errors' => $errors] + $this->formData($kind, $request));
         }
 
         $collarUsed = $request->checkbox('collar_used');
@@ -182,19 +214,17 @@ final class PlantController extends Controller
         // nightly run fetches the gap (handoff Section 8.1).
         $this->extendWeatherBackfill($startDate);
 
-        // The sow-as-you-go case: a tag was scanned, Carl said it was not
-        // assigned, and the answer was "start a new plant with this tag"
-        // (QR-TAGS-SPEC Section 6.4). Binding happens HERE, on submit, because
-        // until now there was no planting to bind to.
-        //
-        // A tag that has gone missing between the scan and the save is not an
-        // error worth losing the plant over: the plant is recorded either way
-        // and the flash says which happened.
-        $tagged = $this->bindScannedTag($request, $plantingId);
+        // Binding happens HERE, on submit, because until now there was no
+        // planting to bind to -- whether the code came from a scan ("start a
+        // new plant with this tag", QR-TAGS-SPEC Section 6.4) or off the
+        // picker. It was checked free above, before the plant was written.
+        if ($tagRow !== null) {
+            $this->tags()->bindTo((int) $tagRow['tag_id'], $plantingId);
+        }
 
-        $this->flash($tagged === null
+        $this->flash($tagRow === null
             ? 'Plant recorded. Log what happens to it from Log Plant Activity.'
-            : 'Plant recorded, and tag ' . $tagged . ' is on it. Scan that tag to log anything.');
+            : 'Plant recorded, and tag ' . $tagCode . ' is on it. Scan that tag to log anything.');
 
         return $this->redirect('plants/' . $plantingId);
     }
@@ -276,30 +306,13 @@ final class PlantController extends Controller
             // where a tag gets assigned from the desk -- the other half of
             // QR-TAGS-SPEC Section 5.2, whose first half is the scan.
             'tag'           => $this->tags()->forPlanting($plantingId),
+            // And one more for the codes still in the box, so "assign a tag"
+            // here is a picker and not a link to another screen. The
+            // statement-count tests on this page compare a big plant with a
+            // small one and a split with an unsplit; a constant on both
+            // sides is what they allow.
+            'freeTags'      => $this->tags()->freeBySheet(),
         ]);
-    }
-
-    /**
-     * Bind the tag the new-plant form carried, if it carried one and it is
-     * still free.
-     *
-     * @return string|null the code that was bound
-     */
-    private function bindScannedTag(Request $request, int $plantingId): ?string
-    {
-        $code = \Carl\Repo\TagRepository::normalise((string) ($request->input('tag', '') ?? ''));
-        if (!\Carl\Repo\TagRepository::isWellFormed($code)) {
-            return null;
-        }
-
-        $tags = $this->tags();
-        $tag = $tags->scan($code);
-        if ($tag === null || $tag['tag_retired_at'] !== null || $tag['planting_id'] !== null) {
-            return null;
-        }
-
-        $tags->bindTo((int) $tag['tag_id'], $plantingId);
-        return $code;
     }
 
     /**
@@ -393,6 +406,10 @@ final class PlantController extends Controller
             'tag'        => \Carl\Repo\TagRepository::normalise(
                 (string) ($request->input('tag', $request->query('tag', '') ?? '') ?? '')
             ),
+            // "At the foot of Start a New Plant: assign a tag" (QR-TAGS-SPEC
+            // Section 5.2). The picker shows the codes still in the box, by
+            // sheet, and a code carried in from a scan is preselected.
+            'freeTags'   => $this->tags()->freeBySheet(),
             'meta'       => self::KINDS[$kind],
             'plantTypes' => $this->reference()->plantTypesForRegion($user->regionId, $this->today()),
             'hasRegion'  => $user->hasRegion(),
