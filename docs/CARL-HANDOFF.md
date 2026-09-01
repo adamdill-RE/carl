@@ -768,6 +768,28 @@ first design and implemented nowhere, finally means something. Nothing changes
 for an account that never splits, and `20_split_test.php` asserts that rather
 than trusting it. See `docs/PHASE-8-HANDOFF.md`.
 
+### Phase 8 — QR plant tags
+
+The second phase with its scope document outside this file:
+`docs/QR-TAGS-SPEC.md`, which the split of Phase 7 was sequenced ahead of. A
+stake in the soil with a code on it, and a phone camera that turns it into
+that plant's logging screen — two taps to record a watering instead of six,
+standing in a garden holding a hose.
+
+The code identifies a reusable physical TAG rather than a plant, because
+printing has to be decoupled from planting: you print blank codes in January
+at a desk and take one out of a box in April. One tag per planting needed no
+rule — Phase 7 made a planting location-singular, so it is correct by
+construction.
+
+**Built 2026-09-01.** Migration 021; a hand-written QR encoder under
+`app/src/Qr/` (no Composer, no third-party call on a request path); label
+sheets for two Avery stocks as FPDF rectangles; `/t/{code}` at
+`Route::USER_ACCESS`, because a tag in a front garden is photographable from
+the pavement. §12 of the spec is the seven places the build diverged from it,
+and one of them — §2.2's all-uppercase URL — would have printed tags that
+404. See `docs/PHASE-9-HANDOFF.md`.
+
 ---
 
 ## 15. Explicitly deferred or dropped

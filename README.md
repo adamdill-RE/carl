@@ -129,9 +129,9 @@ And, from Phase 8, the thing you take out to the garden:
   plant, so you print a stack of blank codes in January at a desk and take one
   out of the box in April when a tray needs one — and the same stake goes into
   the ground at transplant and gets reused next season.
-  - **The QR encoder is hand-written**, in `app/src/Qr/`, ~700 lines of ISO
-    18004 scoped to what a tag needs: alphanumeric with a byte fallback, error
-    levels M and Q, versions 1–4. No QR-image web service, because that would
+  - **The QR encoder is hand-written**, in `app/src/Qr/` — 650 lines of ISO
+    18004 and about as many again of why, scoped to what a tag needs:
+    alphanumeric with a byte fallback, error levels M and Q, versions 1–4. No QR-image web service, because that would
     put a third-party call on a request path and hand every plant URL in the
     account to a stranger; no library, because there is no Composer here. It is
     asserted bit for bit against fixtures that an independent decoder read back

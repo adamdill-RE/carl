@@ -79,11 +79,12 @@ return [
         // hosting Section 5.2 is untouched -- this is the scheme and host and
         // nothing else.
         //
-        // Three other places still spell this out inline (AdminController's
-        // invitation link and two in Reminders\Digest). They predate this key
-        // and are left alone deliberately -- changing what a live mail path
-        // builds is not a change to make alongside a new feature -- but they
-        // should move here.
+        // FOUR other places still spell this out inline: AdminController's
+        // invitation link, and three in Reminders\Digest (two unsubscribe
+        // links and the app URL). They predate this key and are left alone
+        // deliberately -- changing what a live mail path builds is not a
+        // change to make alongside a new feature -- but they should move here,
+        // and PHASE-9-HANDOFF.md carries it.
         'origin' => 'https://www.reshiftmanager.com',
 
         // Upper-case the whole tag URL, which buys alphanumeric encoding: a
