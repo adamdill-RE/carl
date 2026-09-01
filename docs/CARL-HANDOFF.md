@@ -815,6 +815,7 @@ Three, and the third is a decision rather than a feature.
 backfill); three new screens; no new cron job, no new vendored file, no
 template version change — a research zip that imported yesterday imports
 today, which is why `pests.csv` still carries seven columns and not nineteen.
+See `docs/PHASE-10-HANDOFF.md`.
 
 ---
 
