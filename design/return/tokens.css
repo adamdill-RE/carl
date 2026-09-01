@@ -1,0 +1,124 @@
+/*
+ * Carl The Garden Helper — design tokens.
+ * Delivered by Claude Design, 31 August 2026. Handoff §13.5.
+ *
+ * This is the only stylesheet in the repository that names a colour. The web
+ * pages, the Chart.js report charts and the FPDF PDF reports all resolve
+ * their colours from here.
+ *
+ * TWO RULES, both load-bearing:
+ *   1. Colours are 3- or 6-digit hex. Carl\Support\Tokens recovers them with
+ *      a regex; oklch()/hsl()/rgb()/color-mix() do not match and the PDF
+ *      silently falls back to grey. OKLCH source values are in the comments.
+ *   2. Do not rename or remove a token. Adding is fine.
+ *
+ * Design intent: a field notebook read in direct sun. Warm paper ground,
+ * ink-dark text, a deep forest brand, and status colours pitched between
+ * 5:1 and 12:1 rather than at the 4.5:1 floor. Validator: Ready to ship.
+ */
+
+:root {
+  /* ---- Surfaces ---------------------------------------------------------
+     bg            the page behind everything
+     surface       every card, input and menu tile
+     surface-sunk  recessed: default notice, .badge-muted, .tier-skip, PDF row tint
+     border        card borders, table rules, timeline spine (decorative)
+     border-strong FORM CONTROL BORDERS — 3.53:1 on surface (WCAG 1.4.11).
+                   This is the row that failed in the placeholder; fixed. */
+  --carl-bg:            #f4f3ee;  /* oklch(96.1% 0.008 100) */
+  --carl-surface:       #ffffff;
+  --carl-surface-sunk:  #e9e8e0;  /* oklch(92.6% 0.012 100) */
+  --carl-border:        #d3d1c5;  /* oklch(85.1% 0.014 100) */
+  --carl-border-strong: #8a897d;  /* oklch(61.0% 0.014 100) */
+
+  /* ---- Text -------------------------------------------------------------
+     text          body copy and PDF ink
+     text-muted    help text, meta, table headers, citations
+     text-inverse  text on --carl-primary (topbar, primary buttons) */
+  --carl-text:          #191d19;  /* oklch(21.5% 0.010 145) */
+  --carl-text-muted:    #545a52;  /* oklch(45.5% 0.014 140) */
+  --carl-text-inverse:  #ffffff;
+
+  /* ---- Brand and action -------------------------------------------------
+     primary       topbar, primary buttons, timeline dots, PDF header rule
+     primary-dark  button :active, in-content links
+     primary-soft  .badge background
+     accent        THE FOCUS RING ONLY. Freed from the ET0 chart line, which
+                   now has its own --carl-chart-et0 (BRIEF §4.5). Deliberately
+                   off-palette magenta: a focus ring must never be mistaken
+                   for a brand surface or a status colour. */
+  --carl-primary:       #265c37;  /* oklch(41.5% 0.089 150) */
+  --carl-primary-dark:  #1b4227;  /* oklch(32.0% 0.070 150) */
+  --carl-primary-soft:  #e2ece3;  /* oklch(92.5% 0.020 150) */
+  --carl-accent:        #8e2c66;  /* oklch(43.0% 0.150 350) */
+
+  /* ---- Status -----------------------------------------------------------
+     Each pair renders as <colour> text on <colour>-soft fill with a
+     <colour> border: .notice-ok/-warn/-error/-info and the watering tiers. */
+  --carl-ok:            #25603a;  /* oklch(42.5% 0.090 152) */
+  --carl-ok-soft:       #e2ece3;
+  --carl-warn:          #7a5600;  /* oklch(46.0% 0.100  80) */
+  --carl-warn-soft:     #fbf0d6;  /* oklch(95.5% 0.035  90) */
+  --carl-error:         #9c1f1f;  /* oklch(43.0% 0.160  27) */
+  --carl-error-soft:    #fae5e3;  /* oklch(93.5% 0.020  25) */
+  --carl-info:          #1c4d76;  /* oklch(38.5% 0.080 245) */
+  --carl-info-soft:     #e2edf6;  /* oklch(93.5% 0.020 245) */
+
+  /* ---- Research confidence (handoff §9.1) -------------------------------
+     Three tiers of epistemic confidence, NOT three status levels. They now
+     hold their own values rather than aliasing primary/warn/text-muted, so
+     they can be tuned without moving the brand.
+       verified  green, but a hair cooler than the brand so a badge does not
+                 read as a button
+       approx    the warn amber, held one step calmer than .notice-warn
+       generic   a green-grey. "Nobody has measured this for your county yet"
+                 is not a warning; grey is the correct answer and the
+                 placeholder was right to reach for it. */
+  --carl-verified:      #245e37;  /* oklch(41.5% 0.088 155) */
+  --carl-approx:        #7a5600;  /* oklch(46.0% 0.100  80) */
+  --carl-generic:       #5a6058;  /* oklch(48.0% 0.010 145) */
+
+  /* ---- Chart data series (BRIEF §4.5) -----------------------------------
+     Dedicated names, so --carl-accent is purely the focus ring and the
+     series can be designed as a set. Built from the Okabe–Ito
+     colour-blind-safe set and tuned to clear 3:1 on --carl-surface
+     (measured 5.36 / 8.03 / 4.53 / 4.89 / 11.84:1).
+     Hot is orange, not --carl-error: a warm day is not a failure. Cold and
+     water are no longer the same colour. Run through deuteranope and
+     protanope simulation the closest remaining pair sits 42 units apart in
+     sRGB — comfortably separable — with et0 pushed to a light violet
+     specifically so it does not collapse into the blues. Shape carries the
+     rest: hot and cold are lines with points, water is bars, et0 is a line
+     and SHOULD STAY DASHED. */
+  --carl-chart-hot:     #b8460b;  /* oklch(52.0% 0.155  45) daily high */
+  --carl-chart-cold:    #00509a;  /* oklch(46.0% 0.140 250) daily low */
+  --carl-chart-water:   #0e8577;  /* oklch(48.0% 0.085 185) rainfall + watering */
+  --carl-chart-et0:     #8d5bb5;  /* oklch(48.5% 0.115 340) evapotranspiration */
+  --carl-chart-event:   #2f3a33;  /* oklch(30.0% 0.012 155) logged actions */
+  --carl-chart-grid:    #d3d1c5;  /* = --carl-border */
+  --carl-chart-axis:    #545a52;  /* = --carl-text-muted */
+
+  /* ---- QR plant tags ----------------------------------------------------
+     Contrast-critical, NOT palette. Must not be themed: a tinted QR code
+     silently fails to scan and nothing reports it. */
+  --carl-qr-ink:        #000000;
+  --carl-qr-paper:      #ffffff;
+
+  /* ---- Type -------------------------------------------------------------
+     System stack, unchanged from the placeholder. The CSP is
+     default-src 'self', so no webfont loads; the stack is already right. */
+  --carl-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --carl-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* ---- Space and shape --------------------------------------------------
+     Unchanged except --carl-shadow, which is a touch tighter and warmer so
+     a card edge still reads outdoors where a soft shadow disappears. */
+  --carl-gap:       12px;
+  --carl-gap-lg:    20px;
+  --carl-radius:     8px;
+  --carl-radius-lg: 12px;
+  --carl-shadow:    0 1px 2px rgba(25, 29, 25, .10);
+
+  /* Gloved thumbs in a garden. Do not go below 44px. */
+  --carl-touch: 44px;
+}

@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carl — palette and marks</title>
+<style>
+:root {
+  --carl-bg:#f4f3ee; --carl-surface:#ffffff; --carl-surface-sunk:#e9e8e0;
+  --carl-border:#d3d1c5; --carl-border-strong:#8a897d;
+  --carl-text:#191d19; --carl-text-muted:#545a52; --carl-text-inverse:#ffffff;
+  --carl-primary:#265c37; --carl-primary-dark:#1b4227; --carl-primary-soft:#e2ece3; --carl-accent:#8e2c66;
+  --carl-ok:#25603a; --carl-ok-soft:#e2ece3; --carl-warn:#7a5600; --carl-warn-soft:#fbf0d6;
+  --carl-error:#9c1f1f; --carl-error-soft:#fae5e3; --carl-info:#1c4d76; --carl-info-soft:#e2edf6;
+  --carl-verified:#245e37; --carl-approx:#7a5600; --carl-generic:#5a6058;
+  --carl-chart-hot:#b8460b; --carl-chart-cold:#00509a; --carl-chart-water:#0e8577;
+  --carl-chart-et0:#8d5bb5; --carl-chart-event:#2f3a33;
+  --carl-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --carl-radius:8px; --carl-radius-lg:12px; --carl-touch:44px;
+  --carl-shadow:0 1px 2px rgba(25,29,25,.10);
+}
+* { box-sizing: border-box; }
+body { margin:0; font-family:var(--carl-font); background:#e6e5df; color:var(--carl-text); padding:24px; }
+h1 { font-size:20px; margin:0 0 2px; }
+.lede { margin:0 0 22px; color:var(--carl-text-muted); font-size:14px; }
+h2.sec { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--carl-text-muted); margin:28px 0 10px; font-weight:700; }
+.sheet { display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
+.phone { width:380px; background:var(--carl-bg); border:1px solid #c8c7bd; border-radius:14px; overflow:hidden; box-shadow:0 6px 18px rgba(0,0,0,.10); }
+.topbar { display:flex; align-items:center; gap:9px; padding:10px 12px; background:var(--carl-primary); color:var(--carl-text-inverse); }
+.topbar .brand { font-weight:700; font-size:18px; }
+.topbar .spacer { flex:1; }
+.topbar .who { font-size:13px; opacity:.85; }
+.wrap { padding:12px 12px 20px; }
+.card { background:var(--carl-surface); border:1px solid var(--carl-border); border-radius:var(--carl-radius-lg); padding:14px; margin-bottom:12px; box-shadow:var(--carl-shadow); }
+.card > h2 { margin:0 0 8px; font-size:17px; }
+.muted { color:var(--carl-text-muted); }
+.small { font-size:13px; } .tiny { font-size:12px; }
+.notice { padding:10px 12px; border-radius:var(--carl-radius); border:1px solid var(--carl-border); background:var(--carl-surface-sunk); margin-bottom:12px; font-size:14px; }
+.notice-warn { background:var(--carl-warn-soft); border-color:var(--carl-warn); color:var(--carl-warn); }
+.notice-error { background:var(--carl-error-soft); border-color:var(--carl-error); color:var(--carl-error); }
+.notice-info { background:var(--carl-info-soft); border-color:var(--carl-info); color:var(--carl-info); }
+.notice-ok { background:var(--carl-ok-soft); border-color:var(--carl-ok); color:var(--carl-ok); }
+.menu { display:grid; gap:10px; grid-template-columns:1fr 1fr; }
+.menu a { display:flex; flex-direction:column; justify-content:center; min-height:var(--carl-touch); padding:14px; background:var(--carl-surface); border:1px solid var(--carl-border); border-radius:var(--carl-radius-lg); color:var(--carl-text); text-decoration:none; font-weight:600; box-shadow:var(--carl-shadow); }
+.menu a .hint { font-weight:400; font-size:12px; color:var(--carl-text-muted); }
+.badge { display:inline-block; padding:1px 7px; border-radius:10px; font-size:11px; font-weight:700; background:var(--carl-primary-soft); color:var(--carl-primary-dark); }
+.badge-muted { background:var(--carl-surface-sunk); color:var(--carl-text-muted); }
+.confidence { display:inline-block; padding:1px 6px; border-radius:10px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; border:1px solid currentColor; }
+.c-verified { color:var(--carl-verified); } .c-approx { color:var(--carl-approx); } .c-generic { color:var(--carl-generic); }
+.btn { display:inline-flex; align-items:center; justify-content:center; min-height:var(--carl-touch); padding:10px 16px; font:inherit; font-weight:600; color:var(--carl-text-inverse); background:var(--carl-primary); border:1px solid var(--carl-primary); border-radius:var(--carl-radius); }
+.btn-secondary { color:var(--carl-text); background:var(--carl-surface); border-color:var(--carl-border-strong); }
+input, select { width:100%; min-height:var(--carl-touch); padding:10px; font:inherit; color:var(--carl-text); background:var(--carl-surface); border:1px solid var(--carl-border-strong); border-radius:var(--carl-radius); }
+.focused { outline:3px solid var(--carl-accent); outline-offset:1px; }
+.matrix { width:100%; border-collapse:collapse; font-size:13px; }
+.matrix th, .matrix td { padding:6px 4px; text-align:right; border-bottom:1px solid var(--carl-border); }
+.matrix th:first-child, .matrix td:first-child { text-align:left; }
+.matrix thead th { font-size:12px; color:var(--carl-text-muted); font-weight:600; }
+.timeline { list-style:none; margin:0; padding:0; }
+.timeline > li { padding:10px 0 10px 14px; border-left:2px solid var(--carl-border); position:relative; }
+.timeline > li::before { content:""; position:absolute; left:-5px; top:16px; width:8px; height:8px; border-radius:50%; background:var(--carl-primary); }
+.timeline .when { font-size:12px; color:var(--carl-text-muted); }
+.timeline .what { font-weight:600; }
+.panel { background:var(--carl-surface); border:1px solid var(--carl-border); border-radius:var(--carl-radius-lg); padding:16px; box-shadow:var(--carl-shadow); }
+.marks { display:flex; gap:26px; align-items:center; flex-wrap:wrap; }
+.markbox { text-align:center; font-size:11px; color:var(--carl-text-muted); }
+.onbrand { background:var(--carl-primary); color:var(--carl-text-inverse); padding:10px 14px; border-radius:8px; display:flex; align-items:center; gap:8px; }
+.swatches { display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:8px; }
+.sw { font-size:10px; color:var(--carl-text-muted); }
+.sw i { display:block; height:42px; border-radius:6px; border:1px solid rgba(0,0,0,.12); }
+.legend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; align-items:center; }
+.key { display:inline-flex; align-items:center; gap:6px; }
+.key i { width:16px; height:4px; border-radius:2px; display:block; }
+a { color:var(--carl-primary-dark); }
+a:hover { color:var(--carl-primary); }
+</style>
+</head>
+<body>
+
+<h1>Carl — palette, marks, two screens</h1>
+<p class="lede">Not a redesign. The same components in <code>carl.css</code>, painted with the delivered tokens, at the 380&nbsp;px design width.</p>
+
+<h2 class="sec">The mark, at the sizes that matter</h2>
+<div class="panel marks">
+  <div class="markbox">
+    <div class="onbrand">
+      <svg viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true">
+        <path d="M23.07 7.57A11 11 0 1 0 23.07 24.43" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+        <path d="M16 24V13" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+        <path d="M16 18.2C11.4 18.6 9.1 16 9.5 12.5C13.4 12.8 16 15 16 18.2Z" fill="currentColor"/>
+        <path d="M16 18.2C20.6 18.6 22.9 16 22.5 12.5C18.6 12.8 16 15 16 18.2Z" fill="currentColor"/>
+      </svg>
+      <span style="font-weight:700;font-size:18px">Carl</span>
+    </div>
+    <div style="margin-top:6px">topbar, 24 px, currentColor</div>
+  </div>
+  <div class="markbox">
+    <svg viewBox="0 0 32 32" width="88" height="88" fill="none" style="color:var(--carl-primary)" aria-hidden="true">
+      <path d="M23.07 7.57A11 11 0 1 0 23.07 24.43" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+      <path d="M16 24V13" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+      <path d="M16 18.2C11.4 18.6 9.1 16 9.5 12.5C13.4 12.8 16 15 16 18.2Z" fill="currentColor"/>
+      <path d="M16 18.2C20.6 18.6 22.9 16 22.5 12.5C18.6 12.8 16 15 16 18.2Z" fill="currentColor"/>
+    </svg>
+    <div>mark, 88 px</div>
+  </div>
+  <div class="markbox">
+    <svg viewBox="0 0 114 32" width="228" height="64" fill="none" style="color:var(--carl-text)" aria-hidden="true">
+      <path d="M23.07 7.57A11 11 0 1 0 23.07 24.43" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+      <path d="M16 24V13" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+      <path d="M16 18.2C11.4 18.6 9.1 16 9.5 12.5C13.4 12.8 16 15 16 18.2Z" fill="currentColor"/>
+      <path d="M16 18.2C20.6 18.6 22.9 16 22.5 12.5C18.6 12.8 16 15 16 18.2Z" fill="currentColor"/>
+      <g stroke="currentColor" stroke-width="3.4" stroke-linecap="round">
+        <path d="M56.02 11.77A7 7 0 1 0 56.02 23.23"/>
+        <circle cx="72.5" cy="17.5" r="7"/>
+        <path d="M79.5 10.9V24.5"/>
+        <path d="M90 24.5V11.2"/>
+        <path d="M90 15.4C90 11.2 93.6 9.9 97.4 10.9"/>
+        <path d="M106 6.2V24.5"/>
+      </g>
+    </svg>
+    <div>lockup, login page</div>
+  </div>
+  <div class="markbox">
+    <svg viewBox="0 0 32 32" width="16" height="16" aria-hidden="true">
+      <rect width="32" height="32" rx="6" fill="#265c37"/>
+      <path d="M16 27.5V12.5" stroke="#f4f3ee" stroke-width="3.6" stroke-linecap="round"/>
+      <path d="M16 20.5C9.4 21 6.1 17.2 6.7 12.1C12.3 12.5 16 15.9 16 20.5Z" fill="#f4f3ee"/>
+      <path d="M16 20.5C22.6 21 25.9 17.2 25.3 12.1C19.7 12.5 16 15.9 16 20.5Z" fill="#f4f3ee"/>
+    </svg>
+    <svg viewBox="0 0 32 32" width="32" height="32" style="margin-left:10px" aria-hidden="true">
+      <rect width="32" height="32" rx="6" fill="#265c37"/>
+      <path d="M16 27.5V12.5" stroke="#f4f3ee" stroke-width="3.6" stroke-linecap="round"/>
+      <path d="M16 20.5C9.4 21 6.1 17.2 6.7 12.1C12.3 12.5 16 15.9 16 20.5Z" fill="#f4f3ee"/>
+      <path d="M16 20.5C22.6 21 25.9 17.2 25.3 12.1C19.7 12.5 16 15.9 16 20.5Z" fill="#f4f3ee"/>
+    </svg>
+    <div style="margin-top:6px">favicon, 16 and 32 px</div>
+  </div>
+</div>
+
+<h2 class="sec">Main menu &middot; plant page</h2>
+<div class="sheet">
+
+  <div class="phone">
+    <div class="topbar">
+      <svg viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true">
+        <path d="M23.07 7.57A11 11 0 1 0 23.07 24.43" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+        <path d="M16 24V13" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+        <path d="M16 18.2C11.4 18.6 9.1 16 9.5 12.5C13.4 12.8 16 15 16 18.2Z" fill="currentColor"/>
+        <path d="M16 18.2C20.6 18.6 22.9 16 22.5 12.5C18.6 12.8 16 15 16 18.2Z" fill="currentColor"/>
+      </svg>
+      <span class="brand">Carl</span>
+      <span class="spacer"></span>
+      <span class="who">adam</span>
+    </div>
+    <div class="wrap">
+      <div class="notice notice-error"><strong>Frost advisory</strong> &middot; tonight 23:00&ndash;08:00, low 30&nbsp;&deg;F</div>
+
+      <div class="card">
+        <h2>Today</h2>
+        <div class="small muted">Sat 31 Aug &middot; high 84&deg;F, low 61&deg;F, 0&nbsp;mm rain</div>
+        <div class="notice notice-warn" style="margin-top:10px"><strong>Water zone 2 today.</strong> 6.1&nbsp;mm ET₀ over three days, 0&nbsp;mm rain since Tuesday.</div>
+        <table class="matrix">
+          <thead><tr><th>Zone</th><th>ET₀ 3d</th><th>Rain</th><th>Tier</th></tr></thead>
+          <tbody>
+            <tr><td>Zone 1</td><td>5.4</td><td>2 mm</td><td><span class="badge-muted badge">skip</span></td></tr>
+            <tr><td>Zone 2</td><td>6.1</td><td>0 mm</td><td><span class="badge" style="background:var(--carl-warn-soft);color:var(--carl-warn)">water</span></td></tr>
+            <tr><td>Beds N</td><td>5.9</td><td>0 mm</td><td><span class="badge" style="background:var(--carl-info-soft);color:var(--carl-info)">likely</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Reminders</h2>
+        <ul class="timeline" style="margin:0">
+          <li><span class="what">Harden off the brassicas — day 4</span><div class="when">from 24 Aug</div></li>
+          <li><span class="what">Sow succession lettuce</span><div class="when">due today</div></li>
+        </ul>
+      </div>
+
+      <div class="menu">
+        <a href="#">Log activity<span class="hint">plant or garden</span></a>
+        <a href="#">Start a plant<span class="hint">indoor · sow · transplant</span></a>
+        <a href="#">View plants<span class="hint">61 living</span></a>
+        <a href="#">Gardens<span class="hint">3 zones</span></a>
+        <a href="#">Reports<span class="hint">weather + PDF</span></a>
+        <a href="#">Reference<span class="hint">companions · succession</span></a>
+      </div>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div class="topbar">
+      <svg viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true">
+        <path d="M23.07 7.57A11 11 0 1 0 23.07 24.43" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+        <path d="M16 24V13" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>
+        <path d="M16 18.2C11.4 18.6 9.1 16 9.5 12.5C13.4 12.8 16 15 16 18.2Z" fill="currentColor"/>
+        <path d="M16 18.2C20.6 18.6 22.9 16 22.5 12.5C18.6 12.8 16 15 16 18.2Z" fill="currentColor"/>
+      </svg>
+      <span class="brand">Carl</span>
+      <span class="spacer"></span>
+      <span class="who">adam</span>
+    </div>
+    <div class="wrap">
+      <div style="margin:6px 0 4px;font-size:22px;line-height:1.25;font-weight:700">Brandywine tomato</div>
+      <div class="muted small" style="margin-bottom:12px">Zone 2, row 4 &middot; started indoors 14 Mar &middot; <span class="badge">living</span></div>
+
+      <div class="card">
+        <h2>Research</h2>
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px">
+          <span class="muted">Transplant after</span><span>12 May <span class="confidence c-verified">verified</span></span>
+          <span class="muted">Days to maturity</span><span>80&ndash;90 <span class="confidence c-approx">approximate</span></span>
+          <span class="muted">Spacing</span><span>24 in <span class="confidence c-generic">traditional</span></span>
+        </div>
+        <div class="tiny muted" style="margin-top:8px">NOAA county normals, 1991&ndash;2020. <a href="#">Source</a></div>
+      </div>
+
+      <div class="card">
+        <h2>Weather over its life</h2>
+        <div class="legend" style="margin-bottom:8px">
+          <span class="key"><i style="background:var(--carl-chart-hot)"></i>high</span>
+          <span class="key"><i style="background:var(--carl-chart-cold)"></i>low</span>
+          <span class="key"><i style="background:var(--carl-chart-water)"></i>rain</span>
+          <span class="key"><i style="background:var(--carl-chart-et0)"></i>ET₀</span>
+          <span class="key"><i style="background:var(--carl-chart-event);height:8px;width:8px;border-radius:50%"></i>logged</span>
+        </div>
+        <svg viewBox="0 0 340 150" width="100%" height="150" aria-hidden="true">
+          <g stroke="var(--carl-border)" stroke-width="1">
+            <line x1="0" y1="30" x2="340" y2="30"/><line x1="0" y1="60" x2="340" y2="60"/>
+            <line x1="0" y1="90" x2="340" y2="90"/><line x1="0" y1="120" x2="340" y2="120"/>
+          </g>
+          <path d="M0 46 L48 38 L96 52 L144 30 L192 40 L240 26 L288 44 L340 34 L340 96 L288 106 L240 88 L192 100 L144 92 L96 110 L48 100 L0 104 Z" fill="var(--carl-chart-hot)" opacity=".12"/>
+          <polyline points="0,46 48,38 96,52 144,30 192,40 240,26 288,44 340,34" fill="none" stroke="var(--carl-chart-hot)" stroke-width="2.5"/>
+          <polyline points="0,104 48,100 96,110 144,92 192,100 240,88 288,106 340,96" fill="none" stroke="var(--carl-chart-cold)" stroke-width="2.5"/>
+          <g fill="var(--carl-chart-water)">
+            <rect x="30" y="126" width="10" height="14"/><rect x="112" y="118" width="10" height="22"/>
+            <rect x="200" y="132" width="10" height="8"/><rect x="286" y="122" width="10" height="18"/>
+          </g>
+          <polyline points="0,74 48,70 96,78 144,64 192,72 240,60 288,76 340,68" fill="none" stroke="var(--carl-chart-et0)" stroke-width="2.5" stroke-dasharray="6 4"/>
+          <g fill="var(--carl-chart-event)">
+            <circle cx="60" cy="14" r="4"/><circle cx="150" cy="14" r="4"/><circle cx="264" cy="14" r="4"/>
+          </g>
+        </svg>
+      </div>
+
+      <div class="card">
+        <h2>Log an action</h2>
+        <label style="display:block;font-size:14px;font-weight:600;margin-bottom:4px">Yield (oz)</label>
+        <input class="focused" value="14" aria-label="Yield">
+        <div class="tiny muted" style="margin-top:4px">Focus ring is <code>--carl-accent</code>, and only that.</div>
+        <div style="display:flex;gap:10px;margin-top:12px">
+          <span class="btn">Save</span><span class="btn btn-secondary">Cancel</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2 class="sec">Tokens</h2>
+<div class="panel">
+  <div class="swatches">
+    <div class="sw"><i style="background:#f4f3ee"></i>bg #f4f3ee</div>
+    <div class="sw"><i style="background:#ffffff"></i>surface #ffffff</div>
+    <div class="sw"><i style="background:#e9e8e0"></i>surface-sunk</div>
+    <div class="sw"><i style="background:#d3d1c5"></i>border</div>
+    <div class="sw"><i style="background:#8a897d"></i>border-strong</div>
+    <div class="sw"><i style="background:#191d19"></i>text</div>
+    <div class="sw"><i style="background:#545a52"></i>text-muted</div>
+    <div class="sw"><i style="background:#265c37"></i>primary</div>
+    <div class="sw"><i style="background:#1b4227"></i>primary-dark</div>
+    <div class="sw"><i style="background:#e2ece3"></i>primary-soft</div>
+    <div class="sw"><i style="background:#8e2c66"></i>accent</div>
+    <div class="sw"><i style="background:#25603a"></i>ok</div>
+    <div class="sw"><i style="background:#7a5600"></i>warn</div>
+    <div class="sw"><i style="background:#9c1f1f"></i>error</div>
+    <div class="sw"><i style="background:#1c4d76"></i>info</div>
+    <div class="sw"><i style="background:#245e37"></i>verified</div>
+    <div class="sw"><i style="background:#5a6058"></i>generic</div>
+    <div class="sw"><i style="background:#b8460b"></i>chart-hot</div>
+    <div class="sw"><i style="background:#00509a"></i>chart-cold</div>
+    <div class="sw"><i style="background:#0e8577"></i>chart-water</div>
+    <div class="sw"><i style="background:#8d5bb5"></i>chart-et0</div>
+    <div class="sw"><i style="background:#2f3a33"></i>chart-event</div>
+  </div>
+</div>
+
+</body>
+</html>
