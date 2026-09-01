@@ -70,6 +70,9 @@ jobs:
       - name: Brand assets survive the CSP, and the manifest points at real files
         run: php tests/check_brand_assets.php
 
+      - name: The camera and the camera roll are still separate inputs
+        run: php tests/check_photo_capture.php
+
   database:
     name: Migrations and suite (${{ matrix.db.name }})
     runs-on: ubuntu-latest

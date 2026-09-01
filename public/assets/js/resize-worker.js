@@ -7,7 +7,21 @@
  * Steps quality down first, then dimensions, until the encoded blob fits.
  * upload_max_filesize is 2 MB on this host, so the target is 1.5 MB with
  * room to spare for the multipart envelope.
+ *
+ * `imageOrientation` is asked for by name for the reason `photos.js` gives at
+ * its own decode(): the default has moved across spec vintages, a photo taken
+ * on the camera button is nearly always portrait, and GD will not straighten
+ * one that arrives sideways.
  */
+function decode(file) {
+  try {
+    return createImageBitmap(file, { imageOrientation: 'from-image' })
+      .catch(function () { return createImageBitmap(file); });
+  } catch (e) {
+    return createImageBitmap(file);
+  }
+}
+
 self.onmessage = function (event) {
   var file = event.data.file;
   var longEdge = event.data.longEdge || 1920;
@@ -19,7 +33,7 @@ self.onmessage = function (event) {
     return;
   }
 
-  createImageBitmap(file)
+  decode(file)
     .then(function (bitmap) {
       var qualities = [0.85, 0.75, 0.65];
       var edges = [longEdge, 1600, 1280, 1024];
