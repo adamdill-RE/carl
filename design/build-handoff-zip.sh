@@ -16,6 +16,11 @@
 #
 # Re-run this after changing the brief, the palette, or any file it quotes.
 #
+# Invoked with `sh`, and deliberately NOT executable: hosting Section 6.2 step 5
+# fixes modes on deploy in one pass with `chmod -R u=rwX,go=rX`, which is only
+# correct while nothing tracked carries the executable bit. CI enforces it.
+# Do not `chmod +x` this file.
+#
 # Usage:  sh design/build-handoff-zip.sh
 
 set -eu
