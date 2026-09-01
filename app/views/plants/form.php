@@ -15,7 +15,8 @@
  * @var int $rotationYears
  * @var array<string,list<array<string,mixed>>> $lists
  * @var string $today @var int|null $indoorGardenId @var string $tag
- * @var list<array{batch_id:int,stock_sku:string,sheet:int,tags:list<array{id:int,code:string,row:int,column:int}>}> $freeTags
+ * @var array{sheet:list<array<string,mixed>>,loose:list<array<string,mixed>>} $free
+ * @var list<string> $chosenTags
  * @var list<string> $errors @var array<string,mixed> $old
  */
 $e = $view->e(...);
@@ -44,7 +45,7 @@ foreach ($plantTypes as $type) {
 <?php if (($tag ?? '') !== ''): ?>
 <div class="notice notice-info">
   Tag <strong class="mono"><?= $e($tag) ?></strong> goes on this plant when you save it.
-  Change it, or pick none, at the foot of the form.
+  Add more, or untick it, at the foot of the form.
 </div>
 <?php endif; ?>
 
@@ -202,24 +203,25 @@ foreach ($plantTypes as $type) {
   </div>
 
 <?php /* "At the foot of Start a New Plant: assign a tag" (QR-TAGS-SPEC
-       Section 5.2). The picker is the codes still in the box, by sheet; a
-       code carried in from a scan ("start a new plant with this tag") is
-       preselected. Shown only when there is something to pick or something
-       was carried, so an account that has never printed a sheet is not asked
-       about a feature it does not use. The code is validated on submit and a
-       stale one is a form error, never a silent drop. */ ?>
-<?php $chosenTag = $val('tag', $tag ?? ''); ?>
-<?php if ($freeTags !== [] || $chosenTag !== ''): ?>
-  <div class="field">
-    <label for="tag">Tag (optional)</label>
-    <?= $view->partial('partials/tag_picker', [
-          'sheets' => $freeTags, 'name' => 'tag', 'selected' => $chosenTag,
-          'allowNone' => true, 'id' => 'tag']) ?>
-    <p class="help">
-      A stake with a code on it, going into the cell or the ground with this plant. Pick the
-      label off the sheet here, or leave it and put one on later from the plant's page
-      &mdash; or by scanning any free tag.
+       Section 5.2) -- and as many as the tray has cells (Section 14.7). The
+       grid is the codes still in the box; codes carried in from a scan
+       ("start a new plant with this tag") or ticked on a form that came
+       back with an error are ticked. Shown only when there is something to
+       pick or something was carried, so an account that has never printed
+       a sheet is not asked about a feature it does not use. Every code is
+       validated on submit and a stale one is a form error, never a silent
+       drop. */ ?>
+<?php if ($free['sheet'] !== [] || $free['loose'] !== [] || $chosenTags !== []): ?>
+  <div class="field" id="tags">
+    <label>Stakes (optional)</label>
+    <p class="help flush">
+      A stake with a code on it goes into each cell or beside each plant you want to scan
+      later. Tick as many as you are putting in &mdash; one for the tray, or one a cell.
+      You can also add them later from the plant's page, or by scanning any free tag.
     </p>
+    <?= $view->partial('partials/tag_picker', [
+          'free' => $free, 'name' => 'tags', 'checked' => $chosenTags,
+          'wanted' => (int) $val('quantity_initial', $kind === 'nursery_transplant' ? '1' : '12')]) ?>
   </div>
 <?php endif; ?>
 

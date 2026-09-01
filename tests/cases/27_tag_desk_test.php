@@ -1,28 +1,30 @@
 <?php
 
 /**
- * QR plant tags, the desk half (docs/QR-TAGS-SPEC.md Section 5.2, finished
- * in Phase 13).
+ * QR plant tags over a season: the desk half of Section 5.2, and a planting
+ * that carries a stake per cell (docs/QR-TAGS-SPEC.md Section 14).
  *
- * Section 5.2 says binding "works from either end" and names the second end
- * precisely: "at the foot of Start a New Plant, and on any plant's page:
- * assign a tag". Phase 8 built the first end -- the scan -- completely, and
- * built the second as a link to the pool screen. So a person at a desk in
- * February, with the season planned in Carl and a sheet of labels in front of
- * them, could not put a stake on a plant without scanning one; and once it
- * was on, could not take it off again without walking to it.
+ * Section 5.2 says binding "works from either end" and names the second end:
+ * "at the foot of Start a New Plant, and on any plant's page: assign a tag".
+ * Phase 8 built the scan end and built the desk end as a link to the pool.
+ * It also let a planting carry ONE tag -- and a planting is a tray of
+ * twenty-four cells, each with a stake in it, whose plants will go to three
+ * different beds in May.
  *
- * Three things are asserted here, and the third is the one that would
- * otherwise fail silently:
+ * What is asserted, in the order a season happens:
  *
- *  1. **The plant end works, both ways.** A free code goes on from the plant
- *     page and from the new-plant form; a stake comes off from the plant
- *     page; a swap is one step and leaves one live binding.
- *  2. **A deliberate choice is never quietly dropped.** A code that is not
- *     free is a form error with the reason and no plant is written -- not a
- *     plant recorded with the tag missing and a flash that does not say so.
- *  3. **The pool count stays honest.** Retiring one code, and un-retiring a
- *     sheet that has one retired code on it, leave that code retired.
+ *  1. **Sowing.** Start a New Plant takes as many stakes as the tray has
+ *     cells, checked before the plant is written; the free list is in code
+ *     order with a sheet's labels told apart from loose stakes.
+ *  2. **At the desk and at the tray.** The plant page adds and removes
+ *     stakes; a scanned free tag lists the tray that is part-way through
+ *     its stakes; a tagging session puts scan after scan on the same tray
+ *     until it is full, then moves on.
+ *  3. **Transplanting.** Six of twenty-four go to a bed: the stakes ticked
+ *     on the log form go with them, so scanning one in the bed opens the
+ *     planting that is actually there.
+ *  4. **Losing one, and the end of the season.** Retiring one code without
+ *     its sheet; un-retiring a sheet that has one retired code on it.
  *
  * @var Carl\Tests\Harness $t
  * @var Carl\Core\App $app
@@ -31,6 +33,7 @@
 declare(strict_types=1);
 
 use Carl\Auth\Password;
+use Carl\Domain\EventType;
 use Carl\Domain\LabelStock;
 use Carl\Domain\PlantingState;
 use Carl\Repo\GardenRepository;
@@ -77,18 +80,20 @@ $otherTags = new TagRepository($db, $other['id']);
 $otherPlantings = new PlantingRepository($db, $other['id']);
 
 $indoorId = $gardens->ensureIndoorGarden();
+$bedId = (int) $gardens->where('`name` = :n', ['n' => 'Desk Bed' . $suffix])[0]['id'];
+$bedRows = $gardens->rows($bedId);
 $plantTypeId = (int) $db->value('SELECT id FROM `plant_type` ORDER BY id LIMIT 1');
 $today = \gmdate('Y-m-d');  // utc-ok: backdates the sow closure only, never compared to an app-computed day
 
-$sow = static function (string $label, int $daysAgo = 10) use ($plantings, $plantTypeId, $indoorId, $today): int {
+$sow = static function (string $label, int $quantity = 6, int $daysAgo = 10) use ($plantings, $plantTypeId, $indoorId, $today): int {
     return $plantings->insert([
         'plant_type_id'    => $plantTypeId,
         'garden_id'        => $indoorId,
         'label'            => $label,
         'start_method'     => 'indoor_seed',
         'start_date'       => (string) Clock::addDays($today, -$daysAgo),
-        'quantity_initial' => 6,
-        'quantity_live'    => 6,
+        'quantity_initial' => $quantity,
+        'quantity_live'    => $quantity,
         'state'            => PlantingState::SEED_STARTED,
         'state_changed_at' => \gmdate('Y-m-d H:i:s'),
     ]);
@@ -96,6 +101,12 @@ $sow = static function (string $label, int $daysAgo = 10) use ($plantings, $plan
 
 $tagIdOf = static fn (string $code): int
     => (int) $db->value('SELECT id FROM `qr_tag` WHERE code = :code', ['code' => $code]);
+// The tray's id, kept rather than looked up by label: a split CHILD inherits
+// its parent's label (PlantingRepository::split()), so "the newest planting
+// called Tray Of Twelve" is the wrong one from Section 5 on.
+$ids = ['tray' => 0];
+$codesOn = static fn (int $plant): array
+    => \array_map(static fn (array $r): string => (string) $r['code'], $tags->tagsOn($plant));
 
 // ========================================================================
 // 0. Before any sheet exists
@@ -103,19 +114,19 @@ $tagIdOf = static fn (string $code): int
 
 $t->group('An account with no tags is not asked about them');
 
-$t->test('the new-plant form has no tag picker until there is a free code',
+$t->test('the new-plant form has no stake grid until there is a free code',
     function ($t) use ($client): void {
     $body = $client->get('/plants/new/indoor_seed')->body;
-    $t->notContains('name="tag"', $body, 'nothing to pick from, so no field');
+    $t->notContains('name="tags[]"', $body, 'nothing to pick from, so no field');
 });
 
-$t->test('a plant page with no free codes says to print a sheet, and offers no picker',
+$t->test('a plant page with no free codes says to print a sheet, and offers no grid',
     function ($t) use ($client, $sow): void {
     $plant = $sow('Untagged Nothing Printed');
     $body = $client->get('/plants/' . $plant)->body;
-    $t->contains('No tag on this plant', $body);
+    $t->contains('No stake on this plant', $body);
     $t->contains('print a sheet', $body);
-    $t->notContains('name="code"', $body);
+    $t->notContains('name="tags[]"', $body);
 });
 
 // One sheet of the three-across stock: 24 codes, so positions are a real
@@ -123,12 +134,14 @@ $t->test('a plant page with no free codes says to print a sheet, and offers no p
 $minted = $tags->mint(1, LabelStock::AVERY_60517);
 $codes = $minted['codes'];
 $batchId = $minted['batch_id'];
+$sorted = $codes;
+\sort($sorted, \SORT_STRING);
 
 // ========================================================================
-// 1. The free list, in the sheet's own order
+// 1. The free list: by code, and a sheet's labels apart from loose stakes
 // ========================================================================
 
-$t->group('Free codes are listed by sheet, in the order they sit on it');
+$t->group('Free codes are listed by code, with the sheet told apart from the box');
 
 $t->test('LabelStock::place() turns a minting ordinal into a row and a column', function ($t): void {
     $t->same(['sheet' => 1, 'row' => 1, 'column' => 1], LabelStock::place(LabelStock::AVERY_60517, 0));
@@ -140,227 +153,110 @@ $t->test('LabelStock::place() turns a minting ordinal into a row and a column', 
     $t->same(['sheet' => 1, 'row' => 2, 'column' => 1], LabelStock::place(LabelStock::AVERY_00757, 2));
 });
 
-$t->test('freeBySheet() is one statement and keeps sheet positions after a code is taken',
-    function ($t) use ($tags, $db, $codes, $batchId, $sow, $tagIdOf): void {
+$t->test('free() is one statement, in code order, and a used stake moves to the loose list',
+    function ($t) use ($tags, $db, $codes, $sorted, $sow, $tagIdOf): void {
     $before = $db->statementCount();
-    $sheets = $tags->freeBySheet();
-    $t->same(1, $db->statementCount() - $before, 'one statement for every sheet');
+    $free = $tags->free();
+    $t->same(1, $db->statementCount() - $before, 'one statement for the whole pool');
 
-    $t->same(1, \count($sheets));
-    $t->same($batchId, $sheets[0]['batch_id']);
-    $t->same(24, \count($sheets[0]['tags']));
-    $t->same($codes[0], $sheets[0]['tags'][0]['code']);
-    $t->same(1, $sheets[0]['tags'][0]['row']);
-    $t->same(1, $sheets[0]['tags'][0]['column']);
-    $t->same('string', \gettype($sheets[0]['tags'][0]['code']), 'codes stay strings (PHASE-9 Section 4.11)');
+    $t->same(24, \count($free['sheet']));
+    $t->same([], $free['loose'], 'nothing has been on a plant yet');
+    $t->same($sorted, \array_column($free['sheet'], 'code'), 'ascending by code, not by position');
+    $t->same('string', \gettype($free['sheet'][0]['code']), 'codes stay strings (PHASE-9 Section 4.11)');
 
-    // Take the first label off the sheet. The second is STILL row 1,
-    // column 2: its place on the sheet is its rank among every code minted
-    // there, bound or not, which is why the query reads the bound ones too.
-    $plant = $sow('Position Keeper');
+    // The first label minted is row 1, column 1 whatever its code sorts to.
+    foreach ($free['sheet'] as $tag) {
+        if ($tag['code'] === $codes[0]) {
+            $t->same(1, $tag['row']);
+            $t->same(1, $tag['column']);
+            $t->same(0, $tag['ordinal']);
+        }
+        if ($tag['code'] === $codes[5]) {
+            $t->same(2, $tag['row'], 'the sixth label is row 2, column 3 on a three-across sheet');
+            $t->same(3, $tag['column']);
+        }
+    }
+
+    // A stake that has been on a plant and come off is LOOSE: its place on
+    // the sheet means nothing any more, and it is listed by code alone.
+    $plant = $sow('Season One');
     $tags->bindTo($tagIdOf($codes[0]), $plant);
+    $tags->unbind($tagIdOf($codes[0]));
 
-    $after = $tags->freeBySheet();
-    $t->same(23, \count($after[0]['tags']));
-    $t->same($codes[1], $after[0]['tags'][0]['code']);
-    $t->same(1, $after[0]['tags'][0]['row']);
-    $t->same(2, $after[0]['tags'][0]['column'], 'the gap on the sheet is where the peeled label was');
-    $t->same(23, TagRepository::countFree($after));
+    $after = $tags->free();
+    $t->same(23, \count($after['sheet']));
+    $t->same([$codes[0]], \array_column($after['loose'], 'code'));
+    $t->same(24, TagRepository::countFree($after));
+
+    // And a stake still ON a plant is in neither list.
+    $tags->bindTo($tagIdOf($codes[1]), $plant);
+    $t->same(23, TagRepository::countFree($tags->free()));
+    $tags->unbind($tagIdOf($codes[1]));
 });
 
 // ========================================================================
-// 2. From the plant's page
+// 2. Sowing: Start a New Plant takes a tray's worth
 // ========================================================================
 
-$t->group('The plant page puts a tag on, swaps it, and takes it off');
+$t->group('Start a New Plant takes as many stakes as the tray has cells');
 
-$t->test('an untagged plant page offers the free codes with their place on the sheet',
-    function ($t) use ($client, $sow, $codes): void {
-    $plant = $sow('Wants A Tag');
-    $body = $client->get('/plants/' . $plant)->body;
-
-    $t->contains('No tag on this plant', $body);
-    $t->contains('name="code"', $body, 'the picker');
-    $t->contains('<optgroup label="Sheet ', $body, 'grouped by sheet');
-    $t->contains($codes[5], $body);
-    $t->contains('row 2, column 3', $body, 'the sixth label is row 2, column 3 on a three-across sheet');
-    $t->notContains($codes[0], $body, 'a code already on a plant is not offered');
-});
-
-$t->test('posting a free code binds it and comes back to the tag panel',
-    function ($t) use ($client, $sow, $tags, $codes): void {
-    $plant = $sow('Gets A Tag');
-    $response = $client->post('/plants/' . $plant . '/tag', ['code' => \strtolower($codes[1])]);
-
-    $t->same(303, $response->status);
-    $t->same('/carl/plants/' . $plant . '#tag', (string) $response->headers()['Location'],
-        'back to the panel, not the top of the report');
-    $t->same($codes[1], (string) $tags->forPlanting($plant)['code']);
-
-    $body = $client->get('/plants/' . $plant)->body;
-    $t->contains('Tag <span class="mono">' . $codes[1], $body);
-    $t->contains('Take this tag off', $body);
-    $t->contains('Swap for a different tag', $body);
-});
-
-$t->test('a code that is on another plant is refused and names it',
-    function ($t) use ($client, $sow, $tags, $codes): void {
-    $plant = $sow('Wants Someone Elses');
-    $client->post('/plants/' . $plant . '/tag', ['code' => $codes[1]]);
-
-    $t->same(null, $tags->forPlanting($plant), 'nothing bound');
-    $body = $client->get('/plants/' . $plant)->body;
-    $t->contains('is on Gets A Tag', $body, 'the flash says where it is');
-    $t->contains('Take it off that plant first', $body);
-});
-
-$t->test('a code that is not one of yours reads the same as one that does not exist',
-    function ($t) use ($client, $sow, $tags, $otherTags): void {
-    $plant = $sow('Wants A Strangers');
-    $stranger = $otherTags->mint(1, LabelStock::AVERY_00757)['codes'][0];
-
-    $client->post('/plants/' . $plant . '/tag', ['code' => $stranger]);
-    $strangerBody = $client->get('/plants/' . $plant)->body;
-    $client->post('/plants/' . $plant . '/tag', ['code' => 'ZZZZZZ']);
-    $unknownBody = $client->get('/plants/' . $plant)->body;
-
-    $t->same(null, $tags->forPlanting($plant));
-    $t->contains('No tag of yours has the code ' . $stranger, $strangerBody);
-    $t->contains('No tag of yours has the code ZZZZZZ', $unknownBody);
-});
-
-$t->test('a swap puts the new code on and the old one back, in one step',
-    function ($t) use ($client, $sow, $tags, $db, $codes, $tagIdOf): void {
-    $plant = $sow('Stake Broke');
-    $tags->bindTo($tagIdOf($codes[2]), $plant);
-
-    $response = $client->post('/plants/' . $plant . '/tag', ['code' => $codes[3]]);
-    $t->same(303, $response->status);
-
-    $t->same($codes[3], (string) $tags->forPlanting($plant)['code'], 'the new one is on');
-    $t->same(null, $tags->scan($codes[2])['planting_id'], 'the old one is free');
-
-    // ONE live binding for the plant, and the old one CLOSED, not deleted:
-    // "this tag was on that plant" is a fact about a real object
-    // (PHASE-9-HANDOFF Section 4.3).
-    $live = (int) $db->value(
-        'SELECT COUNT(*) FROM `qr_tag_binding` WHERE planting_id = :p AND unbound_at IS NULL',
-        ['p' => $plant]
-    );
-    $closed = (int) $db->value(
-        'SELECT COUNT(*) FROM `qr_tag_binding` WHERE planting_id = :p AND unbound_at IS NOT NULL',
-        ['p' => $plant]
-    );
-    $t->same(1, $live);
-    $t->same(1, $closed);
-
-    $body = $client->get('/plants/' . $plant)->body;
-    $t->contains($codes[2] . ' is back in the pool', $body);
-});
-
-$t->test('taking the tag off from the plant page frees it, and can retire it',
-    function ($t) use ($client, $sow, $tags, $codes, $tagIdOf): void {
-    $plant = $sow('Pulled The Stake');
-    $tags->bindTo($tagIdOf($codes[4]), $plant);
-    $freeBefore = $tags->pool()['free'];
-
-    $response = $client->post('/plants/' . $plant . '/tag/release', []);
-    $t->same(303, $response->status);
-    $t->same(null, $tags->forPlanting($plant));
-    $t->same($freeBefore + 1, $tags->pool()['free'], 'back in the pool');
-
-    // The same, ticking "the stake is lost or ruined".
-    $tags->bindTo($tagIdOf($codes[4]), $plant);
-    $client->post('/plants/' . $plant . '/tag/release', ['retire' => '1']);
-    $t->same(null, $tags->forPlanting($plant));
-    $t->ok($tags->scan($codes[4])['tag_retired_at'] !== null, 'retired as well');
-    $t->same($freeBefore, $tags->pool()['free'], 'and NOT counted as free');
-    $t->same(1, $tags->pool()['retired']);
-});
-
-$t->test('a retired code cannot be put on a plant until it is put back',
-    function ($t) use ($client, $sow, $tags, $codes): void {
-    $plant = $sow('Wants A Retired One');
-    $client->post('/plants/' . $plant . '/tag', ['code' => $codes[4]]);
-    $t->same(null, $tags->forPlanting($plant));
-    $t->contains('is retired', $client->get('/plants/' . $plant)->body);
-});
-
-$t->test('another account\'s plant is a 404 from this end too',
-    function ($t) use ($client, $otherPlantings, $plantTypeId, $today, $codes): void {
-    $theirs = $otherPlantings->insert([
-        'plant_type_id'    => $plantTypeId,
-        'label'            => 'Not Yours',
-        'start_method'     => 'indoor_seed',
-        'start_date'       => $today,
-        'quantity_initial' => 1,
-        'quantity_live'    => 1,
-        'state'            => PlantingState::SEED_STARTED,
-        'state_changed_at' => \gmdate('Y-m-d H:i:s'),
-    ]);
-    $t->same(404, $client->post('/plants/' . $theirs . '/tag', ['code' => $codes[5]])->status);
-    $t->same(404, $client->post('/plants/' . $theirs . '/tag/release', [])->status);
-});
-
-// ========================================================================
-// 3. From Start a New Plant
-// ========================================================================
-
-$t->group('Start a New Plant picks a tag at the foot of the form');
-
-$t->test('the form offers the free codes, and preselects one carried in from a scan',
+$t->test('the form offers the free codes as a grid, and pre-ticks one carried in from a scan',
     function ($t) use ($client, $codes): void {
     $body = $client->get('/plants/new/indoor_seed')->body;
-    $t->contains('name="tag"', $body);
-    $t->contains('>No tag</option>', $body, 'none is the default');
-    $t->contains($codes[6], $body);
-    $t->notContains('name="tag" value=', $body, 'no hidden carry any more: the picker is the field');
+    $t->contains('name="tags[]"', $body);
+    $t->contains('Still on a sheet', $body);
+    $t->contains('Loose stakes', $body, 'the two stakes that came off in group 1');
+    $t->contains('value="' . $codes[6] . '"', $body);
+    $t->notContains('<select id="tag"', $body, 'a grid, not a dropdown: a tray takes twenty-four at once');
 
     // "Start a new plant with this tag" from the bind screen.
     $carried = $client->get('/plants/new/indoor_seed', ['tag' => \strtolower($codes[6])])->body;
-    $t->contains('value="' . $codes[6] . '" selected', $carried, 'preselected');
+    $t->contains('value="' . $codes[6] . '"' . "\n               checked", $carried, 'pre-ticked');
     $t->contains('goes on this plant when you save it', $carried);
 });
 
-$t->test('saving with a code binds it', function ($t) use ($client, $plantings, $tags, $plantTypeId, $codes): void {
+$t->test('saving with twelve codes puts twelve stakes on the tray',
+    function ($t) use ($client, $plantings, $tags, $plantTypeId, $codes, $codesOn, &$ids): void {
+    $twelve = \array_slice($codes, 2, 12);
     $response = $client->post('/plants', [
         'start_method' => 'indoor_seed', 'plant_type_id' => (string) $plantTypeId,
-        'quantity_initial' => '12', 'label' => 'Sown With A Tag',
-        'tag' => $codes[7],
+        'quantity_initial' => '12', 'label' => 'Tray Of Twelve',
+        'tags' => \array_map('strtolower', $twelve),
     ]);
     $t->same(303, $response->status);
 
-    $plant = (int) $plantings->where('`label` = :l', ['l' => 'Sown With A Tag'], '`id` DESC', 1)[0]['id'];
-    $t->same($codes[7], (string) $tags->forPlanting($plant)['code']);
-    $t->contains('tag ' . $codes[7] . ' is on it', $client->get('/plants/' . $plant)->body);
+    $plant = (int) $plantings->where('`label` = :l', ['l' => 'Tray Of Twelve'], '`id` DESC', 1)[0]['id'];
+    $ids['tray'] = $plant;
+    $on = $codesOn($plant);
+    \sort($on, \SORT_STRING);
+    $expected = $twelve;
+    \sort($expected, \SORT_STRING);
+    $t->same($expected, $on, 'all twelve, no more');
+    $t->contains('12 stakes on it', $client->get('/plants/' . $plant)->body);
+
+    // The list screen says how many rather than printing twelve codes.
+    $t->contains('12 stakes', $client->get('/plants')->body);
 });
 
-$t->test('saving with a code that is not free is a form error, and no plant is written',
+$t->test('one code that is not free is a form error, and no plant is written',
     function ($t) use ($client, $plantings, $plantTypeId, $codes): void {
-    // The rule this whole file is for. Phase 8 bound best-effort after the
-    // insert and said "Plant recorded" either way, which was right when the
-    // only way a code arrived was a scan Carl had just called free. A
-    // deliberate pick that is quietly dropped is a tag that is on the stake
-    // and not in Carl, found in July.
+    // The rule this file is for. Phase 8 bound best-effort after the insert
+    // and said "Plant recorded" either way, which was right when the only
+    // way a code arrived was a scan Carl had just called free. A deliberate
+    // tick that is quietly dropped is a stake in a cell that Carl does not
+    // know about, found in July.
     $before = $plantings->count();
 
     $response = $client->post('/plants', [
         'start_method' => 'indoor_seed', 'plant_type_id' => (string) $plantTypeId,
         'quantity_initial' => '12', 'label' => 'Should Not Exist',
-        'tag' => $codes[7],
+        'tags' => [$codes[14], $codes[2]],   // 2 is on the tray of twelve
     ]);
     $t->same(200, $response->status, 'the form comes back');
-    $t->contains('is already on Sown With A Tag', $response->body);
-    $t->contains('value="' . $codes[7] . '" selected', $response->body, 'with the choice still in it');
+    $t->contains('is already on Tray Of Twelve', $response->body);
+    $t->contains('value="' . $codes[14] . '"' . "\n               checked", $response->body,
+        'with the good tick still in it');
     $t->same($before, $plantings->count(), 'and nothing was written');
-
-    $retired = $client->post('/plants', [
-        'start_method' => 'indoor_seed', 'plant_type_id' => (string) $plantTypeId,
-        'quantity_initial' => '12', 'label' => 'Should Not Exist Either',
-        'tag' => $codes[4],
-    ]);
-    $t->contains('is retired', $retired->body);
-    $t->same($before, $plantings->count());
 });
 
 $t->test('every other validation error on the form is shown too',
@@ -381,43 +277,331 @@ $t->test('every other validation error on the form is shown too',
     $t->same($before, $plantings->count());
 });
 
-$t->test('no tag is still fine', function ($t) use ($client, $plantings, $tags, $plantTypeId): void {
+$t->test('no stakes is still fine', function ($t) use ($client, $plantings, $tags, $plantTypeId): void {
     $client->post('/plants', [
         'start_method' => 'indoor_seed', 'plant_type_id' => (string) $plantTypeId,
-        'quantity_initial' => '12', 'label' => 'Sown Bare', 'tag' => '',
+        'quantity_initial' => '12', 'label' => 'Sown Bare',
     ]);
     $plant = (int) $plantings->where('`label` = :l', ['l' => 'Sown Bare'], '`id` DESC', 1)[0]['id'];
-    $t->same(null, $tags->forPlanting($plant));
+    $t->same([], $tags->tagsOn($plant));
 });
 
 // ========================================================================
-// 4. The directory on the Plant tags screen
+// 3. The plant page: on, more, off, lost
 // ========================================================================
 
-$t->group('The Plant tags screen says which stake is on which plant');
+$t->group('The plant page puts stakes on, adds more, and takes them off');
 
-$t->test('tags on plants are listed with the plant, and a stake comes off from the list',
-    function ($t) use ($client, $tags, $codes): void {
+$t->test('an unstaked plant page offers the grid; ticking three puts three on',
+    function ($t) use ($client, $sow, $tags, $codes, $codesOn): void {
+    $plant = $sow('Wants Stakes', 6);
+    $body = $client->get('/plants/' . $plant)->body;
+    $t->contains('No stake on this plant', $body);
+    $t->contains('Put stakes on it', $body);
+    $t->contains('name="tags[]"', $body);
+    $t->notContains('value="' . $codes[2] . '"', $body, 'a code already on a plant is not offered');
+
+    $three = [$codes[14], $codes[15], $codes[16]];
+    $response = $client->post('/plants/' . $plant . '/tag', ['tags' => $three]);
+    $t->same(303, $response->status);
+    $t->same('/carl/plants/' . $plant . '#tag', (string) $response->headers()['Location'],
+        'back to the panel, not the top of the report');
+    $t->same($three, $codesOn($plant), 'in the order they went on');
+
+    $body = $client->get('/plants/' . $plant)->body;
+    $t->contains('3 stakes on this plant', $body);
+    $t->contains('room for more', $body, 'six living, three stakes');
+    $t->contains('Add more stakes', $body);
+    $t->contains('Take all 3 off', $body);
+});
+
+$t->test('a batch with one bad code puts nothing on, and names the problem',
+    function ($t) use ($client, $sow, $tags, $codes, $otherTags): void {
+    $plant = $sow('All Or Nothing', 6);
+    $stranger = $otherTags->mint(1, LabelStock::AVERY_00757)['codes'][0];
+
+    $client->post('/plants/' . $plant . '/tag', ['tags' => [$codes[17], $codes[14], $stranger]]);
+    $t->same([], $tags->tagsOn($plant), 'nothing bound');
+
+    $body = $client->get('/plants/' . $plant)->body;
+    $t->contains('Nothing was put on', $body);
+    $t->contains($codes[14] . ' is on Wants Stakes', $body, 'the one on another plant is named');
+    $t->contains('no tag of yours has the code ' . $stranger, $body,
+        'a stranger\'s reads the same as one that does not exist');
+});
+
+$t->test('one stake comes off by id, and "lost" retires it; the rest stay',
+    function ($t) use ($client, $plantings, $tags, $codes, $codesOn, $tagIdOf, $ids): void {
+    $plant = (int) $plantings->where('`label` = :l', ['l' => 'Wants Stakes'], '`id` DESC', 1)[0]['id'];
+    $freeBefore = $tags->pool()['free'];
+
+    $client->post('/plants/' . $plant . '/tag/release', ['tag_id' => (string) $tagIdOf($codes[15])]);
+    $t->same([$codes[14], $codes[16]], $codesOn($plant), 'only the one asked for');
+    $t->same($freeBefore + 1, $tags->pool()['free'], 'back in the pool');
+
+    // Lost: off AND retired, so a stake in the bin stops counting as free.
+    $client->post('/plants/' . $plant . '/tag/release',
+        ['tag_id' => (string) $tagIdOf($codes[16]), 'retire' => '1']);
+    $t->same([$codes[14]], $codesOn($plant));
+    $t->ok($tags->scan($codes[16])['tag_retired_at'] !== null, 'retired as well');
+    $t->same($freeBefore + 1, $tags->pool()['free'], 'NOT counted as free');
+
+    // An id that is not on this plant does nothing to any plant.
+    $tray = $ids['tray'];
+    $client->post('/plants/' . $plant . '/tag/release', ['tag_id' => (string) $tagIdOf($codes[2])]);
+    $t->same(12, \count($tags->tagsOn($tray)), 'the tray is untouched');
+    $t->same([$codes[14]], $codesOn($plant));
+
+    // And no id at all is all of them.
+    $tags->bindTo($tagIdOf($codes[15]), $plant);
+    $client->post('/plants/' . $plant . '/tag/release', []);
+    $t->same([], $codesOn($plant));
+});
+
+$t->test('a retired code cannot be put on a plant until it is put back',
+    function ($t) use ($client, $sow, $tags, $codes): void {
+    $plant = $sow('Wants A Retired One');
+    $client->post('/plants/' . $plant . '/tag', ['tags' => [$codes[16]]]);
+    $t->same([], $tags->tagsOn($plant));
+    $t->contains('is retired', $client->get('/plants/' . $plant)->body);
+});
+
+$t->test('another account\'s plant is a 404 from this end too',
+    function ($t) use ($client, $otherPlantings, $plantTypeId, $today, $codes): void {
+    $theirs = $otherPlantings->insert([
+        'plant_type_id'    => $plantTypeId,
+        'label'            => 'Not Yours',
+        'start_method'     => 'indoor_seed',
+        'start_date'       => $today,
+        'quantity_initial' => 1,
+        'quantity_live'    => 1,
+        'state'            => PlantingState::SEED_STARTED,
+        'state_changed_at' => \gmdate('Y-m-d H:i:s'),
+    ]);
+    $t->same(404, $client->post('/plants/' . $theirs . '/tag', ['tags' => [$codes[17]]])->status);
+    $t->same(404, $client->post('/plants/' . $theirs . '/tag/release', [])->status);
+});
+
+// ========================================================================
+// 4. At the tray: a scanned free tag, and the session
+// ========================================================================
+
+$t->group('A scanned free tag offers the tray that is part-way through its stakes');
+
+$t->test('the bind screen lists plants with no stake first, then part-staked ones, then the full under the fold',
+    function ($t) use ($client, $sow, $tags, $codes, $tagIdOf): void {
+    // Section 6.4 said "untagged plants"; Section 14.7 makes it "plants
+    // that still want stakes". The tray with three of six is exactly the
+    // plant you are standing at with the fourth stake in your hand.
+    $none = $sow('Bare Tray', 6, 1);
+    $part = $sow('Part Tray', 6, 1);
+    $full = $sow('Full Pot', 1, 1);
+    $tags->bindTo($tagIdOf($codes[17]), $part);
+    $tags->bindTo($tagIdOf($codes[18]), $full);
+
+    $body = $client->get('/t/' . $codes[19])->body;
+    $t->contains("isn't assigned yet", $body);
+    $t->contains('Bare Tray', $body);
+    $t->contains('no stake yet', $body);
+    $t->contains('Part Tray', $body);
+    $t->contains('1 of 6 stakes', $body);
+    $t->contains('Plants with a stake for every plant', $body);
+    $t->contains('Full Pot', $body, 'still offered, under the fold: the count is a guide');
+    $t->notContains('Replace a tag that was lost or ruined', $body, 'no replace path: a plant just takes another');
+    $t->ok(\strpos($body, 'Bare Tray') < \strpos($body, 'Part Tray'), 'none first');
+    $t->ok(\strpos($body, 'Part Tray') < \strpos($body, 'Full Pot'), 'then part, then full');
+
+    // A tap on the part-staked tray simply adds.
+    $client->post('/t/' . $codes[19] . '/bind', ['planting_id' => (string) $part]);
+    $t->same(2, \count($tags->tagsOn($part)));
+});
+
+$t->test('a tagging session puts scan after scan on the same tray until it is full, then moves on',
+    function ($t) use ($client, $sow, $tags, $codes, $codesOn, $tagIdOf): void {
+    // Section 6.5: "the scan is the confirm. Twelve scans, zero taps." Phase
+    // 8 rendered the bind screen on every scan, so the strip named the
+    // next plant and then asked for a tap anyway.
+    // Both today, the tray sown second so it is the newest bare plant and
+    // Session Next is the one after it.
+    $next = $sow('Session Next', 1, 0);
+    $tray = $sow('Session Tray', 3, 0);
+    $client->post('/tags/session', ['action' => 'start']);
+
+    // The first scan goes on the newest plant with no stake, and lands on
+    // the field screen with the undo, not on the bind screen.
+    $response = $client->get('/t/' . $codes[20]);
+    $t->same(303, $response->status, 'bound on the scan, no tap');
+    $t->contains('/t/' . $codes[20] . '?bound=', (string) $response->headers()['Location']);
+    $t->same([$codes[20]], $codesOn($tray));
+
+    $strip = $client->get('/tags')->body;
+    $t->contains('Filling Session Tray', $strip);
+    $t->contains('1 of 3 stakes', $strip);
+    $t->contains('Next plant', $strip);
+
+    // The next two scans stay on the tray.
+    $client->get('/t/' . $codes[21]);
+    $client->get('/t/' . $codes[22]);
+    $t->same([$codes[20], $codes[21], $codes[22]], $codesOn($tray), 'three scans, one tray');
+
+    // Full. The fourth goes on the next plant with no stake.
+    $client->get('/t/' . $codes[23]);
+    $t->same(3, \count($tags->tagsOn($tray)), 'the tray is full');
+    $t->same([$codes[23]], $codesOn($next));
+
+    // A bound tag scanned mid-session is the field screen and consumes nothing.
+    $t->same(200, $client->get('/t/' . $codes[20])->status);
+
+    $client->post('/tags/session', ['action' => 'stop']);
+    $t->notContains('Stop tagging', $client->get('/')->body);
+});
+
+$t->test('"Next plant" leaves a tray before it is full', function ($t) use ($client, $sow, $tags, $codes, $codesOn, $tagIdOf): void {
+    // A row of a hundred carrots gets one stake and a tap, not a hundred
+    // scans. Free two codes for it.
+    $tags->unbind($tagIdOf($codes[21]));
+    $tags->unbind($tagIdOf($codes[22]));
+    // Both today, beans first, so carrots are the newest bare plant and
+    // beans the one after them.
+    $beans = $sow('Bean Row', 30, 0);
+    $carrots = $sow('Carrot Row', 100, 0);
+    $client->post('/tags/session', ['action' => 'start']);
+
+    $client->get('/t/' . $codes[21]);
+    $t->same([$codes[21]], $codesOn($carrots), 'the newest bare plant');
+    $t->contains('1 of 100 stakes', $client->get('/tags')->body);
+
+    $client->post('/tags/session', ['action' => 'next']);
+    $client->get('/t/' . $codes[22]);
+    $t->same([$codes[22]], $codesOn($beans), 'moved on');
+    $t->same(1, \count($tags->tagsOn($carrots)));
+
+    $client->post('/tags/session', ['action' => 'stop']);
+});
+
+// ========================================================================
+// 5. Transplanting: the stakes go with the plants
+// ========================================================================
+
+$t->group('Six of twenty-four go to a bed, and their stakes go with them');
+
+$t->test('the log form lists the stakes, pre-ticks the one it was reached through, and moves the ticked ones with a split',
+    function ($t) use ($client, $tags, $db, $codes, $codesOn, $tagIdOf, $bedId, $bedRows, $ids): void {
+    $tray = $ids['tray'];
+    $on = $codesOn($tray);
+    $t->same(12, \count($on));
+
+    // From the field screen of one stake -- scanned standing in the bed.
+    $field = $client->get('/t/' . $on[0])->body;
+    $t->contains('log/' . $tray . '?tag=' . $on[0], $field, 'the field screen carries its own code');
+
+    $form = $client->get('/log/' . $tray, ['tag' => $on[0]])->body;
+    $t->contains('Which stakes went with them?', $form);
+    $t->contains('name="move_tags[]"', $form);
+    $t->contains('value="' . $tagIdOf($on[0]) . '"' . "\n                 checked", $form, 'the scanned stake is ticked');
+    $t->notContains('value="' . $tagIdOf($on[1]) . '"' . "\n                 checked", $form, 'the others are not');
+
+    // Four of the twelve go to the bed, with four stakes.
+    $moving = [$on[0], $on[3], $on[5], $on[7]];
+    $response = $client->post('/log/' . $tray, [
+        'event_type'    => EventType::TRANSPLANTED,
+        'move_quantity' => '4',
+        'garden_id'     => (string) $bedId,
+        'garden_row_id' => (string) $bedRows[0]['id'],
+        'move_tags'     => \array_map($tagIdOf, $moving),
+    ]);
+    $t->same(303, $response->status);
+    $location = (string) $response->headers()['Location'];
+    $childId = (int) \substr($location, \strrpos($location, '/') + 1);
+    $t->ok($childId > 0 && $childId !== $tray, 'a split: the four are their own planting');
+
+    $childCodes = $codesOn($childId);
+    \sort($childCodes, \SORT_STRING);
+    $expected = $moving;
+    \sort($expected, \SORT_STRING);
+    $t->same($expected, $childCodes, 'the four stakes are on the four plants in the bed');
+    $t->same(8, \count($tags->tagsOn($tray)), 'and eight stay in the tray');
+
+    // And the flash said so (read first: the next GET would consume it).
+    $t->contains('4 stakes went with them', $client->get('/plants/' . $childId)->body);
+
+    // Scanning a moved stake opens the planting that is actually there.
+    $t->contains('Desk Bed', $client->get('/t/' . $on[3])->body);
+
+    // Each stake's history says "the tray, then the bed".
+    $history = $tags->scan($on[3]);
+    $t->same($childId, (int) $history['planting_id']);
+    $closed = (int) $db->value(
+        'SELECT COUNT(*) FROM `qr_tag_binding` WHERE tag_id = :t AND planting_id = :p AND unbound_at IS NOT NULL',
+        ['t' => $tagIdOf($on[3]), 'p' => $tray]
+    );
+    $t->same(1, $closed, 'the tray binding is closed, not deleted');
+});
+
+$t->test('a stake that is not on the planting cannot be moved by a forged form',
+    function ($t) use ($client, $plantings, $tags, $codes, $tagIdOf, $bedId, $bedRows, $ids): void {
+    $tray = $ids['tray'];
+    $elsewhere = (int) $plantings->where('`label` = :l', ['l' => 'Part Tray'], '`id` DESC', 1)[0]['id'];
+    $foreign = (string) $tags->tagsOn($elsewhere)[0]['code'];
+
+    $response = $client->post('/log/' . $tray, [
+        'event_type'    => EventType::TRANSPLANTED,
+        'move_quantity' => '2',
+        'garden_id'     => (string) $bedId,
+        'garden_row_id' => (string) $bedRows[1]['id'],
+        'move_tags'     => [(string) $tagIdOf($foreign)],
+    ]);
+    $t->same(303, $response->status);
+    $t->same($elsewhere, (int) $tags->scan($foreign)['planting_id'], 'still where it was');
+});
+
+$t->test('moving all of them moves nothing: the stakes stay on the planting that moved',
+    function ($t) use ($client, $sow, $tags, $codes, $codesOn, $tagIdOf, $bedId, $bedRows): void {
+    $tags->retireTag($tagIdOf($codes[16]), false);
+    $pot = $sow('Whole Pot', 2, 5);
+    $tags->bindTo($tagIdOf($codes[16]), $pot);
+
+    $client->post('/log/' . $pot, [
+        'event_type'    => EventType::TRANSPLANTED,
+        'garden_id'     => (string) $bedId,
+        'garden_row_id' => (string) $bedRows[1]['id'],
+        'move_tags'     => [(string) $tagIdOf($codes[16])],
+    ]);
+    $t->same([$codes[16]], $codesOn($pot), 'no split, so nothing to move to');
+});
+
+// ========================================================================
+// 6. The directory on the Plant tags screen
+// ========================================================================
+
+$t->group('The Plant tags screen says which stakes are on which plant');
+
+$t->test('stakes are grouped by plant, and all of a plant\'s stakes come off from the list',
+    function ($t) use ($client, $sow, $tags, $codes, $tagIdOf, $ids): void {
+    $tray = $ids['tray'];
     $body = $client->get('/tags')->body;
-    $t->contains('Tags on plants', $body);
-    $t->contains($codes[7], $body);
-    $t->contains('Sown With A Tag', $body);
-    $t->contains('Free codes, by sheet', $body);
-    $t->contains('row 3, column 1', $body, 'the seventh free label -- the sixth was peeled');
+    $t->contains('Stakes on plants', $body);
+    $t->contains('Tray Of Twelve', $body);
+    $t->contains('8 stakes', $body);
+    $t->contains('Free codes (', $body);
+    $t->contains('Loose stakes, used before', $body);
 
-    // "Take off" from the directory comes back to the directory.
-    $response = $client->post('/t/' . $codes[7] . '/release', ['return' => 'tags']);
+    $response = $client->post('/plants/' . $tray . '/tag/release', ['return' => 'tags']);
+    $t->same(303, $response->status);
+    $t->same([], $tags->tagsOn($tray), 'all eight off');
+
+    // Release from the tag's end with the hint comes back to the directory,
+    // not to the freed tag's bind screen.
+    $pot = $sow('Directory Pot', 1);
+    $tags->bindTo($tagIdOf($codes[14]), $pot);
+    $response = $client->post('/t/' . $codes[14] . '/release', ['return' => 'tags']);
     $t->same(303, $response->status);
     $t->same('/carl/tags', (string) $response->headers()['Location']);
-    $t->same(null, $tags->scan($codes[7])['planting_id']);
-
-    // Without the hint it goes where it always did: the freed tag's screen.
-    $t->contains('/t/' . $codes[1],
-        (string) $client->post('/t/' . $codes[1] . '/release', [])->headers()['Location']);
+    $t->same([], $tags->tagsOn($pot));
 });
 
 // ========================================================================
-// 5. Retiring one code, and what un-retiring a sheet does to it
+// 7. Retiring one code, and what un-retiring a sheet does to it
 // ========================================================================
 
 $t->group('One code can be retired without its sheet');
@@ -464,33 +648,6 @@ $t->test('un-retiring a sheet leaves a code retired on its own where it was',
     $t->ok($tags->scan($codes[10])['tag_retired_at'] !== null, 'the snapped one is still gone');
     $t->same(null, $tags->findBatch($batchId)['retired_at']);
 
-    // And the sheet's page says so, with the one way back.
     $tags->retireTag($tagIdOf($codes[10]), false);
     $t->same(null, $tags->scan($codes[10])['tag_retired_at']);
-});
-
-// ========================================================================
-// 6. The bind screen's replacement path
-// ========================================================================
-
-$t->group('Replacing a lost tag from the scan end picks the plant by name');
-
-$t->test('the bind screen lists tagged plants with their code, not a box for an id',
-    function ($t) use ($client, $tags, $sow, $codes, $tagIdOf): void {
-    $plant = $sow('Lost Its Stake');
-    $tags->bindTo($tagIdOf($codes[12]), $plant);
-
-    $body = $client->get('/t/' . $codes[13])->body;
-    $t->contains("isn't assigned yet", $body);
-    $t->contains('<select name="planting_id"', $body);
-    $t->contains('Lost Its Stake &middot; now ' . $codes[12], $body);
-    $t->notContains('type="number" name="planting_id"', $body, 'nobody knows a plant\'s id');
-
-    // Without the tick it is refused, as it always was (Section 6.4 item 3).
-    $client->post('/t/' . $codes[13] . '/bind', ['planting_id' => (string) $plant]);
-    $t->same($codes[12], (string) $tags->forPlanting($plant)['code']);
-
-    $client->post('/t/' . $codes[13] . '/bind', ['planting_id' => (string) $plant, 'replace' => '1']);
-    $t->same($codes[13], (string) $tags->forPlanting($plant)['code']);
-    $t->same(null, $tags->scan($codes[12])['planting_id'], 'the lost one is back in the pool');
 });

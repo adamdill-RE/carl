@@ -649,3 +649,24 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
  * printer has, so nothing is lost.
  */
 .qr-panel .qr { width: 120px; }
+
+/*
+ * The stake grid (docs/QR-TAGS-SPEC.md Section 14.7): free codes as
+ * checkboxes, as many across as the width allows, so a tray's worth can be
+ * ticked in a glance. Each cell is one tap target with the whole label
+ * clickable; the code is mono because it is read against a printed one.
+ */
+.tag-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 4px 8px;
+  margin: 6px 0 10px;
+}
+.tag-cell {
+  display: flex; align-items: center; gap: 6px; min-height: var(--carl-touch);
+  font-weight: 400; cursor: pointer; white-space: nowrap;
+}
+.tag-cell input { width: 18px; height: 18px; margin: 0; flex: 0 0 auto; }
+.tag-cell .mono { letter-spacing: .06em; }
+.tag-sheet + .tag-sheet { margin-top: 8px; }
+.tag-next-count { width: 3.5em; padding: 2px 4px; min-height: 0; font-size: 12px; }
+/* The codes on one plant in the directory: wrap, and read as a row of tags. */
+.tag-codes { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 2px; font-size: 13px; }

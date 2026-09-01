@@ -1,57 +1,97 @@
 <?php
 /**
- * The free-code picker: "here is a plant, which tag?" (docs/QR-TAGS-SPEC.md
- * Section 5.2, the desk direction). On the plant page and at the foot of
- * Start a New Plant.
+ * The free-code grid: "here is a plant, which tags?" (docs/QR-TAGS-SPEC.md
+ * Section 5.2, the desk direction; Section 14.7, as many as the tray has
+ * cells). On the plant page and at the foot of Start a New Plant.
  *
- * A SELECT, GROUPED BY SHEET, IN SHEET ORDER -- not a text box. The person
- * using this is at a desk with a sheet of labels in front of them, and the
- * thing they do after choosing is peel a label, so each option says where on
- * the sheet it is. A native select needs no script, type-to-jump finds a
- * code read off a stake already in hand, and a wheel of forty-eight codes on
- * a phone is a short scroll. The code is printed on every label in large
- * mono, so "row 3, column 1" is a shortcut and not the only way to find it.
+ * CHECKBOXES, BY CODE, IN TWO GROUPS -- not a dropdown. A planting can carry
+ * a stake per cell, so a form has to take twenty-four at once, and the two
+ * groups are the two things a gardener has in front of them over a season:
  *
- * A code carried in from a scan is preselected, and is added as an option if
- * the list has not got it -- the POST checks it again, so a stale one is
- * refused with a reason rather than quietly dropped.
+ *   Still on a sheet   never been on a plant; listed by code, with the
+ *                      sheet and the row and column beside it, so the one
+ *                      you tick is the one you peel. With script, "tick the
+ *                      next N on this sheet" takes them in peeling order.
+ *   Loose stakes       been on a plant before; pulled at the end of a
+ *                      season and in a box. Only the code identifies one
+ *                      now, so it is listed by code and nothing else.
+ *
+ * Both ascend by code. A code carried in from a scan is pre-ticked, and is
+ * added if the list has not got it -- the POST checks it again, so a stale
+ * one is refused with a reason rather than quietly dropped.
  *
  * @var Carl\Core\View $view
- * @var list<array{batch_id:int,stock_sku:string,sheet:int,tags:list<array{id:int,code:string,row:int,column:int}>}> $sheets
- * @var string $name      the field name
- * @var string $selected  a code, or ''
- * @var bool   $allowNone a leading "no tag" option
- * @var string $id        the control's id, for its label
+ * @var array{sheet:list<array<string,mixed>>,loose:list<array<string,mixed>>} $free
+ * @var string $name        the field name, e.g. tags
+ * @var list<string> $checked  codes to pre-tick
+ * @var int|null $wanted    how many the form is likely to want, for the counter
  */
 $e = $view->e(...);
 $LS = Carl\Domain\LabelStock::class;
-$selected = $selected ?? '';
-$allowNone = $allowNone ?? true;
-$id = $id ?? $name;
+$checked = $checked ?? [];
+$wanted = $wanted ?? null;
+$id = \preg_replace('/[^a-z0-9]+/i', '-', $name);
 
-$present = false;
-foreach ($sheets as $sheet) {
-    foreach ($sheet['tags'] as $tag) {
-        if ($tag['code'] === $selected) {
-            $present = true;
-        }
-    }
+$present = [];
+foreach (\array_merge($free['sheet'], $free['loose']) as $tag) {
+    $present[(string) $tag['code']] = true;
+}
+
+$bySheet = [];
+foreach ($free['sheet'] as $tag) {
+    $bySheet[(int) $tag['batch_id'] . ':' . (int) $tag['sheet']][] = $tag;
 }
 ?>
-<select id="<?= $e($id) ?>" name="<?= $e($name) ?>" class="mono">
-<?php if ($allowNone): ?>
-  <option value=""<?= $selected === '' ? ' selected' : '' ?>>No tag</option>
-<?php endif; ?>
-<?php if ($selected !== '' && !$present): ?>
-  <option value="<?= $e($selected) ?>" selected><?= $e($selected) ?> (scanned)</option>
-<?php endif; ?>
-<?php foreach ($sheets as $sheet): ?>
-  <optgroup label="Sheet <?= $e($sheet['batch_id']) ?><?= $sheet['sheet'] > 1 ? ', page ' . $e($sheet['sheet']) : '' ?> &middot; <?= $e($LS::name($sheet['stock_sku'])) ?>">
-<?php foreach ($sheet['tags'] as $tag): ?>
-    <option value="<?= $e($tag['code']) ?>"<?= $tag['code'] === $selected ? ' selected' : '' ?>>
-      <?= $e($tag['code']) ?> &middot; row <?= $e($tag['row']) ?>, column <?= $e($tag['column']) ?>
-    </option>
+<div class="tag-picker" data-tag-picker data-wanted="<?= $e($wanted ?? '') ?>">
+<?php foreach ($checked as $code): if (!isset($present[$code])): ?>
+  <label class="tag-cell">
+    <input type="checkbox" name="<?= $e($name) ?>[]" value="<?= $e($code) ?>" checked>
+    <span class="mono"><?= $e($code) ?></span> <span class="muted small">scanned</span>
+  </label>
+<?php endif; endforeach; ?>
+
+<?php if ($free['sheet'] !== []): ?>
+  <p class="small flush"><strong>Still on a sheet</strong>
+    <span class="muted">&mdash; tick, then peel that label</span></p>
+<?php foreach ($bySheet as $key => $tags): $first = $tags[0]; ?>
+  <div class="tag-sheet" data-sheet="<?= $e($key) ?>">
+    <p class="tiny muted flush">
+      Sheet <?= $e($first['batch_id']) ?><?= (int) $first['sheet'] > 1 ? ', page ' . $e($first['sheet']) : '' ?>
+      &middot; <?= $e($LS::name((string) $first['stock_sku'])) ?> &middot; <?= $e(\count($tags)) ?> free
+      <span class="tag-sheet-tools" hidden>
+        &middot; tick the next
+        <input type="number" min="1" max="<?= $e(\count($tags)) ?>" value="<?= $e(\min(\count($tags), \max(1, (int) ($wanted ?? 1)))) ?>"
+               class="tag-next-count" inputmode="numeric" aria-label="How many to tick on this sheet">
+        <button type="button" class="btn-link tag-next">in peeling order</button>
+      </span>
+    </p>
+    <div class="tag-grid">
+<?php foreach ($tags as $tag): ?>
+      <label class="tag-cell" data-ordinal="<?= $e($tag['ordinal']) ?>">
+        <input type="checkbox" name="<?= $e($name) ?>[]" value="<?= $e($tag['code']) ?>"
+               <?= \in_array((string) $tag['code'], $checked, true) ? 'checked' : '' ?>>
+        <span class="mono"><?= $e($tag['code']) ?></span>
+        <span class="muted tiny">r<?= $e($tag['row']) ?> c<?= $e($tag['column']) ?></span>
+      </label>
 <?php endforeach; ?>
-  </optgroup>
+    </div>
+  </div>
 <?php endforeach; ?>
-</select>
+<?php endif; ?>
+
+<?php if ($free['loose'] !== []): ?>
+  <p class="small flush"><strong>Loose stakes</strong>
+    <span class="muted">&mdash; used before; read the code off the stake</span></p>
+  <div class="tag-grid">
+<?php foreach ($free['loose'] as $tag): ?>
+    <label class="tag-cell">
+      <input type="checkbox" name="<?= $e($name) ?>[]" value="<?= $e($tag['code']) ?>"
+             <?= \in_array((string) $tag['code'], $checked, true) ? 'checked' : '' ?>>
+      <span class="mono"><?= $e($tag['code']) ?></span>
+    </label>
+<?php endforeach; ?>
+  </div>
+<?php endif; ?>
+
+  <p class="tiny muted tag-picker-count" hidden></p>
+</div>

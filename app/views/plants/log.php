@@ -23,6 +23,7 @@
  * @var array<int,list<array{family:string,last_date:string,plantings:int}>> $rotation
  * @var int $rotationYears
  * @var list<array<string,mixed>> $timeline
+ * @var list<array<string,mixed>> $tags @var string $preTag  (single-plant form only)
  */
 $e = $view->e(...);
 $E = Carl\Domain\EventType::class;
@@ -51,12 +52,14 @@ $action = $isBatch ? $app->url('log/batch') : $app->url('log/' . $single['id']);
   <?= $e((int) $single['quantity_live']) ?> of <?= $e((int) $single['quantity_initial']) ?> living
   &middot; started <?= $e($U::longDate((string) $single['start_date'])) ?>
   &middot; <a href="<?= $e($app->url('plants/' . $single['id'])) ?>">full report</a>
-<?php if (!empty($single['tag_code'])): ?>
+<?php if ((int) ($single['tag_count'] ?? 0) === 1): ?>
   <?php /* Free: the code rides in on the row the form was built from, so
          naming the stake costs no statement -- and it is what makes the
          search box on the list screen worth typing into. */ ?>
   &middot; tag <a class="mono tag-ref"
-       href="<?= $e($app->url('t/' . $single['tag_code'])) ?>"><?= $e($single['tag_code']) ?></a>
+       href="<?= $e($app->url('t/' . $single['tag_codes'])) ?>"><?= $e($single['tag_codes']) ?></a>
+<?php elseif ((int) ($single['tag_count'] ?? 0) > 1): ?>
+  &middot; <?= $e((int) $single['tag_count']) ?> stakes
 <?php endif; ?>
 <?php endif; ?>
 </p>
@@ -176,6 +179,30 @@ $action = $isBatch ? $app->url('log/batch') : $app->url('log/' . $single['id']);
         <?= $isBatch ? 'the planting they came from' : 'this planting' ?>.
       </p>
     </div>
+<?php if (!$isBatch && ($tags ?? []) !== []): ?>
+    <?php /* The stakes go with the plants (QR-TAGS-SPEC Section 14.8). When
+           fewer than all of them move, the ones ticked here move to the new
+           planting, so scanning a stake in the new bed opens the plant that
+           is actually there. When all of them move nothing splits and the
+           stakes stay where they are. The stake this form was reached
+           through -- scanned standing in the new bed -- is ticked already. */ ?>
+    <div class="field">
+      <label>Which stakes went with them?</label>
+      <p class="help flush">
+        Only matters when fewer than all of them move. Tick the stakes that are now in the
+        new place; scanning one of those will open the new planting.
+      </p>
+      <div class="tag-grid">
+<?php foreach ($tags as $stake): ?>
+        <label class="tag-cell">
+          <input type="checkbox" name="move_tags[]" value="<?= $e($stake['id']) ?>"
+                 <?= (string) $stake['code'] === ($preTag ?? '') ? 'checked' : '' ?>>
+          <span class="mono"><?= $e($stake['code']) ?></span>
+        </label>
+<?php endforeach; ?>
+      </div>
+    </div>
+<?php endif; ?>
     <?= $view->partial('plants/placement', [
           'gardens' => $gardens, 'rowsByGarden' => $rowsByGarden,
           'containers' => $containers, 'occupancy' => $occupancy,

@@ -138,26 +138,48 @@ final class TagRepository extends Repository
         );
     }
 
-    /** The tag on a planting right now, if it has one. @return array<string,mixed>|null */
+    /**
+     * The first stake put on a planting that is still on it, or null.
+     *
+     * A planting can carry many stakes (Phase 13, Section 14.7) -- a tray of
+     * twenty-four cells gets twenty-four -- so "the tag" is a question with
+     * a list for an answer, and that list is tagsOn(). This is the single
+     * answer for the places that need one: "does it have a stake at all", and
+     * the code to print on a named label.
+     *
+     * @return array<string,mixed>|null
+     */
     public function forPlanting(int $plantingId): ?array
     {
-        return $this->db->one(
-            'SELECT t.`id`, t.`code`, t.`retired_at`, b.`bound_at`'
+        return $this->tagsOn($plantingId)[0] ?? null;
+    }
+
+    /**
+     * Every stake on a planting right now, in the order they went on.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function tagsOn(int $plantingId): array
+    {
+        return $this->db->all(
+            'SELECT t.`id`, t.`code`, t.`retired_at`, b.`id` AS binding_id, b.`bound_at`'
             . ' FROM `qr_tag_binding` b JOIN `qr_tag` t ON t.`id` = b.`tag_id`'
             . ' WHERE b.`user_id` = :' . self::SCOPE
-            . ' AND b.`planting_id` = :planting_id AND b.`unbound_at` IS NULL',
+            . ' AND b.`planting_id` = :planting_id AND b.`unbound_at` IS NULL'
+            . ' ORDER BY b.`id`',
             $this->bind(['planting_id' => $plantingId])
         );
     }
 
     /**
-     * The codes currently on a set of plantings, keyed by planting id.
+     * The codes currently on a set of plantings, keyed by planting id --
+     * a LIST per planting, since a tray can carry a stake per cell.
      *
      * One statement for a whole list screen, which is what keeps "which of
      * these already has a tag" from costing a statement per row.
      *
      * @param list<int> $plantingIds
-     * @return array<int,string>
+     * @return array<int,list<string>>
      */
     public function codesForPlantings(array $plantingIds): array
     {
@@ -171,13 +193,14 @@ final class TagRepository extends Repository
             'SELECT b.`planting_id`, t.`code` FROM `qr_tag_binding` b'
             . ' JOIN `qr_tag` t ON t.`id` = b.`tag_id`'
             . ' WHERE b.`user_id` = :' . self::SCOPE
-            . ' AND b.`unbound_at` IS NULL AND b.`planting_id` ' . $in,
+            . ' AND b.`unbound_at` IS NULL AND b.`planting_id` ' . $in
+            . ' ORDER BY b.`planting_id`, t.`code`',
             $this->bind($params)
         );
 
         $out = [];
         foreach ($rows as $row) {
-            $out[(int) $row['planting_id']] = (string) $row['code'];
+            $out[(int) $row['planting_id']][] = (string) $row['code'];
         }
         return $out;
     }
@@ -237,7 +260,15 @@ final class TagRepository extends Repository
         );
     }
 
-    /** The tagging session's cursor: computed, never stored. @return array<string,mixed>|null */
+    /**
+     * The tagging session's cursor: computed, never stored.
+     *
+     * The plant with NO stake at all, most recently started first. A plant
+     * with some of its stakes is the session's FILL TARGET, which is the
+     * other half of the cursor and lives in TagController::scan().
+     *
+     * @return array<string,mixed>|null
+     */
     public function nextUntagged(): ?array
     {
         $rows = $this->untagged('', 1);
@@ -256,17 +287,116 @@ final class TagRepository extends Repository
         );
     }
 
+    /**
+     * What a scanned free tag can go on: every living plant, with how many
+     * stakes it has and how many plants it has, split into the ones that
+     * still want stakes and the ones that have one per plant.
+     *
+     * A PLANTING CAN CARRY MANY STAKES (Section 14.7), so the question the
+     * bind screen asks is no longer "which plants have no tag" but "which
+     * plants have fewer stakes than plants". A tray of twenty-four with three
+     * stakes in it is exactly the plant you are standing at with the fourth
+     * in your hand, and the list must offer it. The ones with no stake at
+     * all come first, then the partly staked, most recently started first
+     * within each -- and recency is only the sort (Section 6.4): the May
+     * tomato with no stake is on the list, four screens down.
+     *
+     * The count is a guide and not a rule. A row of a hundred carrots is not
+     * going to get a hundred stakes, so it sits in the "wants" list with one
+     * stake for the season; and a plant that has its full count is still
+     * offered, under the fold, because quantity_live is what the log says
+     * and the tray is what the gardener sees.
+     *
+     * ONE statement for both lists.
+     *
+     * @return array{wants:list<array<string,mixed>>,full:list<array<string,mixed>>}
+     */
+    public function bindCandidates(string $search = '', int $limit = 300): array
+    {
+        $params = [self::SCOPE => $this->userId, 'ended' => PlantingState::ENDED];
+        $predicate = '';
+
+        if ($search !== '') {
+            $predicate = ' AND (pt.`category` LIKE :s1 OR pt.`type` LIKE :s2 OR p.`label` LIKE :s3)';
+            $like = '%' . $search . '%';
+            // Emulation is off, so one value needs three names (hosting Section 7).
+            $params['s1'] = $like;
+            $params['s2'] = $like;
+            $params['s3'] = $like;
+        }
+
+        $rows = $this->db->all(
+            'SELECT p.`id`, p.`label`, p.`start_date`, p.`state`, p.`quantity_live`,'
+            . ' pt.`category`, pt.`type`, g.`name` AS garden_name, gr.`name` AS row_name,'
+            . ' c.`name` AS container_name,'
+            . ' (SELECT COUNT(*) FROM `qr_tag_binding` b'
+            . '   WHERE b.`planting_id` = p.`id` AND b.`unbound_at` IS NULL) AS tag_count'
+            . ' FROM `planting` p'
+            . ' JOIN `plant_type` pt ON pt.`id` = p.`plant_type_id`'
+            . ' LEFT JOIN `garden` g ON g.`id` = p.`garden_id`'
+            . ' LEFT JOIN `garden_row` gr ON gr.`id` = p.`garden_row_id`'
+            . ' LEFT JOIN `container` c ON c.`id` = p.`container_id`'
+            . ' WHERE p.`user_id` = :' . self::SCOPE . ' AND p.`state` <> :ended'
+            . $predicate
+            . ' ORDER BY p.`start_date` DESC, p.`id` DESC'
+            . ' LIMIT ' . (int) $limit,
+            $params
+        );
+
+        $none = [];
+        $some = [];
+        $full = [];
+        foreach ($rows as $row) {
+            $count = (int) $row['tag_count'];
+            if ($count === 0) {
+                $none[] = $row;
+            } elseif ($count < (int) $row['quantity_live']) {
+                $some[] = $row;
+            } else {
+                $full[] = $row;
+            }
+        }
+
+        return ['wants' => \array_merge($none, $some), 'full' => $full];
+    }
+
+    /**
+     * Whether a planting can take another stake in a tagging session: living,
+     * and fewer stakes than plants. Null when it cannot.
+     *
+     * @return array<string,mixed>|null the planting row with its tag_count
+     */
+    public function fillTarget(int $plantingId): ?array
+    {
+        $row = $this->db->one(
+            'SELECT p.`id`, p.`label`, p.`quantity_live`, pt.`category`, pt.`type`,'
+            . ' (SELECT COUNT(*) FROM `qr_tag_binding` b'
+            . '   WHERE b.`planting_id` = p.`id` AND b.`unbound_at` IS NULL) AS tag_count'
+            . ' FROM `planting` p JOIN `plant_type` pt ON pt.`id` = p.`plant_type_id`'
+            . ' WHERE p.`user_id` = :' . self::SCOPE . ' AND p.`id` = :id AND p.`state` <> :ended',
+            $this->bind(['id' => $plantingId, 'ended' => PlantingState::ENDED])
+        );
+        if ($row === null || (int) $row['tag_count'] >= (int) $row['quantity_live']) {
+            return null;
+        }
+        return $row;
+    }
+
     // -- Binding ----------------------------------------------------------
 
     /**
      * Put a tag on a planting.
      *
-     * ONE TRANSACTION, because it can be three writes: closing the tag's old
-     * binding (a tag moved from one plant to another), closing the planting's
-     * old binding (a replacement for a destroyed tag), and opening the new
-     * one. Any two of those without the third is a state a gardener cannot
-     * unpick -- two live tags on one plant, or a tag that is on nothing and
-     * says it is on something.
+     * ONE LIVE BINDING PER TAG, AND AS MANY TAGS AS A PLANTING WANTS. The
+     * first is physics: a stake is in one place. The second is Phase 13
+     * (Section 14.7): a planting is a group -- a tray of twenty-four cells,
+     * a row of thirty -- and the stake goes in the cell, so a planting of
+     * twenty-four carries twenty-four. Phase 8 closed the planting's old
+     * binding here as well, which made "a second stake for this tray"
+     * silently pull the first one off.
+     *
+     * ONE TRANSACTION for the close and the open: a tag moved from one plant
+     * to another must never be live on both, or on neither.
      *
      * NAMED bindTo() and not bind(): Repository::bind() is the base class's
      * parameter-binding helper, which every scoped query in this file calls.
@@ -281,7 +411,6 @@ final class TagRepository extends Repository
             $now = $this->now();
 
             $this->closeBindings('`tag_id` = :tag_id', ['tag_id' => $tagId], $now);
-            $this->closeBindings('`planting_id` = :planting_id', ['planting_id' => $plantingId], $now);
 
             $this->db->run(
                 'INSERT INTO `qr_tag_binding`'
@@ -299,6 +428,40 @@ final class TagRepository extends Repository
 
             return $this->db->insertId();
         });
+    }
+
+    /**
+     * Move stakes from the planting they are on to the planting the plants
+     * went to -- the transplant that splits a tray (PLANTING-SPLIT-SPEC
+     * Section 7: "the natural moment to bind a tag to the six plants you are
+     * moving is the transplant itself").
+     *
+     * Only tags live on $fromPlantingId are moved; anything else in the list
+     * is ignored, so a forged or stale form cannot pull a stake off some
+     * other plant. Each move is a close and an open, so the stake's history
+     * says "the tray, then bed two", which is what happened.
+     *
+     * @param list<int> $tagIds
+     * @return int how many moved
+     */
+    public function moveTags(array $tagIds, int $fromPlantingId, int $toPlantingId): int
+    {
+        if ($tagIds === []) {
+            return 0;
+        }
+        $onParent = [];
+        foreach ($this->tagsOn($fromPlantingId) as $tag) {
+            $onParent[(int) $tag['id']] = true;
+        }
+
+        $moved = 0;
+        foreach (\array_unique($tagIds) as $tagId) {
+            if (isset($onParent[(int) $tagId])) {
+                $this->bindTo((int) $tagId, $toPlantingId);
+                $moved++;
+            }
+        }
+        return $moved;
     }
 
     /** Take a tag off whatever it is on. Returns whether anything was live. */
@@ -356,44 +519,53 @@ final class TagRepository extends Repository
     // -- The desk half (Section 5.2, finished in Phase 13) -----------------
 
     /**
-     * Every free code, grouped by the sheet it is printed on and in the order
-     * it appears there.
+     * Every free code, IN CODE ORDER, split by where it physically is.
      *
-     * THE DESK DIRECTION OF SECTION 5.2. The scan direction says "here is a
-     * tag, which plant?"; this answers "here is a plant, which tag?" for the
-     * plant page and Start a New Plant. The person asking is at a desk with a
-     * sheet of labels in front of them, so the useful shape is the sheet's
-     * own: newest sheet first, and each code with the row and column it sits
-     * at, so picking "row 3, column 1" and peeling that label is one glance.
+     * THE DESK DIRECTION OF SECTION 5.2. The scan says "here is a tag, which
+     * plant?"; this answers "here is a plant, which tag?" for the plant page
+     * and Start a New Plant. What the person has in front of them decides
+     * the shape of the list, and over a season it is two different things:
      *
-     * ONE STATEMENT, AND IT READS THE BOUND TAGS TOO. A label's position on
-     * the sheet is its rank among every tag minted into the batch, bound or
-     * not -- minting order is sheet order (LabelSheet::sheetsOf()) -- so the
-     * rank is counted here over the whole batch and the bound ones dropped
-     * afterwards. That is a few hundred rows at most for an account with a
-     * drawer full of sheets, and it spares MySQL a window function on a
-     * page that has already spent nine statements on the plant itself.
+     *  - **Still on a sheet.** A code that has never been on a plant is, in
+     *    all likelihood, still a label on the sheet it was printed on. It is
+     *    listed by code, with the sheet and the row and column beside it, so
+     *    the one you tick is the one you peel. Minting order is sheet order
+     *    (LabelSheet::sheetsOf()), and the position is the tag's rank among
+     *    EVERY code minted into its batch, bound or not -- so the query reads
+     *    the bound ones too and ranks in PHP. A few hundred rows at most.
      *
-     * Retired sheets and retired codes are left out: a code on a sheet you
-     * lost is not one you can peel.
+     *  - **Loose.** A code that has been on a plant before is a stake in a
+     *    box, pulled at the end of a season. Its sheet position means
+     *    nothing any more; the only way to find it in a list is to read the
+     *    code off the stake, so the list is by code and nothing else. This
+     *    is the list that grows every year, and it is why the first version
+     *    of this method -- sheet order throughout -- would have become
+     *    unusable in season two.
      *
-     * @return list<array{batch_id:int,stock_sku:string,sheet:int,
-     *   tags:list<array{id:int,code:string,row:int,column:int}>}>
+     * Both lists ascend by code so type-to-jump and a glance both work.
+     * Retired sheets and retired codes are left out.
+     *
+     * @return array{
+     *   sheet:list<array{id:int,code:string,batch_id:int,stock_sku:string,sheet:int,row:int,column:int}>,
+     *   loose:list<array{id:int,code:string,batch_id:int}>
+     * }
      */
-    public function freeBySheet(): array
+    public function free(): array
     {
         $rows = $this->db->all(
             'SELECT t.`id`, t.`code`, t.`batch_id`, t.`retired_at`, bt.`stock_sku`,'
-            . ' b.`id` AS binding_id'
+            . ' b.`id` AS binding_id,'
+            . ' EXISTS (SELECT 1 FROM `qr_tag_binding` h WHERE h.`tag_id` = t.`id`) AS used_before'
             . ' FROM `qr_tag` t'
             . ' JOIN `qr_tag_batch` bt ON bt.`id` = t.`batch_id`'
             . ' LEFT JOIN `qr_tag_binding` b ON b.`tag_id` = t.`id` AND b.`unbound_at` IS NULL'
             . ' WHERE t.`user_id` = :' . self::SCOPE . ' AND bt.`retired_at` IS NULL'
-            . ' ORDER BY t.`batch_id` DESC, t.`id` ASC',
+            . ' ORDER BY t.`batch_id`, t.`id`',
             $this->bind([])
         );
 
-        $sheets = [];
+        $sheet = [];
+        $loose = [];
         $ordinal = [];
         foreach ($rows as $row) {
             $batchId = (int) $row['batch_id'];
@@ -404,35 +576,38 @@ final class TagRepository extends Repository
                 continue;
             }
 
+            if ((int) $row['used_before'] === 1) {
+                $loose[] = ['id' => (int) $row['id'], 'code' => (string) $row['code'], 'batch_id' => $batchId];
+                continue;
+            }
+
             $stock = (string) $row['stock_sku'];
             $place = LabelStock::place($stock, $index);
-            $key = $batchId . ':' . $place['sheet'];
-
-            $sheets[$key] ??= [
+            $sheet[] = [
+                'id'        => (int) $row['id'],
+                'code'      => (string) $row['code'],
                 'batch_id'  => $batchId,
                 'stock_sku' => $stock,
                 'sheet'     => $place['sheet'],
-                'tags'      => [],
-            ];
-            $sheets[$key]['tags'][] = [
-                'id'     => (int) $row['id'],
-                'code'   => (string) $row['code'],
-                'row'    => $place['row'],
-                'column' => $place['column'],
+                'row'       => $place['row'],
+                'column'    => $place['column'],
+                // The rank, so a script can take "the next twelve on this
+                // sheet" in the order they will be peeled.
+                'ordinal'   => $index,
             ];
         }
 
-        return \array_values($sheets);
+        $byCode = static fn (array $a, array $b): int => \strcmp($a['code'], $b['code']);
+        \usort($sheet, $byCode);
+        \usort($loose, $byCode);
+
+        return ['sheet' => $sheet, 'loose' => $loose];
     }
 
-    /** How many free codes there are, counted off freeBySheet()'s result. @param list<array{tags:list<mixed>}> $sheets */
-    public static function countFree(array $sheets): int
+    /** @param array{sheet:list<mixed>,loose:list<mixed>} $free */
+    public static function countFree(array $free): int
     {
-        $n = 0;
-        foreach ($sheets as $sheet) {
-            $n += \count($sheet['tags']);
-        }
-        return $n;
+        return \count($free['sheet']) + \count($free['loose']);
     }
 
     /**
@@ -463,27 +638,6 @@ final class TagRepository extends Repository
             . ' WHERE b.`user_id` = :' . self::SCOPE . ' AND b.`unbound_at` IS NULL'
             . ' ORDER BY b.`id` DESC LIMIT ' . (int) $limit,
             $this->bind([])
-        );
-    }
-
-    /**
-     * Living plants that already have a tag, with the code: the bind
-     * screen's "replace a tag that was lost or ruined" list (Section 6.4
-     * item 3), which used to ask for a plant id typed by hand.
-     *
-     * @return list<array<string,mixed>>
-     */
-    public function taggedLiving(int $limit = 200): array
-    {
-        return $this->db->all(
-            'SELECT p.`id`, p.`label`, p.`start_date`, pt.`category`, pt.`type`, t.`code`'
-            . ' FROM `planting` p'
-            . ' JOIN `plant_type` pt ON pt.`id` = p.`plant_type_id`'
-            . ' JOIN `qr_tag_binding` b ON b.`planting_id` = p.`id` AND b.`unbound_at` IS NULL'
-            . ' JOIN `qr_tag` t ON t.`id` = b.`tag_id`'
-            . ' WHERE p.`user_id` = :' . self::SCOPE . ' AND p.`state` <> :ended'
-            . ' ORDER BY p.`start_date` DESC, p.`id` DESC LIMIT ' . (int) $limit,
-            $this->bind(['ended' => PlantingState::ENDED])
         );
     }
 

@@ -71,6 +71,56 @@
 
   document.querySelectorAll('.select-add').forEach(wireSelectAdd);
 
+  /* ---- The stake grid: tick the next N on a sheet, and count -------- */
+
+  /* Everything here is convenience. Without script the grid is checkboxes
+   * and the form posts exactly what is ticked; with it, "tick the next 12
+   * on this sheet" takes them in peeling order -- the order they were
+   * minted, which is the order they sit on the sheet -- and a line under
+   * the grid says how many are ticked against how many plants. */
+  document.querySelectorAll('[data-tag-picker]').forEach(function (picker) {
+    var boxes = function () {
+      return Array.prototype.slice.call(picker.querySelectorAll('input[type="checkbox"]'));
+    };
+    var counter = picker.querySelector('.tag-picker-count');
+    var wanted = parseInt(picker.getAttribute('data-wanted') || '', 10);
+    var quantity = document.getElementById('quantity_initial');
+
+    var recount = function () {
+      if (!counter) { return; }
+      var ticked = boxes().filter(function (b) { return b.checked; }).length;
+      var want = quantity ? parseInt(quantity.value, 10) : wanted;
+      counter.textContent = ticked === 0
+        ? 'None ticked.'
+        : ticked + ' ticked' + (want > 0 ? ' for ' + want + ' plant' + (want === 1 ? '' : 's') : '') + '.';
+      counter.hidden = false;
+    };
+
+    picker.querySelectorAll('.tag-sheet').forEach(function (sheet) {
+      var tools = sheet.querySelector('.tag-sheet-tools');
+      var count = sheet.querySelector('.tag-next-count');
+      var button = sheet.querySelector('.tag-next');
+      if (!tools || !count || !button) { return; }
+      tools.hidden = false;
+      button.addEventListener('click', function () {
+        var n = parseInt(count.value, 10) || 0;
+        var cells = Array.prototype.slice.call(sheet.querySelectorAll('.tag-cell'));
+        cells.sort(function (a, b) {
+          return parseInt(a.getAttribute('data-ordinal'), 10) - parseInt(b.getAttribute('data-ordinal'), 10);
+        });
+        cells.forEach(function (cell) {
+          var box = cell.querySelector('input');
+          if (n > 0 && !box.checked) { box.checked = true; n--; }
+        });
+        recount();
+      });
+    });
+
+    picker.addEventListener('change', recount);
+    if (quantity) { quantity.addEventListener('input', recount); }
+    recount();
+  });
+
   /* ---- Show only the chosen action's fields ------------------------ */
 
   var eventType = document.getElementById('event_type');

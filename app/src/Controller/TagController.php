@@ -76,10 +76,63 @@ final class TagController extends Controller
         }
 
         if ($tag['planting_id'] === null) {
-            return $this->bindScreen($request, $tag);
+            // A tagging session makes THE SCAN THE CONFIRM (Section 6.5):
+            // a free tag scanned mid-session goes straight on the plant the
+            // session is filling, or the next plant with no stake, and lands
+            // on the field screen with an undo. Phase 8 rendered the bind
+            // screen here regardless, so the session named the next plant
+            // and then asked for a tap anyway.
+            return $this->sessionBind($tag) ?? $this->bindScreen($request, $tag);
         }
 
         return $this->fieldScreen($request, $tag);
+    }
+
+    /**
+     * Bind a scanned free tag without a tap, if a session is running and
+     * there is a plant to put it on. Null means "show the bind screen".
+     *
+     * WHERE IT GOES: the plant the session is FILLING if it still wants
+     * stakes -- the tray you are working along, cell by cell -- and
+     * otherwise the next plant with no stake at all. The fill target is the
+     * plant the last scan went on, kept in the PHP session (the scan is a
+     * full page load, and the camera opens it in the browser that holds the
+     * login, so the session is there); it is re-checked on every read
+     * against the database, so it cannot go stale, and "Next plant" on the
+     * strip clears it. A row of a hundred carrots gets one stake and a tap
+     * on Next, not a hundred scans.
+     *
+     * @param array<string,mixed> $tag
+     */
+    private function sessionBind(array $tag): ?Response
+    {
+        if (!$this->sessionActive() || $tag['tag_retired_at'] !== null) {
+            return null;
+        }
+
+        $target = null;
+        $fillId = $this->app->session()->get('tagging_planting_id');
+        if (\is_int($fillId)) {
+            $target = $this->tags()->fillTarget($fillId);
+        }
+        if ($target === null) {
+            $target = $this->tags()->nextUntagged();
+            if ($target !== null) {
+                $target['tag_count'] = 0;
+            }
+        }
+        if ($target === null) {
+            return null;
+        }
+
+        $bindingId = $this->tags()->bindTo((int) $tag['tag_id'], (int) $target['id']);
+        $this->app->session()->set('tagging_planting_id', (int) $target['id']);
+
+        $have = (int) $target['tag_count'] + 1;
+        $this->flash('Tag ' . $tag['code'] . ' is on ' . self::plantName($target)
+            . ' (' . $have . ' of ' . (int) $target['quantity_live'] . ' stakes). Scan the next one.');
+
+        return $this->redirect('t/' . $tag['code'], ['bound' => $bindingId]);
     }
 
     /**
@@ -93,16 +146,15 @@ final class TagController extends Controller
         $session = $this->sessionState();
 
         return $this->render('tags/bind', [
-            'tag'       => $tag,
-            'qr'        => $this->svgFor((string) $tag['code']),
-            'untagged'  => $this->tags()->untagged($search),
-            // Section 6.4 item 3, the replacement path. It used to ask for a
-            // plant id typed by hand, off "the plant's own page address".
-            // Nobody knows a plant's id; everybody knows its name.
-            'tagged'    => $this->tags()->taggedLiving(),
-            'search'    => $search,
-            'session'   => $session,
-            'pageTitle' => 'Tag ' . $tag['code'],
+            'tag'        => $tag,
+            'qr'         => $this->svgFor((string) $tag['code']),
+            // Every living plant, split into the ones that still want stakes
+            // and the ones that have one per plant (Section 14.7). One
+            // statement for both.
+            'candidates' => $this->tags()->bindCandidates($search),
+            'search'     => $search,
+            'session'    => $session,
+            'pageTitle'  => 'Tag ' . $tag['code'],
         ]);
     }
 
@@ -177,10 +229,14 @@ final class TagController extends Controller
     /**
      * `POST /t/{code}/bind` -- put this tag on a plant.
      *
-     * Reached from the bind screen's list, from "assign a tag" on a plant
-     * page, and from a tagging session. Both directions of Section 5.2 end
-     * here: tag-first (the seed-starting case, which is why the pre-printed
-     * pool exists) and planting-first (the desk case).
+     * Reached from the bind screen's list. Both directions of Section 5.2
+     * end in TagRepository::bindTo(): tag-first here (the seed-starting
+     * case, which is why the pre-printed pool exists) and planting-first in
+     * attach() (the desk case).
+     *
+     * A plant that already has stakes simply gets one more (Section 14.7).
+     * Phase 8 put "replace the existing tag" behind a tick here, because
+     * one plant could carry one tag; that rule is gone and so is the tick.
      */
     public function bind(Request $request, array $params): Response
     {
@@ -190,8 +246,13 @@ final class TagController extends Controller
             throw HttpException::notFound('No such tag.');
         }
         if ($tag['tag_retired_at'] !== null) {
-            $this->flash('That tag is retired. Un-retire its sheet first.', 'error');
+            $this->flash('That tag is retired. Put it back in the pool first.', 'error');
             return $this->redirect('tags');
+        }
+        if ($tag['planting_id'] !== null) {
+            $this->flash('Tag ' . $code . ' is already on ' . self::plantName($tag)
+                . '. Take it off there first.', 'error');
+            return $this->redirect('t/' . $code);
         }
 
         $plantingId = (int) $request->input('planting_id', '0');
@@ -200,20 +261,13 @@ final class TagController extends Controller
             throw HttpException::notFound('That is not one of your plants.');
         }
 
-        $existing = $this->tags()->forPlanting($plantingId);
-        // Section 6.4: assigning to a plant that already has a tag silently
-        // unbinds the old one, so it is behind a confirmation. This is the
-        // replacement-for-a-destroyed-tag path, not an everyday one.
-        if ($existing !== null && !$request->checkbox('replace')) {
-            $this->flash(
-                self::plantName($planting) . ' already has tag ' . $existing['code']
-                . '. Tick "replace the existing tag" if that one is lost or ruined.',
-                'error'
-            );
-            return $this->redirect('t/' . $code);
-        }
-
         $bindingId = $this->tags()->bindTo((int) $tag['tag_id'], $plantingId);
+
+        // A tap on the list mid-session is also an answer to "which plant
+        // next": the following scans go on this one until it is full.
+        if ($this->sessionActive()) {
+            $this->app->session()->set('tagging_planting_id', $plantingId);
+        }
 
         // Optimistic bind with undo, not confirm-then-bind (Section 6.5). For
         // a repetitive physical task, confirming every scan is the whole cost
@@ -304,24 +358,22 @@ final class TagController extends Controller
     // ==================================================================
 
     /**
-     * `POST /plants/{id}/tag` -- put a free code on this plant.
+     * `POST /plants/{id}/tag` -- put free codes on this plant, as many as
+     * were ticked.
      *
      * The other direction from the scan. The scan says "here is a tag,
-     * which plant?" and lists the untagged plants; this says "here is a
-     * plant, which tag?" and the plant page lists the free codes by sheet.
-     * Section 5.2 asked for exactly this -- "on any plant's page: assign a
-     * tag" -- and until now the plant page offered a link to the pool.
+     * which plant?" and lists the plants; this says "here is a plant, which
+     * tags?" and the plant page lists the free codes. Section 5.2 asked for
+     * exactly this -- "on any plant's page: assign a tag" -- and until Phase
+     * 13 the plant page offered a link to the pool.
      *
-     * A plant that already has a tag gets a SWAP: bindTo() closes the old
-     * binding in the same transaction, so the old code goes back to the
-     * pool and the plant never has two. That is the replacement-for-a-
-     * ruined-stake path (Section 6.4 item 3) done from the end a person
-     * actually starts at, which is the plant whose stake broke.
+     * ALL OR NOTHING. Twenty-four codes ticked for a tray and one of them
+     * stale is twenty-four stakes to check against the screen if
+     * twenty-three went on; it is one line to fix if none did. A code that
+     * is already on THIS plant is not an error -- it is what it should be.
      *
-     * A code that is on ANOTHER plant is refused, with the plant named:
-     * moving a stake between two living plants is two deliberate acts (take
-     * it off there, put it on here), because the one thing worse than a
-     * plant with no tag is two plant pages that disagree about a stake.
+     * A code that is not yours reads the same as one that does not exist
+     * (Section 6.2).
      */
     public function attach(Request $request, array $params): Response
     {
@@ -331,47 +383,56 @@ final class TagController extends Controller
             throw HttpException::notFound('That is not one of your plants.');
         }
 
-        $code = TagRepository::normalise((string) ($request->input('code', '') ?? ''));
-        if (!TagRepository::isWellFormed($code)) {
-            $this->flash('Pick a code off the list, or type the six characters off the stake.', 'error');
-            return $this->redirect('plants/' . $plantingId, [], 'tag');
-        }
-
-        $tag = $this->tags()->scan($code);
-        // Unknown and somebody else's read the same (Section 6.2). A free
-        // code you own is the only thing this form can use.
-        if ($tag === null) {
-            $this->flash('No tag of yours has the code ' . $code . '.', 'error');
-            return $this->redirect('plants/' . $plantingId, [], 'tag');
-        }
-        if ($tag['tag_retired_at'] !== null) {
-            $this->flash('Tag ' . $code . ' is retired. Put it back in the pool first.', 'error');
-            return $this->redirect('plants/' . $plantingId, [], 'tag');
-        }
-        if ($tag['planting_id'] !== null) {
-            if ((int) $tag['planting_id'] === $plantingId) {
-                $this->flash('Tag ' . $code . ' is already on this plant.');
-            } else {
-                $this->flash('Tag ' . $code . ' is on ' . self::plantName($tag)
-                    . '. Take it off that plant first.', 'error');
+        $codes = [];
+        foreach (\array_merge($request->inputList('tags'), [(string) ($request->input('code', '') ?? '')]) as $raw) {
+            $code = TagRepository::normalise($raw);
+            if ($code !== '' && !\in_array($code, $codes, true)) {
+                $codes[] = $code;
             }
+        }
+        if ($codes === []) {
+            $this->flash('Tick the codes you are putting on, then press the button.', 'error');
             return $this->redirect('plants/' . $plantingId, [], 'tag');
         }
 
-        $previous = $this->tags()->forPlanting($plantingId);
-        $this->tags()->bindTo((int) $tag['tag_id'], $plantingId);
+        $toBind = [];
+        $problems = [];
+        foreach ($codes as $code) {
+            $tag = TagRepository::isWellFormed($code) ? $this->tags()->scan($code) : null;
+            if ($tag === null) {
+                $problems[] = 'no tag of yours has the code ' . $code;
+            } elseif ($tag['tag_retired_at'] !== null) {
+                $problems[] = $code . ' is retired';
+            } elseif ($tag['planting_id'] !== null && (int) $tag['planting_id'] !== $plantingId) {
+                $problems[] = $code . ' is on ' . self::plantName($tag) . ' -- take it off there first';
+            } elseif ($tag['planting_id'] === null) {
+                $toBind[] = (int) $tag['tag_id'];
+            }
+        }
 
-        $this->flash($previous === null
-            ? 'Tag ' . $code . ' is on ' . self::plantName($planting) . '. Scan it to log anything.'
-            : 'Tag ' . $code . ' is on ' . self::plantName($planting) . ', and '
-              . $previous['code'] . ' is back in the pool.');
+        if ($problems !== []) {
+            $this->flash('Nothing was put on: ' . \implode('; ', $problems) . '.', 'error');
+            return $this->redirect('plants/' . $plantingId, [], 'tag');
+        }
+
+        foreach ($toBind as $tagId) {
+            $this->tags()->bindTo($tagId, $plantingId);
+        }
+
+        $n = \count($toBind);
+        $this->flash($n === 0
+            ? 'Those stakes are already on ' . self::plantName($planting) . '.'
+            : ($n === 1
+                ? 'Tag ' . $codes[0] . ' is on ' . self::plantName($planting) . '. Scan it to log anything.'
+                : $n . ' stakes are on ' . self::plantName($planting) . '. Scan any of them to log anything.'));
 
         return $this->redirect('plants/' . $plantingId, [], 'tag');
     }
 
     /**
-     * `POST /plants/{id}/tag/release` -- take the tag off, from the plant
-     * page, and optionally retire the code because the stake is gone.
+     * `POST /plants/{id}/tag/release` -- take one stake off, or all of them,
+     * from the plant page; and optionally retire the code because the stake
+     * itself is gone.
      *
      * The same act as release() from the tag's end. It comes back to the
      * plant page because that is where the person is, and it carries the
@@ -385,20 +446,40 @@ final class TagController extends Controller
             throw HttpException::notFound('That is not one of your plants.');
         }
 
-        $tag = $this->tags()->forPlanting($plantingId);
-        if ($tag === null) {
+        $on = $this->tags()->tagsOn($plantingId);
+        if ($on === []) {
             $this->flash('There is no tag on this plant.');
             return $this->redirect('plants/' . $plantingId, [], 'tag');
         }
 
-        $this->tags()->unbind((int) $tag['id']);
-
-        if ($request->checkbox('retire')) {
-            $this->tags()->retireTag((int) $tag['id'], true);
-            $this->flash('Tag ' . $tag['code'] . ' is off and retired. The plant is untouched.');
-        } else {
-            $this->flash('Tag ' . $tag['code'] . ' is free again. The plant is untouched.');
+        // One stake by id, or every stake. The id is checked against what is
+        // actually on this plant, so a stale form cannot pull a stake off
+        // some other plant.
+        $wanted = $request->intInput('tag_id');
+        $taking = [];
+        foreach ($on as $tag) {
+            if ($wanted === null || (int) $tag['id'] === $wanted) {
+                $taking[] = $tag;
+            }
         }
+        if ($taking === []) {
+            $this->flash('That stake is not on this plant.', 'error');
+            return $this->redirect('plants/' . $plantingId, [], 'tag');
+        }
+
+        $retire = $request->checkbox('retire');
+        foreach ($taking as $tag) {
+            $this->tags()->unbind((int) $tag['id']);
+            if ($retire) {
+                $this->tags()->retireTag((int) $tag['id'], true);
+            }
+        }
+
+        $n = \count($taking);
+        $what = $n === 1 ? 'Tag ' . $taking[0]['code'] : $n . ' stakes';
+        $this->flash($what . ($retire
+            ? ($n === 1 ? ' is' : ' are') . ' off and retired. The plant is untouched.'
+            : ($n === 1 ? ' is' : ' are') . ' free again. The plant is untouched.'));
 
         return $this->redirect('plants/' . $plantingId, [], 'tag');
     }
@@ -423,19 +504,48 @@ final class TagController extends Controller
      */
     public function session(Request $request): Response
     {
-        $starting = $request->input('action', 'start') === 'start';
+        $action = (string) ($request->input('action', 'start') ?? 'start');
+
+        // "Next plant": leave the plant the session was filling and let the
+        // next scan go on the next plant with no stake. This is the whole of
+        // the skip Section 6.5 declined to build -- it needs no table,
+        // because the only thing to forget is the one plant being filled.
+        if ($action === 'next') {
+            $this->app->session()->forget('tagging_planting_id');
+            $next = $this->tags()->nextUntagged();
+            $this->flash($next === null
+                ? 'Every plant has a stake. Tap a plant on a scanned tag\'s list to add more to it.'
+                : 'Moving on. The next scan goes on ' . self::plantName($next) . '.');
+            return $this->back($request, 'tags');
+        }
+
+        $starting = $action === 'start';
 
         $this->app->db()->run(
             'UPDATE `user` SET `tagging_started_at` = :started, `updated_at` = UTC_TIMESTAMP()'
             . ' WHERE `id` = :id',
             ['started' => $starting ? \gmdate('Y-m-d H:i:s') : null, 'id' => $this->userId()]
         );
+        $this->app->session()->forget('tagging_planting_id');
 
         $this->flash($starting
-            ? 'Tagging. Scan a tag and it goes on the plant named at the top.'
+            ? 'Tagging. Scan a tag and it goes on the plant named at the top; keep scanning to fill a tray.'
             : 'Tagging stopped.');
 
         return $this->back($request, 'tags');
+    }
+
+    /** Whether a tagging session is running and unexpired. Costs no statement. */
+    private function sessionActive(): bool
+    {
+        $startedAt = $this->user()->taggingStartedAt;
+        if ($startedAt === null) {
+            return false;
+        }
+        // An expiry, an explicit stop and a visible banner (Section 6.5). A
+        // silent binding mode that outlives the potting session is a way to
+        // attach a tag to the wrong plant a week later and never find out.
+        return \strtotime($startedAt . ' UTC') + TagRepository::SESSION_HOURS * 3600 >= \time();
     }
 
     /**
@@ -453,28 +563,34 @@ final class TagController extends Controller
      */
     private function sessionState(): ?array
     {
-        $startedAt = $this->user()->taggingStartedAt;
-        if ($startedAt === null) {
+        if (!$this->sessionActive()) {
             return null;
         }
+        $startedAt = (string) $this->user()->taggingStartedAt;
 
-        // An expiry, an explicit stop and a visible banner (Section 6.5). A
-        // silent binding mode that outlives the potting session is a way to
-        // attach a tag to the wrong plant a week later and never find out.
-        $expires = \strtotime($startedAt . ' UTC') + TagRepository::SESSION_HOURS * 3600;
-        if ($expires < \time()) {
-            return null;
+        // The plant being filled, re-read from the database rather than
+        // trusted: if it ended or got its last stake by another route, it is
+        // simply not the target any more.
+        $filling = null;
+        $fillId = $this->app->session()->get('tagging_planting_id');
+        if (\is_int($fillId)) {
+            $filling = $this->tags()->fillTarget($fillId);
+            if ($filling === null) {
+                $this->app->session()->forget('tagging_planting_id');
+            }
         }
 
         $next = $this->tags()->nextUntagged();
-        if ($next === null) {
+        if ($next === null && $filling === null) {
             // The list emptied. The session ends itself and says so.
-            return ['next' => null, 'bound' => $this->tags()->boundSince($startedAt),
+            return ['next' => null, 'filling' => null,
+                    'bound' => $this->tags()->boundSince($startedAt),
                     'remaining' => 0, 'started_at' => $startedAt];
         }
 
         return [
             'next'       => $next,
+            'filling'    => $filling,
             'bound'      => $this->tags()->boundSince($startedAt),
             'remaining'  => $this->tags()->untaggedCount(),
             'started_at' => $startedAt,
@@ -496,7 +612,7 @@ final class TagController extends Controller
             // are still in the box. Two statements, on the one screen whose
             // job is to answer those questions.
             'inUse'      => $this->tags()->inUse(),
-            'free'       => $this->tags()->freeBySheet(),
+            'free'       => $this->tags()->free(),
             'session'    => $this->sessionState(),
             'encoding'   => $this->encoding(),
             'stock'      => $this->userStock(),

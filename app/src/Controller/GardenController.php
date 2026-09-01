@@ -378,7 +378,7 @@ final class GardenController extends Controller
             'plantings' => $living,
             // One statement, and only to decide whether to offer the tick at
             // all: an account with no tags should not be asked about them.
-            'tagged'    => \count($this->tags()->codesForPlantings(
+            'tagged'    => self::stakeCount($this->tags()->codesForPlantings(
                 \array_map(static fn (array $p): int => (int) $p['id'], $living)
             )),
             'errors'    => [],
@@ -429,7 +429,7 @@ final class GardenController extends Controller
             return $this->render('gardens/end_season', [
                 'garden'    => $garden,
                 'plantings' => $living,
-                'tagged'    => \count($this->tags()->codesForPlantings(
+                'tagged'    => self::stakeCount($this->tags()->codesForPlantings(
                     \array_map(static fn (array $p): int => (int) $p['id'], $living)
                 )),
                 'errors'    => $errors,
@@ -549,5 +549,21 @@ final class GardenController extends Controller
             'soil_type'       => $values['soil_type'] === '' ? null : $values['soil_type'],
             'notes'           => $values['notes'] === '' ? null : $values['notes'],
         ];
+    }
+
+    /**
+     * How many stakes are on a set of plantings: a planting carries a list
+     * of codes (a tray has one per cell), so this is the length of every
+     * list, not the number of plantings that have one.
+     *
+     * @param array<int,list<string>> $codesByPlanting
+     */
+    private static function stakeCount(array $codesByPlanting): int
+    {
+        $n = 0;
+        foreach ($codesByPlanting as $codes) {
+            $n += \count($codes);
+        }
+        return $n;
     }
 }
