@@ -68,7 +68,8 @@ $placeOf = static function (array $p): string {
             class="flush grow row-tight">
         <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
         <input type="hidden" name="planting_id" value="<?= $e($planting['id']) ?>">
-        <button type="submit" class="btn-link grow"><?= $e($nameOf($planting)) ?>
+        <button type="submit" class="btn-link grow">
+          <span class="name"><?= $e($nameOf($planting)) ?></span>
           <span class="hint">
             started <?= $e(Carl\Support\Units::shortDate((string) $planting['start_date'])) ?>
 <?php if ($place !== ''): ?> &middot; <?= $e($place) ?><?php endif; ?>

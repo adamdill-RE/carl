@@ -35,17 +35,19 @@ $nameOf = static fn (array $p): string => \trim((string) $p['label']) !== ''
     : \trim((string) $p['category'] . ' ' . (string) $p['type']);
 ?>
 <div class="notice notice-info tagging-strip">
+  <span class="grow">
 <?php if ($session === null): ?>
-  <strong>Tagging.</strong> Scan a tag and it goes on the next plant that has none.
+    <strong>Tagging.</strong> Scan a tag and it goes on the next plant that has none.
 <?php elseif ($session['next'] === null): ?>
-  <strong>Everything is tagged.</strong>
-  <?= $e(\count($session['bound'])) ?> tagged in this session. Nothing left to do.
+    <strong>Everything is tagged.</strong>
+    <?= $e(\count($session['bound'])) ?> tagged in this session. Nothing left to do.
 <?php else: ?>
-  <strong>Next: <?= $e($nameOf($session['next'])) ?></strong> &mdash; scan a tag.
-  <span class="muted small">
-    <?= $e(\count($session['bound'])) ?> bound &middot; <?= $e($session['remaining']) ?> to go
-  </span>
+    <strong>Next: <?= $e($nameOf($session['next'])) ?></strong> &mdash; scan a tag.
+    <span class="muted small">
+      <?= $e(\count($session['bound'])) ?> bound &middot; <?= $e($session['remaining']) ?> to go
+    </span>
 <?php endif; ?>
+  </span>
   <form method="post" action="<?= $e($app->url('tags/session')) ?>" class="flush inline">
     <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
     <input type="hidden" name="action" value="stop">

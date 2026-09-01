@@ -81,10 +81,7 @@ body {
 .menu a .hint, .menu .menu-action .hint {
   display: block; font-weight: 400; font-size: 12px; color: var(--carl-text-muted);
 }
-.menu .menu-action {
-  width: 100%; text-align: left; font: inherit; font-weight: 600; cursor: pointer;
-  flex-direction: column; align-items: flex-start; gap: 2px;
-}
+.menu .menu-action { width: 100%; text-align: left; font: inherit; font-weight: 600; cursor: pointer; }
 
 /* ---------- Forms ---------- */
 
@@ -389,6 +386,9 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
 
 .qr-panel { display: flex; gap: var(--carl-gap); align-items: flex-start; flex-wrap: wrap; }
 .qr-holder { flex: 0 0 auto; line-height: 0; }
+/* Everything beside the code shares what is left, and wraps under it on a
+   narrow phone rather than squeezing into a column two words wide. */
+.qr-panel > :not(.qr-holder) { flex: 1 1 190px; min-width: 0; }
 .qr-code { font-family: var(--carl-font-mono); font-size: 22px; letter-spacing: .12em; margin: 0 0 4px; }
 
 .mono { font-family: var(--carl-font-mono); }
@@ -403,4 +403,49 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
 @media (min-width: 520px) { .tag-actions { grid-template-columns: repeat(3, 1fr); } }
 .tag-action { min-height: 56px; font-size: 16px; }
 
+/*
+ * The session strip. The message is ONE flex item and the stop control is the
+ * other, so it stays a strip: leaving the <strong>, the sentence and the form
+ * as three items makes each one wrap onto its own line, and a three-line
+ * banner on every page in the app is not a strip.
+ */
 .tagging-strip { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+
+/*
+ * A list row with a second line under it, the way .menu already does it. The
+ * hint is a block or it runs on into the title, which reads as one long
+ * sentence: "Full log form Backdate, add a photo, write a sentence".
+ */
+.list .hint {
+  display: block; font-weight: 400; font-size: 12px; color: var(--carl-text-muted);
+}
+
+/*
+ * A button that IS a list row. Buttons centre their text and rows do not, so
+ * a form-wrapped row in a list sits in the middle of the card without this.
+ */
+.list .btn-link { text-align: left; text-decoration: none; }
+/*
+ * The TITLE of such a row reads as a link; its explanation does not. The
+ * underline has to move onto the title rather than be switched off on the
+ * hint: a text decoration is drawn across all of an element's descendants and
+ * cannot be removed by one of them.
+ */
+.list .btn-link .name { text-decoration: underline; }
+
+/*
+ * An explanation under a field is not a label, even when the markup wraps the
+ * whole field in one -- which several forms here do, because it makes the
+ * whole row a tap target. Without this it inherits label's 600 and every help
+ * line on those forms is bold.
+ */
+.field .help { font-weight: 400; }
+
+/*
+ * On screen the code is an identifier, not something to scan: it says which
+ * physical tag you are holding. Cap it so the thing the screen is actually
+ * for -- the plant list, or the row of actions -- is not pushed under the
+ * fold by a decoration. It is drawn from the same matrix at whatever size the
+ * printer has, so nothing is lost.
+ */
+.qr-panel .qr { width: 120px; }
