@@ -968,3 +968,155 @@ counts appear on the tag screens, which were making those reads anyway.
 - **Retire is per sheet, not per tag.** §5.4 asks for the sheet, which is the
   thing that actually goes missing. A single ruined stake is thrown away and
   its code sits unbound in the pool, which is the correct state for it.
+
+---
+
+## 14. Phase 13: the desk half of §5.2, finished
+
+§5.2 says binding "works from either end" and names the second end exactly:
+*"at the foot of Start a New Plant, and on any plant's page: 'assign a tag'
+— scan one, or type the six characters."* Phase 8 built the first end — the
+scan — completely, and built the second as a **link to the pool screen**. A
+person at a desk in February, with the season planned in Carl and a sheet of
+labels in front of them, could not put a stake on a plant without scanning
+one; and once it was on, could not take it off again without walking to it.
+
+Phase 13 finishes the desk end. Nothing about the scan end changes, and every
+rule in `PHASE-9-HANDOFF.md` §4 still holds — `27_tag_desk_test.php` pins the
+ones this touches.
+
+### 14.1 "Here is a plant, which tag?" — the free-code picker
+
+The scan asks *"here is a tag, which plant?"* and lists the untagged plants
+(§6.4). The plant page and the new-plant form now ask the converse and list
+the **free codes**, and the list has the shape of the thing on the desk:
+**grouped by sheet, in sheet order, each code with its row and column.**
+Picking "row 3, column 1" and peeling that label is one glance. The code is
+printed large on every label, so the position is a shortcut and not the only
+way to find it.
+
+It is a native `<select>` with `<optgroup>` per sheet, not a text box and not
+a datalist. It needs no script, type-to-jump finds a code already read off a
+stake in hand, a wheel of forty-eight codes on a phone is a short scroll, and
+it cannot be mistyped. A code carried in from a scan ("start a new plant with
+this tag", §6.4 item 2) is preselected — the hidden field is gone, the picker
+*is* the field.
+
+`TagRepository::freeBySheet()` is one statement and reads the bound tags too,
+because a label's position on the sheet is its rank among **every** code
+minted into the batch (minting order is sheet order, `LabelSheet::sheetsOf()`).
+The rank is counted in PHP and the bound ones dropped afterwards, which
+spares MySQL a window function on a page that has already spent nine
+statements on the plant. `LabelStock::place()` turns the rank into
+sheet/row/column.
+
+| Screen | Statements added | Why it is worth them |
+| --- | --- | --- |
+| `/plants/{id}` | 1 (`freeBySheet`) | The picker, and the swap. `11_reports_test.php` and `20_split_test.php` compare a big plant with a small one and a split with an unsplit; a constant on both sides is what they allow. |
+| `/plants/new/{kind}` | 1 | The picker at the foot. Hidden when there is nothing to pick and nothing carried in, so an account that has never printed a sheet is not asked about a feature it does not use. |
+| `/tags` | 2 (`inUse`, `freeBySheet`) | The directory, §14.3. |
+| `/t/{code}` (bound) | **0** | §6.3's budget is untouched. The field screen is the page hit forty times in a walk. |
+| `/t/{code}` (unbound) | 1 (`taggedLiving`) | The replacement path, §14.4. The bind screen is a desk-and-garage page, not a field page. |
+
+### 14.2 The plant page: on, off, swap — and a choice is never dropped
+
+`POST /plants/{id}/tag` with a `code` puts a free code on. Under `/plants/{id}`
+and not `/t/`, because here the code is the *form's* value, not the address's.
+It lands in the same `TagRepository::bindTo()` as the scan, so one live
+binding per plant holds whichever way it was made.
+
+- A plant that already has a tag gets a **swap**: the new code goes on and
+  the old one back in the pool in one transaction, the old binding **closed**
+  and kept. This is §6.4 item 3 — the replacement for a ruined stake — done
+  from the end a person actually starts at, which is the plant whose stake
+  broke.
+- A code that is on **another** plant is refused, and the refusal names the
+  plant. Moving a stake between two living plants is two deliberate acts
+  (take it off there, put it on here), because the one thing worse than a
+  plant with no tag is two plant pages disagreeing about a stake.
+- A code that is not yours reads the same as one that does not exist (§6.2).
+- Every form on the panel posts back to `#tag`, so a long report comes back
+  to the panel and not to its top.
+
+`POST /plants/{id}/tag/release` takes the tag off from the plant page, with
+one tick the field screen cannot sensibly offer: **"the stake is lost or
+ruined — retire the code as well."** On the field screen you are holding the
+stake, so it is not lost.
+
+**On Start a New Plant the chosen code is checked *before* the plant is
+written**, and a code that is not free is a form error with the reason. Phase
+8 bound best-effort after the insert and said "Plant recorded" either way,
+which was right when the only way a code arrived was a scan Carl had just
+called free, and wrong once a person can pick one deliberately. A choice that
+is quietly dropped is the field that "stays null on every plant"
+(`PHASE-13-HANDOFF.md` §8); a choice refused with the reason is a form that
+can be corrected.
+
+**And that check found a bug older than the tags.** `PlantController::create()`
+rendered its errors with `formData() + ['errors' => $errors]`; `formData()`
+carries an empty `errors` key of its own, and PHP's array union keeps the
+*left* value for a key both sides have. Every server-side validation error on
+the new-plant form, from Phase 1, was rendered as the form coming back
+untouched. Nobody found out because the browser's own `required` caught the
+common cases first — the tag was the first check a browser cannot make.
+`27_tag_desk_test.php` asserts the plain case now ("Choose a plant category
+and type." is on the page), and the union is the other way round.
+
+### 14.3 The directory: which stake is on which plant
+
+The pool screen showed four counts and a list of sheets. "What is this tag
+on?" was answerable by scanning it or by opening sheets one at a time, and
+"which of these do I pull in October?" was not answerable at all. It now has:
+
+- **Tags on plants** — every live binding, most recently attached first, with
+  the plant's name and place. Each row goes both ways: the plant page for the
+  desk, the field screen for the garden. And a **Take off** button per row,
+  because clearing a bed is pulling six stakes off a list; `POST
+  /t/{code}/release` accepts `return=tags` and comes back to the list rather
+  than to the freed tag's bind screen. A named destination, not the Referer:
+  the test client sends none, and a header is a suggestion.
+- **Free codes, by sheet** — collapsed, with row and column, each opening the
+  bind screen, and each with a **Retire** (§14.5).
+
+### 14.4 The replacement path picks a plant by name
+
+§6.4 item 3's form asked for a **plant id**, typed by hand, "from the plant's
+own page address". Nobody knows a plant's id; everybody knows its name. It is
+now a select of the living plants that have a tag, each with its current code
+beside it, still behind the same tick — and not offered at all when nothing
+has a tag. `TagRepository::taggedLiving()`, one statement.
+
+### 14.5 One code can be retired without its sheet
+
+§13.2 left this out: *"a single ruined stake is thrown away and its code sits
+unbound in the pool, which is the correct state for it."* It is not, quite.
+The pool count then says a code is printed and free when it is in the bin,
+and the day it matters is the one where the count says twenty-three and the
+sheet has twenty-two labels left on it.
+
+`POST /t/{code}/retire` toggles one code. **Refused while the code is on a
+plant** — take it off first — in the controller *and* in
+`TagRepository::retireTag()`'s `WHERE`, so a forged form cannot leave a plant
+page claiming a stake that does not exist. Reachable from the free list on
+`/tags`, from the sheet's own page (where a code retired on its own shows as
+such, with its one way back), and as the tick on the plant page's release.
+
+**Un-retiring a sheet leaves a code retired on its own where it was.**
+`retireBatch()` stamps the batch and its codes with one timestamp, and
+un-retiring clears only the codes that carry it. The stake for one code
+snapped in May; the sheet was mislaid in June and retired; it turned up in a
+drawer in September. Putting the sheet back must not put the snapped stake
+back. `27_tag_desk_test.php` sleeps one second between the two retirements
+so the stamps cannot coincide, which is the one place a test in this suite
+waits on the clock on purpose.
+
+### 14.6 What this does not do
+
+- **No in-app scanner, still** (§7). The picker is for the desk; the garden is
+  the camera.
+- **No typed-code box beside the picker.** The picker lists every free code
+  the account owns, and a code that is not free is exactly the case the
+  picker should not offer. Typing is still where it was: the search box on
+  View Plants and Log Plant Activity, and *Find a tag by its code* on `/tags`.
+- **The field screen is unchanged**, in markup and in statements.
+- **No statement was added to `/t/{code}` for a bound tag.** §6.3.

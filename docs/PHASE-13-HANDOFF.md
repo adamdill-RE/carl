@@ -245,6 +245,29 @@ catches a typo inside the plausible range. Nothing in Carl can edit or delete
 an event today — this is the first field where that stings, because it is the
 first one that is *plotted*.
 
+### 3.6 Addendum, written after the handoff: the desk half of tagging is built
+
+Not in the list above because it was not on it. Reviewing this document
+against the tag screens turned up that `QR-TAGS-SPEC.md` §5.2 — *"at the foot
+of Start a New Plant, and on any plant's page: assign a tag"* — had shipped in
+Phase 8 as a link to the pool screen. A plant could be tagged only by scanning
+a tag, and untagged only from the field screen or by ending the season.
+
+It is built now, on the branch this note is on, and documented as
+**`QR-TAGS-SPEC.md` §14**: a free-code picker shaped like the sheet on the
+desk, on the plant page and the new-plant form; take-off and swap from the
+plant page; a directory of which stake is on which plant; retiring one code
+without its sheet; and the replacement path picking a plant by name instead of
+by id. `27_tag_desk_test.php` covers it. **Routes: 111 (+5). Statements on the
+field screen: unchanged.**
+
+One §4-grade finding fell out of it, and it is older than the tags:
+`PlantController::create()` rendered its validation errors with
+`formData() + ['errors' => $errors]`, and PHP's array union keeps the left
+value, so every server-side error on the new-plant form since Phase 1 came
+back as an untouched form. The browser's `required` hid it. §14.2 has the
+detail; the union is now the other way round and the plain case is asserted.
+
 ---
 
 ## 4. What must not regress

@@ -353,6 +353,168 @@ final class TagRepository extends Repository
         )->rowCount();
     }
 
+    // -- The desk half (Section 5.2, finished in Phase 13) -----------------
+
+    /**
+     * Every free code, grouped by the sheet it is printed on and in the order
+     * it appears there.
+     *
+     * THE DESK DIRECTION OF SECTION 5.2. The scan direction says "here is a
+     * tag, which plant?"; this answers "here is a plant, which tag?" for the
+     * plant page and Start a New Plant. The person asking is at a desk with a
+     * sheet of labels in front of them, so the useful shape is the sheet's
+     * own: newest sheet first, and each code with the row and column it sits
+     * at, so picking "row 3, column 1" and peeling that label is one glance.
+     *
+     * ONE STATEMENT, AND IT READS THE BOUND TAGS TOO. A label's position on
+     * the sheet is its rank among every tag minted into the batch, bound or
+     * not -- minting order is sheet order (LabelSheet::sheetsOf()) -- so the
+     * rank is counted here over the whole batch and the bound ones dropped
+     * afterwards. That is a few hundred rows at most for an account with a
+     * drawer full of sheets, and it spares MySQL a window function on a
+     * page that has already spent nine statements on the plant itself.
+     *
+     * Retired sheets and retired codes are left out: a code on a sheet you
+     * lost is not one you can peel.
+     *
+     * @return list<array{batch_id:int,stock_sku:string,sheet:int,
+     *   tags:list<array{id:int,code:string,row:int,column:int}>}>
+     */
+    public function freeBySheet(): array
+    {
+        $rows = $this->db->all(
+            'SELECT t.`id`, t.`code`, t.`batch_id`, t.`retired_at`, bt.`stock_sku`,'
+            . ' b.`id` AS binding_id'
+            . ' FROM `qr_tag` t'
+            . ' JOIN `qr_tag_batch` bt ON bt.`id` = t.`batch_id`'
+            . ' LEFT JOIN `qr_tag_binding` b ON b.`tag_id` = t.`id` AND b.`unbound_at` IS NULL'
+            . ' WHERE t.`user_id` = :' . self::SCOPE . ' AND bt.`retired_at` IS NULL'
+            . ' ORDER BY t.`batch_id` DESC, t.`id` ASC',
+            $this->bind([])
+        );
+
+        $sheets = [];
+        $ordinal = [];
+        foreach ($rows as $row) {
+            $batchId = (int) $row['batch_id'];
+            $index = $ordinal[$batchId] ?? 0;
+            $ordinal[$batchId] = $index + 1;
+
+            if ($row['binding_id'] !== null || $row['retired_at'] !== null) {
+                continue;
+            }
+
+            $stock = (string) $row['stock_sku'];
+            $place = LabelStock::place($stock, $index);
+            $key = $batchId . ':' . $place['sheet'];
+
+            $sheets[$key] ??= [
+                'batch_id'  => $batchId,
+                'stock_sku' => $stock,
+                'sheet'     => $place['sheet'],
+                'tags'      => [],
+            ];
+            $sheets[$key]['tags'][] = [
+                'id'     => (int) $row['id'],
+                'code'   => (string) $row['code'],
+                'row'    => $place['row'],
+                'column' => $place['column'],
+            ];
+        }
+
+        return \array_values($sheets);
+    }
+
+    /** How many free codes there are, counted off freeBySheet()'s result. @param list<array{tags:list<mixed>}> $sheets */
+    public static function countFree(array $sheets): int
+    {
+        $n = 0;
+        foreach ($sheets as $sheet) {
+            $n += \count($sheet['tags']);
+        }
+        return $n;
+    }
+
+    /**
+     * Every tag that is on a plant right now, with the plant: the directory
+     * on the Plant tags screen.
+     *
+     * "Which stake is on which plant" was answerable only one sheet at a
+     * time before this, which is the wrong shape for the question a person
+     * asks in October -- "which of these do I pull?" -- and for the one they
+     * ask in April, holding a stake with a faded code, which is "what was
+     * this on?". Most recently bound first.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function inUse(int $limit = 500): array
+    {
+        return $this->db->all(
+            'SELECT t.`id` AS tag_id, t.`code`, b.`bound_at`, p.`id` AS planting_id,'
+            . ' p.`label`, p.`state`, p.`start_date`, pt.`category`, pt.`type`,'
+            . ' g.`name` AS garden_name, gr.`name` AS row_name, c.`name` AS container_name'
+            . ' FROM `qr_tag_binding` b'
+            . ' JOIN `qr_tag` t ON t.`id` = b.`tag_id`'
+            . ' JOIN `planting` p ON p.`id` = b.`planting_id`'
+            . ' JOIN `plant_type` pt ON pt.`id` = p.`plant_type_id`'
+            . ' LEFT JOIN `garden` g ON g.`id` = p.`garden_id`'
+            . ' LEFT JOIN `garden_row` gr ON gr.`id` = p.`garden_row_id`'
+            . ' LEFT JOIN `container` c ON c.`id` = p.`container_id`'
+            . ' WHERE b.`user_id` = :' . self::SCOPE . ' AND b.`unbound_at` IS NULL'
+            . ' ORDER BY b.`id` DESC LIMIT ' . (int) $limit,
+            $this->bind([])
+        );
+    }
+
+    /**
+     * Living plants that already have a tag, with the code: the bind
+     * screen's "replace a tag that was lost or ruined" list (Section 6.4
+     * item 3), which used to ask for a plant id typed by hand.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function taggedLiving(int $limit = 200): array
+    {
+        return $this->db->all(
+            'SELECT p.`id`, p.`label`, p.`start_date`, pt.`category`, pt.`type`, t.`code`'
+            . ' FROM `planting` p'
+            . ' JOIN `plant_type` pt ON pt.`id` = p.`plant_type_id`'
+            . ' JOIN `qr_tag_binding` b ON b.`planting_id` = p.`id` AND b.`unbound_at` IS NULL'
+            . ' JOIN `qr_tag` t ON t.`id` = b.`tag_id`'
+            . ' WHERE p.`user_id` = :' . self::SCOPE . ' AND p.`state` <> :ended'
+            . ' ORDER BY p.`start_date` DESC, p.`id` DESC LIMIT ' . (int) $limit,
+            $this->bind(['ended' => PlantingState::ENDED])
+        );
+    }
+
+    /**
+     * Retire ONE code -- the stake that snapped, the label that tore on the
+     * way off the sheet -- or put it back.
+     *
+     * Section 13.2 left this out on the grounds that a ruined stake's code
+     * "sits unbound in the pool, which is the correct state for it". It is
+     * not, quite: the pool count then says a code is printed and free when
+     * it is in the bin, and the day that matters is the one where the count
+     * says twenty-three and the sheet has twenty-two labels left on it.
+     * Nothing is deleted, as with a sheet.
+     *
+     * A code that is on a plant is refused: take it off first, so the
+     * plant's page never claims a stake that does not exist.
+     */
+    public function retireTag(int $tagId, bool $retired = true): bool
+    {
+        $now = $this->now();
+
+        return $this->db->run(
+            'UPDATE `qr_tag` SET `retired_at` = :retired, `updated_at` = :updated'
+            . ' WHERE `user_id` = :user_id AND `id` = :id'
+            . ' AND NOT EXISTS (SELECT 1 FROM `qr_tag_binding` b'
+            . ' WHERE b.`tag_id` = `qr_tag`.`id` AND b.`unbound_at` IS NULL)',
+            ['retired' => $retired ? $now : null, 'updated' => $now,
+             'user_id' => $this->userId, 'id' => $tagId]
+        )->rowCount() > 0;
+    }
+
     // -- Minting ----------------------------------------------------------
 
     /**
@@ -506,7 +668,7 @@ final class TagRepository extends Repository
     public function batchTags(int $batchId): array
     {
         return $this->db->all(
-            'SELECT t.`id`, t.`code`, p.`label`, p.`start_date`,'
+            'SELECT t.`id`, t.`code`, t.`retired_at`, p.`id` AS planting_id, p.`label`, p.`start_date`,'
             . ' pt.`category`, pt.`type`'
             . ' FROM `qr_tag` t'
             . ' LEFT JOIN `qr_tag_binding` b ON b.`tag_id` = t.`id` AND b.`unbound_at` IS NULL'
@@ -528,18 +690,40 @@ final class TagRepository extends Repository
      */
     public function retireBatch(int $batchId, bool $retired = true): int
     {
-        $now = $retired ? $this->now() : null;
+        $now = $this->now();
+
+        // ONE timestamp for the batch and its codes, and un-retiring clears
+        // only the codes that carry it. A code retired on its own -- the
+        // stake that snapped in May (retireTag()) -- keeps its own earlier
+        // stamp, so a sheet that turns up in a drawer and is put back in the
+        // pool does not resurrect the one label on it that is in the bin.
+        $previous = $retired ? null : $this->db->value(
+            'SELECT `retired_at` FROM `qr_tag_batch` WHERE `user_id` = :user_id AND `id` = :id',
+            ['user_id' => $this->userId, 'id' => $batchId]
+        );
 
         $this->db->run(
             'UPDATE `qr_tag_batch` SET `retired_at` = :now, `updated_at` = :updated'
             . ' WHERE `user_id` = :user_id AND `id` = :id',
-            ['now' => $now, 'updated' => $this->now(), 'user_id' => $this->userId, 'id' => $batchId]
+            ['now' => $retired ? $now : null, 'updated' => $now,
+             'user_id' => $this->userId, 'id' => $batchId]
         );
 
+        if ($retired) {
+            return $this->db->run(
+                'UPDATE `qr_tag` SET `retired_at` = :now, `updated_at` = :updated'
+                . ' WHERE `user_id` = :user_id AND `batch_id` = :batch_id AND `retired_at` IS NULL',
+                ['now' => $now, 'updated' => $now, 'user_id' => $this->userId, 'batch_id' => $batchId]
+            )->rowCount();
+        }
+
+        if (!\is_string($previous)) {
+            return 0;
+        }
         return $this->db->run(
-            'UPDATE `qr_tag` SET `retired_at` = :now, `updated_at` = :updated'
-            . ' WHERE `user_id` = :user_id AND `batch_id` = :batch_id',
-            ['now' => $now, 'updated' => $this->now(), 'user_id' => $this->userId, 'batch_id' => $batchId]
+            'UPDATE `qr_tag` SET `retired_at` = NULL, `updated_at` = :updated'
+            . ' WHERE `user_id` = :user_id AND `batch_id` = :batch_id AND `retired_at` = :was',
+            ['updated' => $now, 'user_id' => $this->userId, 'batch_id' => $batchId, 'was' => $previous]
         )->rowCount();
     }
 

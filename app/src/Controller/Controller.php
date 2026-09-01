@@ -278,10 +278,16 @@ abstract class Controller
         ]));
     }
 
-    /** @param array<string,mixed> $query */
-    protected function redirect(string $path, array $query = []): Response
+    /**
+     * @param array<string,mixed> $query
+     * @param string $fragment an in-page anchor, so a form at the foot of a
+     *   long page comes back to itself and not to the top of it
+     */
+    protected function redirect(string $path, array $query = [], string $fragment = ''): Response
     {
-        return Response::redirect($this->app->url($path, $query));
+        return Response::redirect(
+            $this->app->url($path, $query) . ($fragment === '' ? '' : '#' . $fragment)
+        );
     }
 
     protected function back(Request $request, string $fallback = '/'): Response

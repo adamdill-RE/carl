@@ -96,6 +96,10 @@ final class TagController extends Controller
             'tag'       => $tag,
             'qr'        => $this->svgFor((string) $tag['code']),
             'untagged'  => $this->tags()->untagged($search),
+            // Section 6.4 item 3, the replacement path. It used to ask for a
+            // plant id typed by hand, off "the plant's own page address".
+            // Nobody knows a plant's id; everybody knows its name.
+            'tagged'    => $this->tags()->taggedLiving(),
             'search'    => $search,
             'session'   => $session,
             'pageTitle' => 'Tag ' . $tag['code'],
@@ -246,7 +250,157 @@ final class TagController extends Controller
         $this->tags()->unbind((int) $tag['tag_id']);
         $this->flash('Tag ' . $tag['code'] . ' is free. The plant is untouched.');
 
+        // From the directory on the Plant tags screen the person is pulling
+        // stakes off a list, and the list is where they want to be again --
+        // not the bind screen of the tag they just freed. A named
+        // destination and not the Referer, because the Client in the tests
+        // sends none and a header is a suggestion.
+        if ($request->input('return') === 'tags') {
+            return $this->redirect('tags');
+        }
         return $this->redirect('t/' . $tag['code']);
+    }
+
+    /**
+     * `POST /t/{code}/retire` -- one code out of the pool, or back in.
+     *
+     * The sheet is the thing that usually goes missing (Section 5.4), and
+     * retiring a sheet is built. This is the other case: one label torn
+     * coming off the sheet, one stake snapped in a border. Without it the
+     * pool count says a code is printed and free when it is in the bin.
+     * Refused while the code is on a plant, so a plant page never claims a
+     * stake that does not exist.
+     */
+    public function retireTag(Request $request, array $params): Response
+    {
+        $code = TagRepository::normalise((string) $params['code']);
+        $tag = $this->tags()->scan($code);
+        if ($tag === null) {
+            throw HttpException::notFound('No such tag.');
+        }
+
+        $return = $request->input('return') === 'batch' && $tag['batch_id'] !== null
+            ? 'tags/batches/' . (int) $tag['batch_id']
+            : 'tags';
+
+        if ($tag['planting_id'] !== null) {
+            $this->flash('Tag ' . $code . ' is on ' . self::plantName($tag)
+                . '. Take it off that plant before retiring it.', 'error');
+            return $this->redirect($return);
+        }
+
+        $retiring = $tag['tag_retired_at'] === null;
+        $this->tags()->retireTag((int) $tag['tag_id'], $retiring);
+
+        $this->flash($retiring
+            ? 'Tag ' . $code . ' retired. Nothing is deleted; put it back if it turns up.'
+            : 'Tag ' . $code . ' is back in the pool.');
+
+        return $this->redirect($return);
+    }
+
+    // ==================================================================
+    // The desk half: from the plant's end (Section 5.2)
+    // ==================================================================
+
+    /**
+     * `POST /plants/{id}/tag` -- put a free code on this plant.
+     *
+     * The other direction from the scan. The scan says "here is a tag,
+     * which plant?" and lists the untagged plants; this says "here is a
+     * plant, which tag?" and the plant page lists the free codes by sheet.
+     * Section 5.2 asked for exactly this -- "on any plant's page: assign a
+     * tag" -- and until now the plant page offered a link to the pool.
+     *
+     * A plant that already has a tag gets a SWAP: bindTo() closes the old
+     * binding in the same transaction, so the old code goes back to the
+     * pool and the plant never has two. That is the replacement-for-a-
+     * ruined-stake path (Section 6.4 item 3) done from the end a person
+     * actually starts at, which is the plant whose stake broke.
+     *
+     * A code that is on ANOTHER plant is refused, with the plant named:
+     * moving a stake between two living plants is two deliberate acts (take
+     * it off there, put it on here), because the one thing worse than a
+     * plant with no tag is two plant pages that disagree about a stake.
+     */
+    public function attach(Request $request, array $params): Response
+    {
+        $plantingId = (int) $params['id'];
+        $planting = $this->plantings()->findWithDetail($plantingId);
+        if ($planting === null) {
+            throw HttpException::notFound('That is not one of your plants.');
+        }
+
+        $code = TagRepository::normalise((string) ($request->input('code', '') ?? ''));
+        if (!TagRepository::isWellFormed($code)) {
+            $this->flash('Pick a code off the list, or type the six characters off the stake.', 'error');
+            return $this->redirect('plants/' . $plantingId, [], 'tag');
+        }
+
+        $tag = $this->tags()->scan($code);
+        // Unknown and somebody else's read the same (Section 6.2). A free
+        // code you own is the only thing this form can use.
+        if ($tag === null) {
+            $this->flash('No tag of yours has the code ' . $code . '.', 'error');
+            return $this->redirect('plants/' . $plantingId, [], 'tag');
+        }
+        if ($tag['tag_retired_at'] !== null) {
+            $this->flash('Tag ' . $code . ' is retired. Put it back in the pool first.', 'error');
+            return $this->redirect('plants/' . $plantingId, [], 'tag');
+        }
+        if ($tag['planting_id'] !== null) {
+            if ((int) $tag['planting_id'] === $plantingId) {
+                $this->flash('Tag ' . $code . ' is already on this plant.');
+            } else {
+                $this->flash('Tag ' . $code . ' is on ' . self::plantName($tag)
+                    . '. Take it off that plant first.', 'error');
+            }
+            return $this->redirect('plants/' . $plantingId, [], 'tag');
+        }
+
+        $previous = $this->tags()->forPlanting($plantingId);
+        $this->tags()->bindTo((int) $tag['tag_id'], $plantingId);
+
+        $this->flash($previous === null
+            ? 'Tag ' . $code . ' is on ' . self::plantName($planting) . '. Scan it to log anything.'
+            : 'Tag ' . $code . ' is on ' . self::plantName($planting) . ', and '
+              . $previous['code'] . ' is back in the pool.');
+
+        return $this->redirect('plants/' . $plantingId, [], 'tag');
+    }
+
+    /**
+     * `POST /plants/{id}/tag/release` -- take the tag off, from the plant
+     * page, and optionally retire the code because the stake is gone.
+     *
+     * The same act as release() from the tag's end. It comes back to the
+     * plant page because that is where the person is, and it carries the
+     * one tick the field screen cannot sensibly offer: on the field screen
+     * you are holding the stake, so it is not lost.
+     */
+    public function detach(Request $request, array $params): Response
+    {
+        $plantingId = (int) $params['id'];
+        if (!$this->plantings()->exists($plantingId)) {
+            throw HttpException::notFound('That is not one of your plants.');
+        }
+
+        $tag = $this->tags()->forPlanting($plantingId);
+        if ($tag === null) {
+            $this->flash('There is no tag on this plant.');
+            return $this->redirect('plants/' . $plantingId, [], 'tag');
+        }
+
+        $this->tags()->unbind((int) $tag['id']);
+
+        if ($request->checkbox('retire')) {
+            $this->tags()->retireTag((int) $tag['id'], true);
+            $this->flash('Tag ' . $tag['code'] . ' is off and retired. The plant is untouched.');
+        } else {
+            $this->flash('Tag ' . $tag['code'] . ' is free again. The plant is untouched.');
+        }
+
+        return $this->redirect('plants/' . $plantingId, [], 'tag');
     }
 
     // ==================================================================
@@ -338,6 +492,11 @@ final class TagController extends Controller
             'pool'       => $this->tags()->pool(),
             'batches'    => $this->tags()->batches(),
             'untagged'   => $this->tags()->untaggedCount(),
+            // The directory: which stake is on which plant, and which codes
+            // are still in the box. Two statements, on the one screen whose
+            // job is to answer those questions.
+            'inUse'      => $this->tags()->inUse(),
+            'free'       => $this->tags()->freeBySheet(),
             'session'    => $this->sessionState(),
             'encoding'   => $this->encoding(),
             'stock'      => $this->userStock(),
