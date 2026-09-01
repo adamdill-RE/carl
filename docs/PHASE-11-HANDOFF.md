@@ -30,10 +30,13 @@ to leave, not work the spec is still waiting on.
 4. **`docs/QR-TAGS-SPEC.md`** §4.2 — why two variables in `tokens.css` are not
    palette and must never be themed. Two separate tests now pin this.
 5. **`docs/deploy.md`** — the runbook. §0 is every measurement taken. Phase 10
-   adds no migration and no cron, but it does add a directory
-   (`public/assets/img/`) and a file at the web root
-   (`public/manifest.webmanifest`), both of which ship on the existing
-   `cp -R public/.` with no `.cpanel.yml` change.
+   adds **no migration**, no cron and no route, so the deploy is a file copy
+   and nothing else. It does add a directory (`public/assets/img/`) and a file
+   at the web root (`public/manifest.webmanifest`), both of which ship on the
+   existing `cp -R public/.` with no `.cpanel.yml` change — and one line to
+   `public/.htaccess`, an `AddType` for `.webmanifest`, because neither Apache
+   nor LiteSpeed ships a mapping for that extension and a manifest served as
+   octet-stream may simply not parse.
 6. **`docs/PHASE-10-HANDOFF.md`** §4 (what must not regress) and §7 (where the
    bodies are buried). Both still current in full; §4 gains eight entries in
    §4 below.

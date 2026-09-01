@@ -23,8 +23,19 @@ DirectoryIndex index.php
     RewriteRule ^ index.php [L]
 </IfModule>
 
+# The web manifest. Apache and LiteSpeed do not ship a mapping for
+# .webmanifest, so without this it is served as octet-stream and a browser
+# may decline to parse it -- and a manifest that does not parse produces no
+# error on any page, just an install that quietly has no icon.
+<IfModule mod_mime.c>
+    AddType application/manifest+json .webmanifest
+</IfModule>
+
 # Assets carry a ?v=<mtime> stamp, so a long Expires is safe and a changed
-# file busts itself (hosting Section 9).
+# file busts itself (hosting Section 9). The manifest is deliberately NOT
+# given one: it is small, it is read once per install, and a year-frozen
+# manifest pointing at icons that have moved is the same trap as a
+# year-frozen service worker.
 <IfModule mod_expires.c>
     ExpiresActive On
     ExpiresByType text/css              "access plus 1 year"
