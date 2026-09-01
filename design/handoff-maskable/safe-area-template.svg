@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Carl maskable icon — safe-area template (512)</title>
+  <!-- Ground MUST bleed to all four edges. No rounded corners: the launcher
+       applies its own mask, and a baked radius shows as a double rounding. -->
+  <rect width="512" height="512" fill="#265c37"/>
+
+  <!-- The maskable safe zone: a centred circle of diameter 80% of the canvas
+       (409.6px, r=204.8). Anything outside this may be cropped by the
+       platform mask. Artwork goes INSIDE it. Delete this group on delivery. -->
+  <g fill="none" stroke="#ffffff" stroke-opacity="0.55">
+    <circle cx="256" cy="256" r="204.8" stroke-width="2" stroke-dasharray="10 8"/>
+    <rect x="51.2" y="51.2" width="409.6" height="409.6" stroke-width="1" stroke-dasharray="4 6"/>
+  </g>
+</svg>
