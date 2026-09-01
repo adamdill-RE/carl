@@ -73,7 +73,7 @@ $gardens = new GardenRepository($db, $owner['id']);
 $plantings = new PlantingRepository($db, $owner['id']);
 $gardenId = (int) $gardens->where('`name` = :n', ['n' => 'Season Bed' . $suffix])[0]['id'];
 $rows = $gardens->rows($gardenId);
-$today = \gmdate('Y-m-d');
+$today = \gmdate('Y-m-d');  // utc-ok: only backdates fixtures; the one date assertion is the frost date this test supplied, not a computed today
 
 /** Plant types with two different families, so rotation has something to say. */
 $families = $db->all(

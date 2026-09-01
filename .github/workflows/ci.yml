@@ -64,6 +64,9 @@ jobs:
       - name: Assets stay within the client shell budget
         run: php tests/check_asset_budget.php
 
+      - name: No test takes its "today" from the server clock
+        run: php tests/check_test_clocks.php
+
   database:
     name: Migrations and suite (${{ matrix.db.name }})
     runs-on: ubuntu-latest
