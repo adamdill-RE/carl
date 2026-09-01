@@ -192,9 +192,10 @@ final class Routes
         $r->get('/companions', CompanionController::class, 'index');
 
         // -- Pest and disease reference (Phase 9) ---------------------------
-        // Global reference data, read-only, like /companions. One statement
-        // and no pagination: it is seventy-odd rows the browser can search.
-        // db/migrations/022_pest_reference.sql is why it exists at all.
+        // Global reference data, read-only, like /companions.
+        // db/migrations/022_pest_reference.sql is why it exists at all. `?key=`
+        // opens one entry in full and everything else on the page is a list,
+        // because drawn as seventy-six cards it is 202 KB of HTML.
         $r->get('/pests', PestController::class, 'index');
 
         // -- Recommendations (handoff Section 14 v2; Phase 5 Section 3.1) ---
