@@ -44,6 +44,7 @@ final class EventType
     public const NOTE                = 'note';
     public const MOVED               = 'moved';
     public const SPLIT_OUT           = 'split_out';
+    public const MEASURED            = 'measured';
 
     private const LABELS = [
         self::SEED_STARTED           => 'Seed started',
@@ -68,6 +69,7 @@ final class EventType
         self::NOTE                   => 'Note',
         self::MOVED                  => 'Moved',
         self::SPLIT_OUT              => 'Split out',
+        self::MEASURED               => 'Measured',
     ];
 
     /** Types that take life off a planting: the plants are gone. */
@@ -101,6 +103,21 @@ final class EventType
         self::MOVED,
     ];
 
+    /**
+     * Actions that mean one plant and cannot be applied to a batch.
+     *
+     * A batch writes the SAME event to every selected planting, which is
+     * right for "I watered all of them" and a lie for "they are fourteen
+     * inches tall": a measurement belongs to the thing measured. Nothing else
+     * on the log form has this property -- a duration, a fertiliser and a
+     * cull reason are all genuinely shared -- so this is a list of one, and
+     * it is a named list rather than an `if` in the controller because the
+     * form and the POST handler both have to agree about it.
+     */
+    private const SINGLE_PLANT_ONLY = [
+        self::MEASURED,
+    ];
+
     /** @return list<string> */
     public static function all(): array
     {
@@ -126,6 +143,14 @@ final class EventType
     public static function isDispersal(string $type): bool
     {
         return \in_array($type, self::DISPERSAL, true);
+    }
+
+    /**
+     * Is this an action a batch must not offer? See SINGLE_PLANT_ONLY.
+     */
+    public static function isSinglePlantOnly(string $type): bool
+    {
+        return \in_array($type, self::SINGLE_PLANT_ONLY, true);
     }
 
     /** Does this action put the plants somewhere else? */

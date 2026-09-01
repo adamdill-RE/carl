@@ -246,6 +246,58 @@ $action = $isBatch ? $app->url('log/batch') : $app->url('log/' . $single['id']);
           'listType' => $L::MULCH_TYPE, 'items' => $lists[$L::MULCH_TYPE] ?? []]) ?>
   </fieldset>
 
+  <fieldset class="event-fields" data-for="<?= $e($E::MEASURED) ?>">
+    <p class="help flush">
+      Fill in the size below &mdash; a height, a diameter, or both. A measurement
+      with neither is not recorded.
+    </p>
+  </fieldset>
+
+<?php if (!$isBatch): ?>
+  <?php /* Outside the per-action fieldsets, with the notes and the photos,
+         because a size is not an action: it is something true of the plant
+         while you were there doing something else. Somebody watering a bed
+         records ONE thing -- "watered it, it is fourteen inches now" -- and a
+         box that costs a second pass through this form is a box that stops
+         being filled in. Measured (above) is the same two fields for the
+         visit where measuring was the whole errand.
+
+         Not offered for a BATCH: the same number written against twenty
+         plants is nineteen measurements nobody took. EventType's
+         SINGLE_PLANT_ONLY is the rule, and LogController::batch() refuses
+         one, so this `if` and that refusal say the same thing twice on
+         purpose -- a form that offers what the handler rejects is worse than
+         either. */ ?>
+  <fieldset class="size-fields">
+    <legend>Size <span class="muted">(optional)</span></legend>
+    <div class="row">
+      <div class="field grow">
+        <label for="size_height">Height</label>
+        <input type="number" step="0.1" min="0" id="size_height" name="size_height"
+               inputmode="decimal">
+      </div>
+      <div class="field grow">
+        <label for="size_diameter">Diameter</label>
+        <input type="number" step="0.1" min="0" id="size_diameter" name="size_diameter"
+               inputmode="decimal">
+      </div>
+      <div class="field">
+        <label for="size_unit">Unit</label>
+        <select id="size_unit" name="size_unit">
+<?php foreach ($U::SIZE_UNITS as $sizeUnit): ?>
+          <option value="<?= $e($sizeUnit) ?>"<?= $sizeUnit === $units->sizeUnit() ? ' selected' : '' ?>><?= $e($sizeUnit) ?></option>
+<?php endforeach; ?>
+        </select>
+      </div>
+    </div>
+    <p class="help">
+      Whichever you measured &mdash; height for a tomato, across for a squash,
+      both for a shrub. Kept in <?= $e($units->sizeUnit()) ?>, whichever unit you
+      type it in, and charted on the plant's report.
+    </p>
+  </fieldset>
+<?php endif; ?>
+
   <div class="field">
     <label for="narrative">Notes</label>
     <textarea id="narrative" name="narrative" placeholder="Anything worth remembering"></textarea>

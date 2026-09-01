@@ -32,9 +32,10 @@ final class EventRepository extends Repository
     protected function writable(): array
     {
         return ['planting_id', 'event_type', 'event_date', 'recorded_at', 'quantity_delta',
-                'duration_min', 'weight_g', 'count_qty', 'unit', 'narrative',
-                'ref_list_item_id', 'ref_list_item_id_2', 'garden_id', 'garden_row_id',
-                'container_id', 'split_planting_id', 'source_garden_event_id', 'payload'];
+                'duration_min', 'weight_g', 'count_qty', 'unit', 'height_mm', 'diameter_mm',
+                'narrative', 'ref_list_item_id', 'ref_list_item_id_2', 'garden_id',
+                'garden_row_id', 'container_id', 'split_planting_id',
+                'source_garden_event_id', 'payload'];
     }
 
     protected function hasUpdatedAt(): bool
@@ -111,12 +112,21 @@ final class EventRepository extends Repository
      * a timeline row -- which a dot on a chart does not print. Ordered
      * forwards, the direction a chart reads.
      *
+     * FIVE MEASURED COLUMNS COME BACK WITH THEM, and they cost nothing: they
+     * are on the rows this already reads. Phase 13 turns the plant into the
+     * SUBJECT of its own chart rather than forty identical triangles on a
+     * weather one (weather.md Section 7.3 -- "weather is context, not the
+     * subject"), and the numbers it draws are these. Adding columns to a
+     * SELECT is not adding a statement, which is what
+     * `11_reports_test.php` counts.
+     *
      * @return list<array<string,mixed>>
      */
     public function seriesMarkers(int $plantingId): array
     {
         return $this->db->all(
-            'SELECT `id`, `event_type`, `event_date`, `narrative`, `source_garden_event_id`'
+            'SELECT `id`, `event_type`, `event_date`, `narrative`, `source_garden_event_id`,'
+            . ' `height_mm`, `diameter_mm`, `weight_g`, `count_qty`, `duration_min`'
             . ' FROM `plant_event`'
             . ' WHERE `user_id` = :' . self::SCOPE . ' AND `planting_id` = :planting_id'
             . ' ORDER BY `event_date`, `recorded_at`, `id`',
@@ -138,8 +148,15 @@ final class EventRepository extends Repository
     public function gardenSeriesMarkers(int $gardenId): array
     {
         return $this->db->all(
+            // The measured columns are named as NULL rather than left out: a
+            // garden has no height and no harvest weight of its own, and the
+            // shared assembler in Carl\Reports\Series reads the same keys for
+            // both subjects. Answering the question with NULL is cheaper than
+            // teaching the assembler which of its two callers it is serving.
             'SELECT `id`, `event_type`, `event_date`, `narrative`, `fanout_count`,'
-            . ' NULL AS `source_garden_event_id`'
+            . ' NULL AS `source_garden_event_id`,'
+            . ' NULL AS `height_mm`, NULL AS `diameter_mm`, NULL AS `weight_g`,'
+            . ' NULL AS `count_qty`, `duration_min`'
             . ' FROM `garden_event`'
             . ' WHERE `user_id` = :' . self::SCOPE . ' AND `garden_id` = :garden_id'
             . ' ORDER BY `event_date`, `recorded_at`, `id`',
@@ -276,6 +293,7 @@ final class EventRepository extends Repository
         return $this->db->all(
             'SELECT e.id, e.event_type, e.event_date, e.recorded_at, e.planting_id,'
             . ' e.quantity_delta, e.duration_min, e.weight_g, e.count_qty, e.unit,'
+            . ' e.height_mm, e.diameter_mm,'
             . ' e.narrative, e.source_garden_event_id, e.split_planting_id,'
             . ' pt.category, pt.type, p.label AS plant_label,'
             . ' g.name AS garden_name, gr.name AS row_name, c.name AS container_name,'

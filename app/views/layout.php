@@ -9,6 +9,20 @@
  */
 $e = $view->e(...);
 $pageTitle = $pageTitle ?? null;
+
+/* The main menu is this application's only hub -- every screen is reached
+   from it, and until now the only way back was the word "Carl" in the corner
+   or the footer link below the fold. Neither says "menu", and a person deep
+   in a plant report on a phone was scrolling to the bottom to get anywhere.
+   The topbar is sticky, so a labelled link in it is reachable from any scroll
+   position on any screen.
+
+   The brand still goes to the same place, which is the convention and costs
+   nothing; what it does not do is TELL anybody it does. Two links to one
+   destination is only a bug when they look like the same control (Phase 11
+   handoff Section 3.2) -- a wordmark and a labelled pill do not. */
+$currentPath = $app->request()?->path ?? '';
+$onMenu = $currentPath === '/' || $currentPath === '';
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -41,6 +55,12 @@ $pageTitle = $pageTitle ?? null;
 <header class="topbar">
   <a class="brand" href="<?= $e($app->url()) ?>"><span
      class="brand-mark"><?= $view->partial('partials/logo') ?></span>Carl</a>
+<?php if ($user !== null): ?>
+  <?php /* Signed out there is no menu to go to: /login and the setup screens
+         are the whole of what a stranger can reach. */ ?>
+  <a class="nav-menu<?= $onMenu ? ' is-current' : '' ?>" href="<?= $e($app->url()) ?>"
+     <?= $onMenu ? 'aria-current="page"' : '' ?>>Menu</a>
+<?php endif; ?>
   <span class="spacer"></span>
 <?php if ($user !== null): ?>
   <span class="who"><?= $e($user->displayName()) ?></span>

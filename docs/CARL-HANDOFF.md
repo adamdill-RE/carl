@@ -159,6 +159,11 @@ for users).
 - Menu: Start a New Plant · Log Plant Activity · View Plants · Build Garden ·
   Garden Actions · View Garden · Lists · (v2: Reports · Recommendations · End
   Growing Season).
+- **This menu is the only hub**, so every signed-in screen carries a labelled
+  link back to it in the sticky top bar (Phase 13). The brand mark goes to the
+  same place and always did; what it does not do is say so. On the menu itself
+  the link is marked current rather than removed — a control that comes and
+  goes moves everything beside it on every navigation.
 
 ### 4.3 Start a New Plant
 Three entry forms; the choice sets the initial event and state.
@@ -194,10 +199,20 @@ optional narrative, photos attachable to any event):
 | --- | --- |
 | Seed started | Water (duration) · Germinated (quantity) · Failed to germinate (quantity) · Death (quantity) · Up-pot (soil type, container type; repeatable) · Photos · Begin hardening · Transplant (garden+row or container) |
 | Hardening | Set/choose hardening schedule · Projected duration (days) · Hardening start date · Transplant · Photos |
-| Planted (transplanted or direct-sown) | Cull (reason, quantity) · Yield (weight **or** count, unit) · Water (method, duration) · Observe pest/disease · Treat pest/disease (offers to record the observation too if none exists) · Fertilize or amend (fertilizer **or** amendment) · Mulch (type) · Photos · Death (quantity) |
+| Planted (transplanted or direct-sown) | Cull (reason, quantity) · Yield (weight **or** count, unit) · Water (method, duration) · Observe pest/disease · Treat pest/disease (offers to record the observation too if none exists) · Fertilize or amend (fertilizer **or** amendment) · Mulch (type) · Measured (height **or** diameter **or** both) · Photos · Death (quantity) |
 
 Quantities default to the planting's current live count; entering fewer
 records partial attrition (§5.3).
+
+**Size (Phase 13, migration 024).** Every event may carry a height, a diameter,
+or both — offered outside the per-action fields, beside the notes and the
+photos, because the sentence is "watered it, it's fourteen inches now" and a
+box that costs a second pass through the form is a box that stops being filled
+in. `Measured` is an action in its own right for the visit where measuring was
+the errand, and is refused when both boxes are empty. Entered in in/ft/cm/m,
+stored in millimetres, shown in inches or centimetres (weather.md §6.3). **Not
+offered for a batch**: one number written against twenty plants is nineteen
+measurements nobody took.
 
 ### 4.5 View Plants
 Same list and filters, living and culled. Opening a plant shows the **plant
@@ -625,12 +640,25 @@ Both write to `email_outbox` first; the cron sends with bounded retries.
 
 ## 13. Reports, PDFs, exports
 
-### 13.1 Plant and garden reports (Phase 4)
+### 13.1 Plant and garden reports (Phase 4, reworked Phase 13)
 Server-rendered HTML; charts drawn with Chart.js from a JSON endpoint
-(`/api/plant/<id>/series`), one statement for weather + one for events. On a
-plant: temp max/min band, rainfall bars, ET₀ line, events as markers; one
-weather series visible at a time on mobile, toggled. Provisional days marked.
-Attribution line generated from `source_model` (weather.md §10).
+(`/api/plant/<id>/series`), one statement for weather + one for events.
+
+**The subject of the chart is the plant, not the weather** (weather.md §7.3).
+The document carries a `plant` block: height, diameter, harvest weight, harvest
+count, harvest to date, watering minutes and accumulated GDD, all in the
+account's display units, on a spine that is the union of the weather days and
+the days the plant has numbers on — so a measurement taken today, which the
+archive has no row for, is still drawn. A subject series holds the left axis at
+full strength; the weather goes on the right, muted and behind. Tabs are
+presets (Growth, Harvest, Water, Weather, Compare) that set two pickers —
+*Show* and *Against* — and nothing a preset shows is unreachable from the
+pickers. One subject and one context, never two of either: §7.3's Phase 4
+annotation is why. "Compare" is a scatter of one measurement against the
+weather over an adjustable lag window before it (§7.2), with Pearson's r, n,
+and a sentence about what a handful of points under a moving season is worth.
+GDD is accumulated at read time with its base printed (§7.1). Provisional days
+marked. Attribution line generated from `source_model` (weather.md §10).
 
 ### 13.2 PDF download
 "Download PDF" posts the visible chart canvases as PNG data URLs (well under
@@ -638,6 +666,10 @@ Attribution line generated from `source_model` (weather.md §10).
 research card, event table, charts, photos (GD-downscaled to 800 px, max 20
 per report, a note if truncated), citations. Streams the file; nothing kept.
 Budget: under 10 s and 64 MB on a 20-photo report; measure in Phase 4.
+**The three posted panels are still temperature, rainfall and ET₀** — they are
+drawn hidden on every report and carry no tab, because a PDF is a fixed
+document and its reader is not toggling pickers. Putting the built view in the
+report as well is unbuilt (Phase 13 handoff §3).
 
 ### 13.3 CSV export (Phase 2)
 `/export/plants.csv`, `/export/events.csv`, `/export/weather.csv` for the

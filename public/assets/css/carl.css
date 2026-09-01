@@ -49,6 +49,36 @@ body {
 .topbar .spacer { flex: 1; }
 .topbar .who { font-size: 13px; opacity: .85; }
 
+/* The way back to the menu, on every screen (Phase 13).
+   Outlined in currentColor rather than in a named token, so it inverts with
+   the bar: --carl-text-inverse is white type on deep green in light and dark
+   type on a pale green bar at night (tokens-dark.css), and an outline drawn
+   in the same ink is correct in both without a second rule.
+   On the menu itself it fills in instead of disappearing -- a control that
+   comes and goes moves everything beside it, and the bar is sticky, so that
+   would be a shift the reader sees on every navigation. */
+.topbar .nav-menu {
+  flex: none;
+  display: inline-flex; align-items: center;
+  min-height: 32px; padding: 3px 14px;
+  border: 1px solid currentColor; border-radius: 999px;
+  font-size: 14px; font-weight: 600; line-height: 1.4;
+  white-space: nowrap;
+}
+.topbar .nav-menu.is-current {
+  background: var(--carl-text-inverse);
+  color: var(--carl-primary);
+}
+.topbar .nav-menu:active { background: var(--carl-primary-dark); color: var(--carl-text-inverse); }
+.topbar .nav-menu.is-current:active { background: var(--carl-text-inverse); color: var(--carl-primary); }
+
+/* 340px and below the account name is the thing to lose, not the way out of
+   the page: the sign-out button stays, and the name it labels is on the
+   menu screen the link now reaches. */
+@media (max-width: 340px) {
+  .topbar .who { display: none; }
+}
+
 .page-title { margin: 18px 0 4px; font-size: 22px; line-height: 1.25; }
 .page-sub { margin: 0 0 16px; color: var(--carl-text-muted); font-size: 14px; }
 
@@ -307,6 +337,22 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
    is a pixel wide and off the page. Same ring as every other control, so
    --carl-accent stays the focus ring and nothing else. */
 .photo-legend { display: block; margin-bottom: 4px; font-size: 14px; font-weight: 600; }
+
+/* ---------- Size (migration 024) ---------- */
+
+/* The one fieldset on the log form that is always visible, so it is the only
+   one that needs a legend. Height, diameter and their unit share a line: the
+   three are one sentence and reading them as three questions invites
+   answering all three.
+
+   The unit select is sized to its content -- four options, none longer than
+   two characters -- because the shared rule above makes every select 100%
+   wide, which at 380px would leave the two number boxes fighting over what
+   is left. */
+.size-fields { margin: 0 0 14px; }
+.size-fields > legend { padding: 0; font-size: 14px; font-weight: 600; }
+.size-fields .row { align-items: flex-start; }
+.size-fields select { width: auto; min-width: 5em; }
 .photo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .photo-actions .btn { flex: 1 1 auto; margin-bottom: 0; }
 .photo-actions input:focus-visible + label { outline: 3px solid var(--carl-accent); outline-offset: 1px; }
@@ -447,7 +493,11 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
   border-color: var(--carl-primary);
 }
 
-.chart-stack { position: relative; }
+/* A floor under the stack. Every panel but the active one is absolutely
+   positioned, and which one is active is decided by the script AFTER the
+   series has been fetched -- so without a minimum the block collapses to
+   nothing between first paint and the fetch landing, and the page jumps. */
+.chart-stack { position: relative; min-height: 240px; }
 .chart-panel { position: absolute; inset: 0; visibility: hidden; height: 240px; }
 .chart-panel.is-active { position: relative; visibility: visible; }
 .chart-panel > canvas { display: block; width: 100%; height: 100%; }
@@ -459,8 +509,24 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
 .charts.is-ready .chart-tabs { display: flex; }
 .charts.is-ready [data-chart-pdf] { display: block; }
 
+/* The pickers under the chart (Phase 13). Three fields on one line at any
+   width that has room, wrapping to two before anything is squeezed below a
+   thumb's width. Hidden until the script has filled the selects in, for the
+   reason the tabs are: an empty dropdown is worse than no dropdown. */
+.chart-layers { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.chart-layers .field { flex: 1 1 150px; min-width: 0; margin-bottom: 0; }
+.chart-layers label { font-size: 12px; color: var(--carl-text-muted); }
+.chart-layers select { min-height: 38px; padding: 6px 8px; font-size: 14px; }
+
+/* The correlation note. It is a sentence about how much six points are
+   worth, so it is prose width and not a caption under an axis. */
+.charts [data-chart-note]:empty { display: none; }
+.charts [data-chart-note] { margin: 8px 0 0; }
+
+
 @media (min-width: 560px) {
   .chart-panel { height: 300px; }
+  .chart-stack { min-height: 300px; }
 }
 
 /* ---------- Recommendations (Phase 5 handoff Section 3.1) ---------- */
