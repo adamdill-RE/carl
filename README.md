@@ -13,7 +13,7 @@ weather that actually happened.
 | Document | Authority over |
 | --- | --- |
 | [`docs/CARL-HANDOFF.md`](docs/CARL-HANDOFF.md) | Scope. What Carl is, the screens, the data model, the phasing. |
-| [`docs/PHASE-10-HANDOFF.md`](docs/PHASE-10-HANDOFF.md) | What to build next, and the facts each phase measured that the original scope could only assume. The earlier phase handoffs are kept as they were written. |
+| [`docs/PHASE-14-HANDOFF.md`](docs/PHASE-14-HANDOFF.md) | What to build next, and the facts each phase measured that the original scope could only assume. Always the highest-numbered one. The earlier phase handoffs are kept as they were written, and each one's §4 (what must not regress) and §7 (where the bodies are buried) stay in force unless a later phase withdraws an entry by number. |
 | [`docs/hosting.md`](docs/hosting.md) | Every platform constraint. Overrides the handoff where they conflict. |
 | [`docs/weather.md`](docs/weather.md) | Weather ingestion. Overrides the handoff where they conflict. |
 | [`docs/deploy.md`](docs/deploy.md) | The runbook, and §0 is every measurement taken on the live host. |
