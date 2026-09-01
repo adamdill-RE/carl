@@ -98,19 +98,9 @@
   --carl-chart-grid:    #d3d1c5;  /* = --carl-border */
   --carl-chart-axis:    #545a52;  /* = --carl-text-muted */
 
-  /*
-   * QR TAGS -- CONTRAST-CRITICAL, NOT PALETTE. DO NOT THEME THESE.
-   *
-   * A QR symbol has to be near-black on near-white to scan (docs/QR-TAGS-SPEC.md
-   * Section 4.2). They live in this file because it is the only file in the
-   * repository that names a colour and that rule is worth keeping; they are
-   * not part of the palette and must not follow it.
-   *
-   * Tinting the ink to brand green, or the paper to the page background,
-   * silently breaks every tag in every garden -- printed ones included, since
-   * the PDF reads this file too -- and nothing reports it. If a design system
-   * wants the tag to feel like Carl, it can style the card the code sits in.
-   */
+  /* ---- QR plant tags ----------------------------------------------------
+     Contrast-critical, NOT palette. Must not be themed: a tinted QR code
+     silently fails to scan and nothing reports it. */
   --carl-qr-ink:        #000000;
   --carl-qr-paper:      #ffffff;
 

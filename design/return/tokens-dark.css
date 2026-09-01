@@ -1,0 +1,73 @@
+/*
+ * Carl The Garden Helper — dark palette (BRIEF §7.1).
+ * Delivered by Claude Design, 31 August 2026.
+ *
+ * Same 31 names, plus the same --carl-chart-* and --carl-qr-* additions,
+ * inside a prefers-color-scheme block. Wire it by loading this file after
+ * tokens.css and changing <meta name="color-scheme"> to "light dark".
+ * Hex only, same parser rule — but note Carl\Support\Tokens reads
+ * tokens.css, so the PDF stays light whatever the phone is doing. That is
+ * correct: paper is white.
+ *
+ * Validator: all required pairs pass (border advisory, as in light).
+ *
+ * Two deliberate inversions:
+ *  - --carl-primary is a LIGHT green here and --carl-text-inverse is dark,
+ *    because a solid deep-green topbar at night is a black bar. The topbar
+ *    reads as a pale band with dark type.
+ *  - QR ink/paper do NOT invert. A QR must be dark-on-light to scan.
+ */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* ---- Surfaces ---- */
+    --carl-bg:            #12150f;
+    --carl-surface:       #1b1f1b;
+    --carl-surface-sunk:  #262b26;
+    --carl-border:        #343a34;
+    --carl-border-strong: #778076;  /* 4.08:1 on surface */
+
+    /* ---- Text ---- */
+    --carl-text:          #e9ece7;
+    --carl-text-muted:    #a3aba1;
+    --carl-text-inverse:  #0f130f;  /* dark type on the light primary bar */
+
+    /* ---- Brand and action ---- */
+    --carl-primary:       #7fc492;
+    --carl-primary-dark:  #a9dcb7;  /* "dark" = the stronger of the pair; here that is lighter */
+    --carl-primary-soft:  #22331f;
+    --carl-accent:        #f08fc4;  /* focus ring only */
+
+    /* ---- Status ---- */
+    --carl-ok:            #7fc492;
+    --carl-ok-soft:       #1e2d21;
+    --carl-warn:          #e3b25c;
+    --carl-warn-soft:     #332a15;
+    --carl-error:         #f08a80;
+    --carl-error-soft:    #38201e;
+    --carl-info:          #79b8e8;
+    --carl-info-soft:     #182935;
+
+    /* ---- Research confidence ---- */
+    --carl-verified:      #7fc492;
+    --carl-approx:        #e0b263;
+    --carl-generic:       #a0a89e;
+
+    /* ---- Chart data series ---- */
+    --carl-chart-hot:     #f0894a;
+    --carl-chart-cold:    #4f8ae0;
+    --carl-chart-water:   #41c0b0;
+    --carl-chart-et0:     #d9b3ff;
+    --carl-chart-event:   #dfe4dd;
+    --carl-chart-grid:    #343a34;
+    --carl-chart-axis:    #a3aba1;
+
+    /* ---- QR plant tags ----
+       Contrast-critical, NOT palette. Must not be themed: a tinted QR code
+       silently fails to scan and nothing reports it. Do not invert these. */
+    --carl-qr-ink:        #000000;
+    --carl-qr-paper:      #ffffff;
+
+    --carl-shadow: 0 1px 2px rgba(0, 0, 0, .45);
+  }
+}

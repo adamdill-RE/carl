@@ -8,7 +8,11 @@
 $e = $view->e(...);
 $pageTitle = 'Sign in';
 ?>
-<h1 class="page-title">Carl The Garden Helper</h1>
+<?php /* The lockup carries the name here, so it IS the heading rather than a
+       picture above one. Its <svg> is role="img" with a <title>, which is
+       what gives the h1 its accessible name -- the wordmark is paths, so
+       there is no text in it for a screen reader to find. */ ?>
+<h1 class="lockup"><?= $view->partial('partials/logo_lockup') ?></h1>
 <p class="page-sub">Sign in to log what happened in the garden.</p>
 
 <?php if ($errors !== []): ?>

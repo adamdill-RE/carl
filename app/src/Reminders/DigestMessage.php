@@ -86,22 +86,47 @@ final class DigestMessage
         $e = static fn (string $value): string
             => \htmlspecialchars($value, \ENT_QUOTES | \ENT_SUBSTITUTE, 'UTF-8');
 
-        $out = '<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;'
-            . 'font-size:15px;line-height:1.5;color:#1f2420;max-width:620px">';
+        // The palette here is LITERAL and deliberately not the app's tokens.
+        // A mail client will not load tokens.css, so these five hexes are the
+        // one place a palette swap cannot reach (handoff Section 13.5), and
+        // two of them are pitched away from the app on purpose: #656b63 is
+        // two steps lighter than --carl-text-muted and #377f47 is
+        // --carl-primary lightened, both so they survive a client that
+        // renders this on a near-black ground. --carl-primary-dark would
+        // vanish there. Do not "correct" them to match the palette.
+        //
+        // The background is set explicitly rather than left to the client,
+        // which is the single most useful thing available for dark-mode
+        // legibility; Gmail's forced dark mode ignores it and inverts the
+        // block whole, which is survivable because it inverts text and ground
+        // together. The value that has to survive a PARTIAL inversion is the
+        // link, which is why it is mid-tone rather than at brand strength.
+        // A real document rather than a bare <div>, for the two meta tags
+        // only: they are how Apple Mail, Outlook.com and most iOS clients are
+        // told to leave the message light instead of inverting it. Gmail's
+        // forced dark mode ignores them, which is why the colours above are
+        // chosen to survive an inversion anyway rather than to rely on this.
+        $out = '<!DOCTYPE html><html><head><meta charset="utf-8">'
+            . '<meta name="color-scheme" content="light">'
+            . '<meta name="supported-color-schemes" content="light">'
+            . '</head><body style="margin:0;padding:0;background-color:#ffffff">';
+        $out .= '<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;'
+            . 'font-size:15px;line-height:1.5;color:#191d19;background-color:#ffffff;'
+            . 'max-width:620px">';
         $out .= '<p>Good morning' . ($name !== '' ? ', ' . $e($name) : '') . '.</p>';
         $out .= '<p>' . (\count($reminders) === 1 ? 'One thing' : $e((string) \count($reminders)) . ' things')
             . ' for today, ' . $e($date) . ':</p>';
 
         foreach (self::grouped($reminders) as $label => $group) {
             $out .= '<h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.04em;'
-                . 'color:#5c635d;margin:18px 0 6px">' . $e($label) . '</h3>';
+                . 'color:#656b63;margin:18px 0 6px">' . $e($label) . '</h3>';
             $out .= '<ul style="margin:0;padding-left:18px">';
             foreach ($group as $reminder) {
                 $out .= '<li style="margin-bottom:8px"><strong>'
                     . $e((string) $reminder['title']) . '</strong>';
                 $body = \trim((string) ($reminder['body'] ?? ''));
                 if ($body !== '') {
-                    $out .= '<br><span style="color:#5c635d;font-size:14px">' . $e($body) . '</span>';
+                    $out .= '<br><span style="color:#656b63;font-size:14px">' . $e($body) . '</span>';
                 }
                 $out .= '</li>';
             }
@@ -109,19 +134,19 @@ final class DigestMessage
         }
 
         if (!$hasResearchedRegion) {
-            $out .= '<p style="font-size:13px;color:#5c635d;margin-top:18px">Your county has no '
+            $out .= '<p style="font-size:13px;color:#656b63;margin-top:18px">Your county has no '
                 . 'research loaded yet, so frost dates, planting windows and pest timings are '
                 . 'left out of this. Everything else -- watering, days to maturity, hardening -- '
                 . 'works without them.</p>';
         }
 
         $out .= '<p style="margin-top:20px"><a href="' . $e($appUrl)
-            . '" style="color:#24522f">Open Carl</a></p>';
-        $out .= '<hr style="border:none;border-top:1px solid #d6d6cf;margin:20px 0">';
-        $out .= '<p style="font-size:12px;color:#5c635d">You are getting this because your Carl '
+            . '" style="color:#377f47">Open Carl</a></p>';
+        $out .= '<hr style="border:none;border-top:1px solid #d3d1c5;margin:20px 0">';
+        $out .= '<p style="font-size:12px;color:#656b63">You are getting this because your Carl '
             . 'account has the daily digest on. <a href="' . $e($unsubscribeUrl)
-            . '" style="color:#5c635d">Stop them</a>.</p>';
-        $out .= '</div>';
+            . '" style="color:#656b63">Stop them</a>.</p>';
+        $out .= '</div></body></html>';
 
         return $out;
     }

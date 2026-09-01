@@ -47,7 +47,7 @@ Design**, the artefact is produced there, not in Claude Code.
 8. **Hardening countdown is "N days from start date."**
 9. **Charts: Chart.js**, vendored, loaded only on report pages.
 10. **PDF reports: FPDF**, vendored single file. Field-recording sheet, logo
-    and colour scheme: **Claude Design**.
+    and colour scheme: **Claude Design** — all three delivered and built.
 11. **Email: two drivers behind one interface.** SMTP-AUTH to a cPanel mailbox
     first; HTTPS API (Brevo) as the swap. Both are spiked before either is
     relied on.
@@ -668,9 +668,24 @@ under the ~7 mm a pen needs. Black on white with no grey — a dotted or
 60%-grey rule is a sub-pixel mark a 600 dpi mono engine halftones into a
 broken line or drops.
 
-### 13.5 Logo and colour scheme — **Claude Design, still outstanding**
+### 13.5 Logo and colour scheme — **Built, Phase 10**
 Garden palette, mobile-first; deliver CSS variables (`--carl-*`) and an SVG
 logo. Claude Code uses the variables as given.
+
+Delivered and wired in Phase 10. `tokens.css` is the palette and is still the
+only stylesheet that names a colour; `tokens-dark.css` is the same names under
+`prefers-color-scheme: dark`, and the PDF and the digest email deliberately do
+not follow it, because paper is white and a mail client is not ours. The mark
+is inline SVG in `partials/logo.php` drawn in `currentColor` — not an `<img>`,
+which cannot inherit it — so one drawing serves the white-on-brand topbar and
+the green login page. Seven `--carl-chart-*` names were added so that
+`--carl-accent` is now the focus ring and nothing else.
+
+Claude Design's own account of every value is `docs/DESIGN-NOTES.md`, and the
+delivery as received is `design/return/`. Two things in there are not palette
+and must not be themed: `--carl-qr-ink` and `--carl-qr-paper`, which
+`21_tags_test.php` pins by asserting the words DO NOT THEME are still in the
+file.
 
 ---
 
@@ -817,6 +832,33 @@ template version change — a research zip that imported yesterday imports
 today, which is why `pests.csv` still carries seven columns and not nineteen.
 See `docs/PHASE-10-HANDOFF.md`.
 
+### Phase 10 — the palette and the logo (§13.5)
+
+The last unbuilt item in this document, outstanding since Phase 1 and carried
+through six handoffs that each said it was the only one left.
+
+Claude Design delivered a palette, a mark, a favicon, home-screen icons and
+five literal colours for the digest email; the delivery was validated rather
+than trusted, which found two things worth the trouble. `--carl-border-strong`
+had been failing WCAG 1.4.11 at 2.09:1 on every text input in the application
+and is now 3.53:1. And the delivered `tokens.css` said "must not be themed"
+where `21_tags_test.php` asserts on the words **DO NOT THEME**, so a verbatim
+swap would have failed the suite over the one comment in the file that exists
+to stop somebody tinting a QR code.
+
+Three things arrived with it that the spec never asked for and that are worth
+naming as scope: **dark mode**, because a white screen at dusk costs the night
+vision needed to see the bed you are standing in; **a web manifest and
+maskable icons**, because the app is used one-handed in a garden and belongs
+on a home screen; and **seven `--carl-chart-*` tokens**, which freed
+`--carl-accent` to be the focus ring alone — it had been doing double duty as
+the ET₀ chart line and was being tuned against two incompatible briefs.
+
+**Built 2026-09-01.** No migration, no route, no cron, no vendored file, and
+no controller touched: every change is a stylesheet, a template or a static
+asset. Two static CI checks were added, both guarding failures that produce no
+error anybody would see. See `docs/PHASE-11-HANDOFF.md`.
+
 ---
 
 ## 15. Explicitly deferred or dropped
@@ -848,7 +890,8 @@ See `docs/PHASE-10-HANDOFF.md`.
    deploy concern (hosting §12).
 4. Email Open-Meteo describing Carl (internal, unsold, no ads) and keep the
    reply in `docs/` (weather.md §10).
-5. Claude Design: logo, palette, field sheet (§13.4–13.5).
+5. ~~Claude Design: logo, palette, field sheet (§13.4–13.5).~~ **Done.**
+   The field sheet built in Phase 6, the logo and palette in Phase 10.
 6. Fill hosting §11 blanks: `/home/reshiftmanager/public_html/carl`,
    `/home/reshiftmanager/carl-app`, `base_path /carl/`, cookie `CARLSESS`,
    database `reshiftmanager_carl`, env prefix `CARL_`.

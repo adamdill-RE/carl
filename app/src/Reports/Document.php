@@ -64,11 +64,11 @@ final class Document extends \FPDF
     ) {
         parent::__construct('P', 'mm', 'A4');
 
-        $this->ink   = $tokens->rgb('--carl-text', [31, 36, 32]);
-        $this->muted = $tokens->rgb('--carl-text-muted', [92, 99, 93]);
-        $this->rule  = $tokens->rgb('--carl-border', [214, 214, 207]);
-        $this->brand = $tokens->rgb('--carl-primary', [47, 107, 63]);
-        $this->tint  = $tokens->rgb('--carl-surface-sunk', [238, 238, 234]);
+        $this->ink   = $tokens->rgb('--carl-text', [25, 29, 25]);
+        $this->muted = $tokens->rgb('--carl-text-muted', [84, 90, 82]);
+        $this->rule  = $tokens->rgb('--carl-border', [211, 209, 197]);
+        $this->brand = $tokens->rgb('--carl-primary', [38, 92, 55]);
+        $this->tint  = $tokens->rgb('--carl-surface-sunk', [233, 232, 224]);
 
         $this->SetMargins(self::MARGIN, self::MARGIN, self::MARGIN);
         $this->SetAutoPageBreak(true, 18);

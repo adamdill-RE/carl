@@ -380,7 +380,7 @@ $tags = new TagRepository($db, $owner['id']);
 
 $indoorId = $gardens->ensureIndoorGarden();
 $plantTypeId = (int) $db->value('SELECT id FROM `plant_type` ORDER BY id LIMIT 1');
-$today = \gmdate('Y-m-d');
+$today = \gmdate('Y-m-d');  // utc-ok: backdates the sow closure only; the real today assertion below uses todayFor()
 
 $sow = static function (string $label, int $count = 12, int $daysAgo = 30)
     use ($plantings, $plantTypeId, $indoorId, $today): int {

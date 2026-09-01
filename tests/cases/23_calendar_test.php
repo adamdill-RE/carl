@@ -418,7 +418,16 @@ $gardens = new GardenRepository($db, $owner['id']);
 $plantings = new PlantingRepository($db, $owner['id']);
 $events = new EventRepository($db, $owner['id'], $plantings);
 $indoorId = $gardens->ensureIndoorGarden();
-$today = \gmdate('Y-m-d');
+
+// The user is in America/Chicago (ZIP 76692), and CalendarController draws
+// the month from todayFor($user->tz()) -- never the server clock (handoff
+// Section 6). Between UTC midnight and local midnight the two disagree, so a
+// gmdate() "today" here would record events on a day the page is not drawing.
+// On the first of a month it is worse than off-by-one: the events land in a
+// month the grid does not render at all, and the count chip vanishes.
+$today = $app->clock()->todayFor(
+    (string) $db->value('SELECT timezone FROM `user` WHERE id = :i', ['i' => $owner['id']])
+);
 $thisMonth = \substr($today, 0, 7);
 
 $sow = static function (string $label, int $daysAgo)

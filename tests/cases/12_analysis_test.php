@@ -299,7 +299,7 @@ $login = static function (array $user) use ($client): void {
 
 $onboard($owner, 'Analysis Bed' . $suffix);
 
-$today = \gmdate('Y-m-d');
+$today = \gmdate('Y-m-d');  // utc-ok: seeds weather relative to itself and is passed into Document::build(), which echoes it back in covers.to -- never compared to a local day
 $locationId = (int) ($db->value(
     'SELECT weather_location_id FROM `user` WHERE id = :id', ['id' => $owner['id']]
 ) ?? 0);

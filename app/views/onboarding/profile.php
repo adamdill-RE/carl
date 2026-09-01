@@ -11,6 +11,12 @@ $pageTitle = 'Set up your account';
 ?>
 <?= $view->partial('partials/steps', ['step' => $step]) ?>
 
+<?php /* Step one of the wizard is the other place the lockup belongs
+       (Claude Design). Decorative here, because unlike login this page has a
+       real heading of its own and the mark would otherwise be announced
+       twice. */ ?>
+<span class="lockup" aria-hidden="true"><?= $view->partial('partials/logo_lockup') ?></span>
+
 <h1 class="page-title">Welcome to Carl</h1>
 <p class="page-sub">
   Two things to start: what to call you, and where you garden. Your ZIP code sets
