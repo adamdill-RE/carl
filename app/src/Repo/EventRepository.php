@@ -32,9 +32,10 @@ final class EventRepository extends Repository
     protected function writable(): array
     {
         return ['planting_id', 'event_type', 'event_date', 'recorded_at', 'quantity_delta',
-                'duration_min', 'weight_g', 'count_qty', 'unit', 'narrative',
-                'ref_list_item_id', 'ref_list_item_id_2', 'garden_id', 'garden_row_id',
-                'container_id', 'split_planting_id', 'source_garden_event_id', 'payload'];
+                'duration_min', 'weight_g', 'count_qty', 'unit', 'height_mm', 'diameter_mm',
+                'narrative', 'ref_list_item_id', 'ref_list_item_id_2', 'garden_id',
+                'garden_row_id', 'container_id', 'split_planting_id',
+                'source_garden_event_id', 'payload'];
     }
 
     protected function hasUpdatedAt(): bool
@@ -276,6 +277,7 @@ final class EventRepository extends Repository
         return $this->db->all(
             'SELECT e.id, e.event_type, e.event_date, e.recorded_at, e.planting_id,'
             . ' e.quantity_delta, e.duration_min, e.weight_g, e.count_qty, e.unit,'
+            . ' e.height_mm, e.diameter_mm,'
             . ' e.narrative, e.source_garden_event_id, e.split_planting_id,'
             . ' pt.category, pt.type, p.label AS plant_label,'
             . ' g.name AS garden_name, gr.name AS row_name, c.name AS container_name,'

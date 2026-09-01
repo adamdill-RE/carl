@@ -102,6 +102,10 @@ final class ExportController extends Controller
                 'planting_id', 'category', 'type', 'plant_label',
                 'garden', 'row', 'container', 'water_zone',
                 'quantity_delta', 'duration_min', 'weight_g', 'count_qty', 'unit',
+                // Millimetres, and named so, for the same reason weight_g is:
+                // an export is for analysis and gets the stored numbers
+                // (weather.md Section 6.3).
+                'height_mm', 'diameter_mm',
                 'reference', 'reference_2', 'derived_from_garden_event',
                 'moved_to_planting_id', 'fanned_out_to_plants', 'narrative',
             ]);
@@ -118,6 +122,7 @@ final class ExportController extends Controller
                         $row['garden_name'], $row['row_name'], $row['container_name'], null,
                         $row['quantity_delta'], $row['duration_min'], $row['weight_g'],
                         $row['count_qty'], $row['unit'],
+                        $row['height_mm'], $row['diameter_mm'],
                         $row['ref_name'], $row['ref_name_2'], $row['source_garden_event_id'],
                         $row['split_planting_id'], null, $row['narrative'],
                     ]);
@@ -134,6 +139,9 @@ final class ExportController extends Controller
                         $row['event_type'], null, null, null, null,
                         $row['garden_name'], $row['row_names'], null, $row['zone_name'],
                         null, $row['duration_min'], null, null, null,
+                        // A garden is not measured: the two size columns are
+                        // on plant_event only (migration 024).
+                        null, null,
                         $row['ref_name'], $row['ref_name_2'], null,
                         null, $row['fanout_count'], $row['narrative'],
                     ]);

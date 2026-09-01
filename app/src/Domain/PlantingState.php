@@ -220,7 +220,10 @@ final class PlantingState
 
     /**
      * The actions offered for a state (handoff Section 4.4). Photos and notes
-     * are attachable to any event and are offered everywhere.
+     * are attachable to any event and are offered everywhere. So, from Phase
+     * 13, is a SIZE -- but `measured` is still listed here as an action in
+     * its own right, for the visit where measuring was the whole errand, the
+     * way `note` is an action even though every event may carry a narrative.
      *
      * @return list<string>
      */
@@ -235,6 +238,7 @@ final class PlantingState
                 EventType::UP_POTTED,
                 EventType::HARDENING_STARTED,
                 EventType::TRANSPLANTED,
+                EventType::MEASURED,
                 EventType::PHOTO_ADDED,
                 EventType::NOTE,
             ],
@@ -243,6 +247,7 @@ final class PlantingState
                 EventType::WATERED,
                 EventType::TRANSPLANTED,
                 EventType::DIED,
+                EventType::MEASURED,
                 EventType::PHOTO_ADDED,
                 EventType::NOTE,
             ],
@@ -261,11 +266,15 @@ final class PlantingState
                 EventType::MULCHED,
                 EventType::CULLED,
                 EventType::DIED,
+                EventType::MEASURED,
                 EventType::PHOTO_ADDED,
                 EventType::NOTE,
             ],
             // An ended planting still accepts a photo or a note: the log is
-            // append-only and people write things up afterwards.
+            // append-only and people write things up afterwards. It does NOT
+            // accept a measurement -- a plant that is gone has no size now,
+            // and a backdated one belongs on the days it was alive, which is
+            // an edit to history this log does not do (it is append-only).
             default => [EventType::PHOTO_ADDED, EventType::NOTE],
         };
     }

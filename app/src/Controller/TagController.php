@@ -537,6 +537,9 @@ final class TagController extends Controller
             \Carl\Domain\EventType::UP_POTTED,
             \Carl\Domain\EventType::MOVED,
             \Carl\Domain\EventType::HARDENING_SCHEDULE_SET,
+            // A measurement IS a number, so a one-tap "Measured" would record
+            // that somebody looked at the plant and nothing about its size.
+            \Carl\Domain\EventType::MEASURED,
             \Carl\Domain\EventType::PHOTO_ADDED,
         ];
 

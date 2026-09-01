@@ -11,6 +11,7 @@ use Carl\Domain\EventType;
 use Carl\Domain\ListType;
 use Carl\Domain\PlantingState;
 use Carl\Support\Clock;
+use Carl\Support\Units;
 
 /**
  * Log Plant Activity (handoff Section 4.4).
@@ -30,6 +31,15 @@ use Carl\Support\Clock;
  */
 final class LogController extends Controller
 {
+    /**
+     * A hundred metres, in millimetres. The tallest measured tree is 116 m
+     * and is not in anybody's vegetable bed; what this actually catches is a
+     * metre typed into a box set to millimetres, which is the mistake that
+     * puts a 3,600 mm lettuce on a chart and rescales every other point on it
+     * to a flat line.
+     */
+    private const MAX_SIZE_MM = 100000.0;
+
     public function index(Request $request): Response
     {
         $filters = [
@@ -140,6 +150,15 @@ final class LogController extends Controller
         }
 
         $eventType = (string) $request->input('event_type');
+        // Checked before the per-planting loop, because it is not a fact
+        // about any one of them: a size belongs to the plant it was taken
+        // from, and the same number written against twenty is twenty
+        // measurements nobody took (EventType::SINGLE_PLANT_ONLY).
+        if (EventType::isSinglePlantOnly($eventType)) {
+            throw HttpException::badRequest(
+                EventType::label($eventType) . ' is recorded one plant at a time.'
+            );
+        }
         foreach ($plantings as $planting) {
             if (!\in_array($eventType, PlantingState::actionsFor((string) $planting['state']), true)) {
                 throw HttpException::badRequest(
@@ -193,6 +212,15 @@ final class LogController extends Controller
         foreach ($plantings as $planting) {
             $forState = PlantingState::actionsFor((string) $planting['state']);
             $actions = $actions === null ? $forState : \array_values(\array_intersect($actions, $forState));
+        }
+        // And a batch drops the ones that mean one plant, so the dropdown and
+        // the POST handler agree about what is on offer rather than the form
+        // offering an action the handler refuses.
+        if (\count($plantings) > 1) {
+            $actions = \array_values(\array_filter(
+                $actions ?? [],
+                static fn (string $type): bool => !EventType::isSinglePlantOnly($type)
+            ));
         }
 
         $first = $plantings[0];
@@ -412,7 +440,7 @@ final class LogController extends Controller
         $data = [
             'narrative'    => $request->nullable('narrative'),
             'duration_min' => $request->intInput('duration_min'),
-        ];
+        ] + $this->size($request);
 
         $live = (int) $planting['quantity_live'];
         $quantity = $request->intInput('quantity');
@@ -492,6 +520,21 @@ final class LogController extends Controller
             case EventType::MULCHED:
                 $data['ref_list_item_id'] = $this->lists()->resolveChoice(
                     ListType::MULCH_TYPE, $request->input('mulch_id'), $request->input('mulch_new'));
+                break;
+
+            case EventType::MEASURED:
+                // The size is read for every action, above; what is special
+                // about this one is that the size is the WHOLE of it. An
+                // empty "Measured" writes a row that says a gardener went out
+                // and looked at a plant, which is not what they meant to
+                // record and is not distinguishable afterwards from a
+                // measurement that failed to save.
+                if ($data['height_mm'] === null && $data['diameter_mm'] === null) {
+                    throw HttpException::badRequest(
+                        'A measurement needs a height, a diameter, or both. '
+                        . 'To record the visit without one, log a note.'
+                    );
+                }
                 break;
         }
 
@@ -586,6 +629,44 @@ final class LogController extends Controller
                 'narrative'        => 'Recorded alongside the treatment.',
             ]);
         }
+    }
+
+    /**
+     * How big it is: height, diameter, or both (migration 024).
+     *
+     * Read for EVERY action and not only for `measured`, the way the
+     * narrative above it is. Somebody standing at a plant with a hose records
+     * one thing -- "watered it, it's fourteen inches now" -- and a field that
+     * costs a second trip through the form is a field that stops being
+     * filled in. `measured` is for the visit where measuring was the errand.
+     *
+     * A NEGATIVE OR ABSURD SIZE IS DROPPED rather than stored. The bound is a
+     * hundred metres: taller than any plant on earth, and low enough to catch
+     * the mistake that actually happens, which is a unit left on metres. The
+     * check is after the conversion because that is the only place the four
+     * units are comparable at all; refusing "100" would be right in metres
+     * and wrong in centimetres.
+     *
+     * @return array{height_mm:?float,diameter_mm:?float}
+     */
+    private function size(Request $request): array
+    {
+        $unit = (string) $request->input('size_unit', '');
+        if (!\in_array($unit, Units::SIZE_UNITS, true)) {
+            // Not an error: every form that is not the log form posts no unit
+            // at all, and both boxes are optional on the one that does. An
+            // unrecognised unit is not guessed at -- reading a metre as an
+            // inch stores a number twenty-five times too small, silently.
+            return ['height_mm' => null, 'diameter_mm' => null];
+        }
+
+        $out = [];
+        foreach (['height' => 'height_mm', 'diameter' => 'diameter_mm'] as $field => $column) {
+            $mm = Units::toMillimetres($request->floatInput('size_' . $field), $unit);
+            $out[$column] = $mm !== null && $mm > 0 && $mm <= self::MAX_SIZE_MM ? $mm : null;
+        }
+
+        return $out;
     }
 
     /** Gardeners weigh in ounces and pounds; the column is grams. */

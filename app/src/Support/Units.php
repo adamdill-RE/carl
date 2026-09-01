@@ -16,6 +16,16 @@ namespace Carl\Support;
  */
 final class Units
 {
+    /**
+     * The units a plant size may be TYPED in (migration 024).
+     *
+     * One list, because the form's dropdown and toMillimetres() below have to
+     * agree about it: an option the converter has never heard of stores
+     * nothing, and a conversion the form never offers is unreachable code
+     * that looks like a feature.
+     */
+    public const SIZE_UNITS = ['in', 'ft', 'cm', 'm'];
+
     public function __construct(private string $system = 'us')
     {
     }
@@ -141,6 +151,66 @@ final class Units
             return \number_format($ounces, 1) . ' oz';
         }
         return \number_format($ounces / 16, 2) . ' lb';
+    }
+
+    /**
+     * How big a plant is: millimetres in the database, inches or centimetres
+     * on the page (migration 024).
+     *
+     * ONE UNIT PER SYSTEM, and deliberately not the pattern weight() follows
+     * above. A harvest reads better as "1.20 lb" than as "19.2 oz" and
+     * nothing ever plots it, so weight() switches scale at sixteen ounces. A
+     * SIZE is plotted -- that is most of what it is for -- and a chart axis
+     * cannot switch units halfway up. A series that is inches to 12 and then
+     * feet is a series with two meanings and one axis label, so a six-foot
+     * tomato reads 72.0 in here and the axis says "in" and means it.
+     *
+     * The form still ACCEPTS feet and metres, because that is how a tall
+     * plant gets measured; toMillimetres() below is where that is undone.
+     */
+    public function size(int|float|string|null $mm): string
+    {
+        $value = $this->sizeValue($mm, 1);
+        return $value === null ? '--' : \number_format($value, 1) . ' ' . $this->sizeUnit();
+    }
+
+    /** Size as a number, for a chart axis. See rainValue(). */
+    public function sizeValue(int|float|string|null $mm, ?int $decimals = null): ?float
+    {
+        if ($mm === null || $mm === '') {
+            return null;
+        }
+        $value = (float) $mm;
+        $converted = $this->isUs() ? $value / 25.4 : $value / 10.0;
+        return $decimals === null ? $converted : \round($converted, $decimals);
+    }
+
+    public function sizeUnit(): string
+    {
+        return $this->isUs() ? 'in' : 'cm';
+    }
+
+    /**
+     * A typed size in the unit the gardener chose, as millimetres.
+     *
+     * The four units are the ones on the form and an unknown one is NOT
+     * guessed at: a posted unit nobody offered means the request was not made
+     * by the form, and reading it as inches would silently store a number
+     * twenty-five times too small.
+     */
+    public static function toMillimetres(int|float|string|null $value, string $unit): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $mm = match ($unit) {
+            'in' => (float) $value * 25.4,
+            'ft' => (float) $value * 304.8,
+            'cm' => (float) $value * 10.0,
+            'm'  => (float) $value * 1000.0,
+            default => null,
+        };
+        return $mm === null ? null : \round($mm, 2);
     }
 
     /**

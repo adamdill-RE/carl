@@ -1,9 +1,10 @@
 <?php
 /**
  * The plant report (handoff Section 4.5): the research card, the full
- * timeline, the photos in chronological order, the yield summary, and the
- * weather that actually happened over the plant's in-ground period -- as
- * totals, and from Phase 4 as charts beside them.
+ * timeline, the photos in chronological order, the yield summary, the latest
+ * measurement of the plant, and the weather that actually happened over the
+ * plant's in-ground period -- as totals, and from Phase 4 as charts beside
+ * them.
  *
  * The charts are drawn by assets/js/charts.js from /api/plant/<id>/series,
  * NOT from a JSON island in this page: CSP is script-src 'self' with no
@@ -35,6 +36,32 @@ $live = (int) $planting['quantity_live'];
 $lost = (int) $planting['quantity_lost'];
 $survival = $S::survivalPercent($initial, $lost);
 $endedReason = $planting['ended_reason'] ?? null;
+
+/*
+ * The most recent measurement, taken off the timeline this page has already
+ * loaded rather than asked for.
+ *
+ * A statement, not saved: 11_reports_test.php counts them, and a SELECT for
+ * "the last row with a height" would answer a question the rows in hand
+ * already answer. timeline() comes back newest first, so the first row
+ * carrying each column is the latest one -- and height and diameter are
+ * looked for INDEPENDENTLY, because either may stand alone (migration 024)
+ * and a plant measured for height in July and across in June has both, from
+ * two different days.
+ */
+$lastHeight = null;
+$lastDiameter = null;
+foreach ($events as $event) {
+    if ($lastHeight === null && ($event['height_mm'] ?? null) !== null) {
+        $lastHeight = $event;
+    }
+    if ($lastDiameter === null && ($event['diameter_mm'] ?? null) !== null) {
+        $lastDiameter = $event;
+    }
+    if ($lastHeight !== null && $lastDiameter !== null) {
+        break;
+    }
+}
 
 /** Where a lineage row is, in the words the rest of the page uses. */
 $placeOf = static function (array $row): string {
@@ -84,6 +111,33 @@ $placeOf = static function (array $row): string {
 <?php if ($endedReason === $S::ENDED_BY_DISPERSAL): ?>
         <span class="muted">every plant was moved on to somewhere else, not lost</span>
 <?php endif; ?>
+      </td></tr>
+<?php endif; ?>
+<?php if ($lastHeight !== null || $lastDiameter !== null): ?>
+      <?php /* One row, because "how big is it" is one question.
+             The date is printed ONCE when both figures came off the same
+             visit, which is the ordinary case -- a row that says "(23 Aug) .
+             (23 Aug)" is asking the reader to compare two dates that are the
+             same. When they differ it is printed against each, because a
+             single date would have to pick one and be wrong about the
+             other. */ ?>
+<?php
+    $sameVisit = $lastHeight !== null && $lastDiameter !== null
+        && (string) $lastHeight['event_date'] === (string) $lastDiameter['event_date'];
+    $stamp = static fn (?array $row): string => $row === null ? ''
+        : ' <span class="muted small">(' . $e($U::shortDate((string) $row['event_date'])) . ')</span>';
+?>
+      <tr><th>Size</th><td>
+<?php if ($lastHeight !== null): ?>
+        <?= $e($units->size($lastHeight['height_mm'])) ?> tall<?= $sameVisit ? '' : $stamp($lastHeight) ?>
+<?php endif; ?>
+<?php if ($lastHeight !== null && $lastDiameter !== null): ?>
+        &middot;
+<?php endif; ?>
+<?php if ($lastDiameter !== null): ?>
+        <?= $e($units->size($lastDiameter['diameter_mm'])) ?> across<?= $sameVisit ? '' : $stamp($lastDiameter) ?>
+<?php endif; ?>
+<?= $sameVisit ? $stamp($lastHeight) : '' ?>
       </td></tr>
 <?php endif; ?>
 <?php foreach ($countdowns as $countdown): ?>

@@ -54,6 +54,15 @@ foreach ($photos as $photo) {
     if ($event['weight_g'] !== null) {
         $bits[] = $units->weight($event['weight_g']);
     }
+    // Height and diameter are separate bits, not one "14 x 8": either may
+    // stand alone (migration 024), and a pair printed with a separator reads
+    // as a dimension when only one of the two was measured.
+    if (($event['height_mm'] ?? null) !== null) {
+        $bits[] = $units->size($event['height_mm']) . ' tall';
+    }
+    if (($event['diameter_mm'] ?? null) !== null) {
+        $bits[] = $units->size($event['diameter_mm']) . ' across';
+    }
     // A dispersal says its own count on the line below, as "6 moved out".
     // Printing the delta and the count beside it would read as six more
     // plants gone and six of something else.
