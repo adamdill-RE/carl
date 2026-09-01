@@ -267,7 +267,7 @@ code, with labels still on a sheet told apart from loose stakes; a tagging
 session that really binds on scan and fills a tray before moving on; the
 stakes travelling with a split; a directory of which stakes are on which
 plant; retiring one code without its sheet. `27_tag_desk_test.php` walks a
-season through it. **Routes: 111 (+5). No migration. Statements on the field
+season through it. **Routes: 109 (+3). No migration. Statements on the field
 screen: unchanged.** `PHASE-9-HANDOFF.md` §4.2 and §4.4 are amended by §14.7.
 
 One §4-grade finding fell out of it, and it is older than the tags:
