@@ -42,13 +42,14 @@ $inUse = \count(\array_filter($tags, static fn (array $t): bool => $t['category'
   <h2>The codes</h2>
   <ul class="list small">
 <?php foreach ($tags as $i => $tag):
-    $place = $LS::place((string) $batch['stock_sku'], (int) $i);
     $ownRetired = !$retired && $tag['retired_at'] !== null;
 ?>
     <li>
       <a class="grow mono" href="<?= $e($app->url('t/' . $tag['code'])) ?>"><?= $e($tag['code']) ?>
         <span class="muted small">
-<?php if ($place['sheet'] > 1): ?>page <?= $e($place['sheet']) ?>, <?php endif; ?>row <?= $e($place['row']) ?>, column <?= $e($place['column']) ?>
+<?php /* "row 3", or "row 3, column 2" where the stock has columns: the
+        wording is LabelStock's, so a one-column sheet never says "column 1". */ ?>
+          <?= $e($LS::placeText((string) $batch['stock_sku'], (int) $i)) ?>
         </span></a>
 <?php if ($tag['category'] !== null): ?>
       <a class="muted" href="<?= $e($app->url('plants/' . $tag['planting_id'])) ?>#tag"><?= $e(\trim((string) $tag['label']) !== ''

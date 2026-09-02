@@ -15,6 +15,8 @@
  * @var array<string,mixed>|null $region
  * @var bool $researched @var bool $dismissed @var string $forecastHash
  * @var array{living:int,plantings:int,gardens:int,events:int} $counts
+ * @var array<int,list<array{zone_id:int,zone_name:string,minutes:int}>> $timerOptions
+ * @var list<array<string,mixed>> $timers @var DateTimeZone $timerZone
  */
 $e = $view->e(...);
 $K = Carl\Domain\ReminderKind::class;
@@ -107,7 +109,44 @@ $hasWeather = $weather['recent'] !== [] || $weather['forecast'] !== [];
         <span class="topic tier-<?= $e($place['tier']) ?>"><?= $e($place['tier']) ?></span><br>
         <strong><?= $e($place['place_name']) ?></strong>
         <div class="small"><?= $e($place['reason_text']) ?></div>
+<?php /* The one-tap timer (Phase 16): the minutes the sentence just named,
+        as a button. Each is a whole form -- a timer is a write -- with
+        "log it when done" on, because the person pressing it is about to
+        turn the tap. The alternative, a countdown drawn in the page, dies
+        the moment the phone sleeps (Phase 15 handoff Section 3.2). */ ?>
+<?php foreach ($timerOptions[(int) ($place['garden_id'] ?? 0)] ?? [] as $option): ?>
+        <form method="post" action="<?= $e($app->url('timers')) ?>" class="timer-start">
+          <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+          <input type="hidden" name="garden_id" value="<?= $e($place['garden_id']) ?>">
+          <input type="hidden" name="water_zone_id" value="<?= $e($option['zone_id']) ?>">
+          <input type="hidden" name="minutes" value="<?= $e($option['minutes']) ?>">
+          <input type="hidden" name="log_when_done" value="1">
+          <input type="hidden" name="return" value="menu">
+          <button type="submit" class="btn btn-secondary btn-small">Start <?= $e($option['minutes']) ?> min on <?= $e($option['zone_name']) ?></button>
+        </form>
+<?php endforeach; ?>
       </div>
+    </li>
+<?php endforeach; ?>
+  </ul>
+<?php endif; ?>
+
+<?php if ($timers !== []): ?>
+  <h3 id="timers">Timers</h3>
+  <ul class="list guidance">
+<?php foreach ($timers as $timer): ?>
+    <li>
+      <div class="grow">
+        <strong><?= $e(Carl\Timers\TimerService::placeName($timer)) ?></strong>
+        <span class="small muted">&middot; <?= $e($timer['minutes']) ?> min, done at
+          <?= $e((new DateTimeImmutable((string) $timer['ends_at'], new DateTimeZone('UTC')))->setTimezone($timerZone)->format('H:i')) ?>
+          <?= (int) $timer['log_when_done'] === 1 ? '&middot; logs itself' : '' ?></span>
+      </div>
+      <form method="post" action="<?= $e($app->url('timers/' . $timer['id'] . '/cancel')) ?>" class="flush">
+        <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
+        <input type="hidden" name="return" value="menu">
+        <button type="submit" class="btn btn-secondary btn-small">Cancel</button>
+      </form>
     </li>
 <?php endforeach; ?>
   </ul>

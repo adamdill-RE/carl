@@ -526,7 +526,11 @@ final class Calendar
                     'kind'        => ReminderKind::PEST_SCOUTING,
                     'label'       => 'Pests',
                     'title'       => $pest['name'] . ' season starts',
-                    'detail'      => \trim((string) ($pest['signs'] ?? ''))
+                    // The signs and the window are two sentences, so the
+                    // first gets its full stop where the catalogue left it
+                    // off (Phase 16; the sheet's full-width list made
+                    // "...undersides Active here until" visible).
+                    'detail'      => self::sentence(\trim((string) ($pest['signs'] ?? '')))
                         . ($pest['active_end'] !== null
                             ? ' Active here until ' . $pest['active_end'] . '.' : ''),
                     'planting_id' => null,
@@ -626,5 +630,14 @@ final class Calendar
     private static function firstOfMonth(string $month): string
     {
         return \substr($month, 0, 7) . '-01';
+    }
+
+    /** A phrase as a sentence: a full stop added when it ends without one. */
+    private static function sentence(string $text): string
+    {
+        if ($text === '' || \in_array(\substr($text, -1), ['.', '!', '?', ';', ':'], true)) {
+            return $text;
+        }
+        return $text . '.';
     }
 }

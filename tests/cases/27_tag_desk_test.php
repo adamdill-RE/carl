@@ -150,7 +150,13 @@ $t->test('LabelStock::place() turns a minting ordinal into a row and a column', 
     $t->same(['sheet' => 1, 'row' => 8, 'column' => 3], LabelStock::place(LabelStock::AVERY_60517, 23));
     $t->same(['sheet' => 2, 'row' => 1, 'column' => 1], LabelStock::place(LabelStock::AVERY_60517, 24));
     // Two across on the self-laminating stock.
-    $t->same(['sheet' => 1, 'row' => 2, 'column' => 1], LabelStock::place(LabelStock::AVERY_00757, 2));
+    // The self-laminating sheet is ONE column of ten (Phase 16): the third
+    // code is the third row, and there is no column to name.
+    $t->same(['sheet' => 1, 'row' => 3, 'column' => 1], LabelStock::place(LabelStock::AVERY_00757, 2));
+    $t->same(['sheet' => 2, 'row' => 1, 'column' => 1], LabelStock::place(LabelStock::AVERY_00757, 10));
+    $t->same('row 3', LabelStock::placeText(LabelStock::AVERY_00757, 2));
+    $t->same('page 2, row 1', LabelStock::placeText(LabelStock::AVERY_00757, 10));
+    $t->same('row 2, column 1', LabelStock::placeText(LabelStock::AVERY_60517, 3));
 });
 
 $t->test('free() is one statement, in code order, and a used stake moves to the loose list',

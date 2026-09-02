@@ -133,6 +133,15 @@ $pageTitle = 'Reports';
     <a href="<?= $e($app->url('export')) ?>">More about these files</a> &mdash; what is in
     each column, and why a cell can start with an apostrophe.
   </p>
+  <ul class="list">
+    <li>
+      <a href="<?= $e($app->url('connect')) ?>">Connect Claude Code</a>
+      <div class="small muted">
+        Skip the pasting: a token that lets Claude Code read your garden directly,
+        one question at a time. Read-only; revoke it here whenever you like.
+      </div>
+    </li>
+  </ul>
 </section>
 
 <section class="card">

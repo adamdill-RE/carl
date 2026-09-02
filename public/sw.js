@@ -1,6 +1,12 @@
 /*
  * Service worker: caches the shell only (handoff Section 15 -- offline is
- * deferred; the paper field sheet is the answer for now).
+ * deferred; the paper field sheet is the answer for now), and, from Phase
+ * 16, shows a push notification for a browser that has no declarative Web
+ * Push of its own.
+ *
+ * It is registered by push.js on the tap that subscribes, and not before:
+ * nothing else needs a worker, and a worker nobody asked for is a cache
+ * nobody asked for.
  *
  * Never cache a page: every page carries personal data and is served
  * no-store. This caches the stylesheet and scripts so a poor signal in a
@@ -46,4 +52,27 @@ self.addEventListener('fetch', function (event) {
       });
     })
   );
+});
+
+/*
+ * The watering timer's push (Phase 16). The body is the declarative Web
+ * Push shape -- {web_push: 8030, notification: {title, body, navigate}} --
+ * which Safari 18.4+ shows by itself; here it is shown by hand for every
+ * other browser. The tap opens the timer's own page.
+ */
+self.addEventListener('push', function (event) {
+  var data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = {}; }
+  var n = data.notification || {};
+  event.waitUntil(self.registration.showNotification(n.title || 'Carl', {
+    body: n.body || '',
+    tag: n.tag || 'carl',
+    data: { url: n.navigate || '' }
+  }));
+});
+
+self.addEventListener('notificationclick', function (event) {
+  event.notification.close();
+  var url = event.notification.data && event.notification.data.url;
+  if (url) { event.waitUntil(clients.openWindow(url)); }
 });

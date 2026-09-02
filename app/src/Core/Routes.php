@@ -18,8 +18,12 @@ use Carl\Controller\OnboardingController;
 use Carl\Controller\PestController;
 use Carl\Controller\PhotoController;
 use Carl\Controller\PlantController;
+use Carl\Controller\PushController;
+use Carl\Controller\TimerController;
 use Carl\Controller\ReportController;
 use Carl\Controller\CompanionController;
+use Carl\Controller\ConnectController;
+use Carl\Controller\McpController;
 use Carl\Controller\SuccessionController;
 use Carl\Controller\SystemController;
 use Carl\Controller\TagController;
@@ -148,6 +152,19 @@ final class Routes
         $r->get('/gardens/{id:\d+}/end-season', GardenController::class, 'endSeasonForm');
         $r->post('/gardens/{id:\d+}/end-season', GardenController::class, 'endSeason');
 
+        // -- The watering timer (Phase 16) ------------------------------------
+        // A row with an end time; bin/timers_fire.php notices it. The start
+        // button lives on the garden actions page and on the MOTD; the
+        // landing page is what the notification opens.
+        $r->post('/timers', TimerController::class, 'start');
+        $r->get('/timers/{id:\d+}', TimerController::class, 'show');
+        $r->post('/timers/{id:\d+}/cancel', TimerController::class, 'cancel');
+        $r->post('/timers/{id:\d+}/log', TimerController::class, 'logNow');
+        // A browser saying "tell this phone". Form-encoded from push.js, so
+        // it carries the CSRF token like every other POST.
+        $r->post('/push/subscribe', PushController::class, 'subscribe');
+        $r->post('/push/unsubscribe', PushController::class, 'unsubscribe');
+
         // -- Lists ----------------------------------------------------------
         $r->get('/lists', ListController::class, 'index');
         $r->get('/lists/{type:[a-z_]+}', ListController::class, 'ofType');
@@ -178,6 +195,19 @@ final class Routes
         $r->get('/api/garden/{id:\d+}/series', ReportController::class, 'gardenSeries');
         $r->post('/report/plant/{id:\d+}/pdf', ReportController::class, 'plantPdf');
         $r->post('/report/garden/{id:\d+}/pdf', ReportController::class, 'gardenPdf');
+
+        // -- Connect Claude Code, and the MCP server (Phase 16) -------------
+        // The screen mints and revokes bearer tokens; the endpoint is what
+        // they open. POST only: the Streamable HTTP transport allows a server
+        // to answer every request with plain JSON and never open a stream,
+        // and hosting Section 3 forbids a held-open connection, so a GET here
+        // is 405 from the router. BEARER_ACCESS: no session, no cookie, no
+        // CSRF -- App::guard() resolves the token, checks the Origin and the
+        // rate limit, and signs the request in as the token's owner.
+        $r->get('/connect', ConnectController::class, 'index');
+        $r->post('/connect/tokens', ConnectController::class, 'mint');
+        $r->post('/connect/tokens/{id:\d+}/revoke', ConnectController::class, 'revoke');
+        $r->post('/mcp', McpController::class, 'endpoint', Route::BEARER_ACCESS);
 
         // -- Reports menu (Phase 5 handoff Section 3.2) ---------------------
         // Links and nothing else: there are now six things to download and
@@ -312,6 +342,7 @@ final class Routes
         $r->get('/tasks/alerts-poll', SystemController::class, 'alertsPoll', Route::KEY_ACCESS, 'cron_key');
         $r->get('/tasks/daily-digest', SystemController::class, 'dailyDigest', Route::KEY_ACCESS, 'cron_key');
         $r->get('/tasks/analysis-run', SystemController::class, 'analysisRun', Route::KEY_ACCESS, 'cron_key');
+        $r->get('/tasks/timers-fire', SystemController::class, 'timersFire', Route::KEY_ACCESS, 'cron_key');
         $r->get('/diag', SystemController::class, 'diag', Route::KEY_ACCESS, 'diag_key');
 
         return $r;

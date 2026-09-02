@@ -20,6 +20,14 @@ DirectoryIndex index.php
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
 
+    # The MCP server's bearer token (Phase 16). Apache and LiteSpeed drop
+    # the Authorization header from the CGI environment unless it is
+    # re-exported here; without this line every token is "unauthorised" and
+    # nothing says why. Request::header() also reads the REDIRECT_ copy a
+    # rewrite can leave it under.
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule ^ - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
     RewriteRule ^ index.php [L]
 </IfModule>
 

@@ -30,6 +30,8 @@ final class App
     private ?string $publicPath = null;
     private ?\Carl\Mail\Outbox $outbox = null;
     private ?\Carl\Analysis\Analyst $analyst = null;
+    /** The api_token row id behind a BEARER_ACCESS request, or null. */
+    private ?int $bearerTokenId = null;
 
     public function __construct(private Config $config, private string $root)
     {
@@ -229,7 +231,9 @@ final class App
                 return $this->decorate($guard, $route);
             }
 
-            if ($request->isPost()) {
+            // A bearer request carries a JSON body, not a form, so the
+            // empty-$_POST heuristic below would read every one as truncated.
+            if ($request->isPost() && $route->access !== Route::BEARER_ACCESS) {
                 if ($request->looksTruncated()) {
                     // Hosting Section 4: an over-size POST arrives with $_POST
                     // and $_FILES both empty and no error of its own.
@@ -242,7 +246,8 @@ final class App
                 // unsubscribe that a mail client POSTs with no session to
                 // carry a token in (see Route::TOKEN_ACCESS).
                 $csrfExempt = $route->access === Route::KEY_ACCESS
-                    || $route->access === Route::TOKEN_ACCESS;
+                    || $route->access === Route::TOKEN_ACCESS
+                    || $route->access === Route::BEARER_ACCESS;
                 if (!$csrfExempt && !$this->csrf()->isValid($request->input('_csrf'))) {
                     throw new HttpException(419);
                 }
@@ -291,6 +296,10 @@ final class App
             return null;
         }
 
+        if ($route->access === Route::BEARER_ACCESS) {
+            return $this->guardBearer($request);
+        }
+
         $user = $this->auth()->user();
         if ($user === null) {
             if ($request->isAjax()) {
@@ -318,6 +327,101 @@ final class App
         }
 
         return null;
+    }
+
+    /**
+     * The bearer token of a BEARER_ACCESS route (Phase 16, the MCP server).
+     *
+     * Two checks before the token, both from the MCP specification's
+     * Streamable HTTP transport: the Origin header, when a client sends one,
+     * must be this site's own -- the specification's one MUST for the
+     * transport, against DNS rebinding -- and the method is POST, which the
+     * router already enforces (a GET on the path is 405, because this server
+     * never opens a stream; hosting Section 3 forbids held-open connections).
+     *
+     * Then the token. An unknown or revoked one is 401 with a
+     * WWW-Authenticate challenge, a busy one is 429 with Retry-After, and a
+     * good one signs the request in as its owner WITHOUT a session: the
+     * repositories scope on the user id, not on the cookie, so nothing else
+     * changes. The body of every refusal is a JSON-RPC error, because that is
+     * what the client on the other end parses.
+     */
+    private function guardBearer(Request $request): ?Response
+    {
+        $origin = $request->header('Origin');
+        if ($origin !== null && $origin !== '' && !$this->isOwnOrigin($origin, $request)) {
+            return self::rpcRefusal(403, -32003, 'Origin not allowed.');
+        }
+
+        $authorization = (string) ($request->header('Authorization') ?? '');
+        $token = \preg_match('/^\s*Bearer\s+(\S+)\s*$/i', $authorization, $m) === 1 ? $m[1] : null;
+
+        $store = new \Carl\Auth\ApiTokenStore($this->db(), $this->config->int('mcp.calls_per_minute', 60));
+        $resolved = $store->resolve($token);
+
+        if ($resolved['status'] === \Carl\Auth\ApiTokenStore::RATE_LIMITED) {
+            return self::rpcRefusal(429, -32004, 'Too many calls on this token; try again in '
+                . $resolved['retry_after'] . ' s.')
+                ->withHeader('Retry-After', (string) $resolved['retry_after']);
+        }
+        if ($resolved['status'] !== \Carl\Auth\ApiTokenStore::RESOLVED || $resolved['user_id'] === null) {
+            return self::rpcRefusal(401, -32001, 'A valid bearer token is required.')
+                ->withHeader('WWW-Authenticate', 'Bearer realm="carl", error="invalid_token"');
+        }
+
+        $user = $this->auth()->assume((int) $resolved['user_id']);
+        if ($user === null || !$user->isOnboarded()) {
+            return self::rpcRefusal(401, -32001, 'A valid bearer token is required.')
+                ->withHeader('WWW-Authenticate', 'Bearer realm="carl", error="invalid_token"');
+        }
+        $this->bearerTokenId = $resolved['id'];
+
+        return null;
+    }
+
+    /** The api_token id a bearer request was made with, or null on a page. */
+    public function bearerTokenId(): ?int
+    {
+        return $this->bearerTokenId;
+    }
+
+    /**
+     * Is this Origin ours? The configured public origin, the host the request
+     * arrived on, and anything listed under mcp.allowed_origins.
+     */
+    private function isOwnOrigin(string $origin, Request $request): bool
+    {
+        $allowed = [];
+        $configured = $this->config->string('tags.origin');
+        if ($configured !== '') {
+            $allowed[] = \rtrim($configured, '/');
+        }
+        $host = (string) ($request->server['HTTP_HOST'] ?? '');
+        if ($host !== '') {
+            $allowed[] = ($request->isSecure() ? 'https://' : 'http://') . $host;
+        }
+        $extra = $this->config->get('mcp.allowed_origins');
+        foreach (\is_array($extra) ? $extra : [] as $entry) {
+            if (\is_string($entry) && $entry !== '') {
+                $allowed[] = \rtrim($entry, '/');
+            }
+        }
+        $origin = \rtrim($origin, '/');
+        foreach ($allowed as $candidate) {
+            if (\strcasecmp($candidate, $origin) === 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static function rpcRefusal(int $status, int $code, string $message): Response
+    {
+        return Response::json([
+            'jsonrpc' => '2.0',
+            'id'      => null,
+            'error'   => ['code' => $code, 'message' => $message],
+        ], $status);
     }
 
     /**

@@ -225,6 +225,34 @@ final class SystemController extends Controller
         }
         $lines[] = '';
 
+        // -- Timers and push (Phase 16) ---------------------------------------
+        // No run table: the cron fires every minute and most minutes nothing
+        // is due. The timers themselves say whether it is running -- one
+        // that is late by more than three minutes means the entry is missing.
+        $lines[] = 'TIMERS';
+        try {
+            $timers = \Carl\Repo\TimerRepository::health($this->app->db());
+            $lines[] = \sprintf('  running            %d, %d overdue (fired %d in all)',
+                $timers['running'], $timers['overdue'], $timers['fired_total']);
+            $lines[] = $timers['last_fired'] === null
+                ? '  last fired         never' . ($timers['running'] > 0 ? '' : ' (none has finished yet)')
+                : '  last fired         ' . $timers['last_fired'];
+            if ($timers['overdue'] > 0) {
+                $lines[] = '  WARNING            a timer is late: is the per-minute cron entry in place?';
+            }
+            $push = \Carl\Repo\PushSubscriptionRepository::health($this->app->db());
+            $lines[] = \sprintf('  push key           %s', \Carl\Push\Vapid::existing($this->app->db()) === null
+                ? 'MISSING -- run /setup once to generate it; timers fall back to email'
+                : 'present');
+            $lines[] = \sprintf('  push subscriptions %d live, %d gone', $push['live'], $push['failed']);
+            $tokens = (new \Carl\Auth\ApiTokenStore($this->app->db()))->health();
+            $lines[] = \sprintf('  mcp tokens         %d live, %d revoked, %d calls, last %s',
+                $tokens['live'], $tokens['revoked'], $tokens['calls'], $tokens['last_used'] ?? 'never');
+        } catch (Throwable $e) {
+            $lines[] = '  ERROR              ' . $e->getMessage();
+        }
+        $lines[] = '';
+
         // -- Recommendations (Phase 5 handoff Section 3.1) -------------------
         $lines[] = 'ANALYSIS';
         try {
@@ -314,9 +342,23 @@ final class SystemController extends Controller
         }
 
         $this->app->session()->set('_setup_applied', $applied);
-        $this->flash($applied === []
+
+        // The push key pair (Phase 16): made here, once, because this account
+        // has no shell to make one in and it must exist before any phone can
+        // subscribe. Idempotent -- Vapid::ensure() never overwrites -- and
+        // skipped quietly until migration 027 has made its table.
+        $keyNote = '';
+        try {
+            $existed = \Carl\Push\Vapid::existing($this->app->db()) !== null;
+            \Carl\Push\Vapid::ensure($this->app->db());
+            $keyNote = $existed ? '' : ' Push key pair generated.';
+        } catch (Throwable) {
+            // No push_key table yet: 027 is still pending. Next time.
+        }
+
+        $this->flash(($applied === []
             ? 'Already up to date; nothing to apply.'
-            : \count($applied) . ' migration(s) applied.');
+            : \count($applied) . ' migration(s) applied.') . $keyNote);
 
         return Response::redirect($this->app->url('setup', ['key' => $key]));
     }
@@ -603,6 +645,27 @@ final class SystemController extends Controller
      * it is deliberately not reachable by a signed-in user -- it is guarded
      * by cron_key, like the weather job (Phase 3 handoff Section 5).
      */
+    /** The per-minute timer cron's browser twin (Phase 16). */
+    public function timersFire(Request $request): Response
+    {
+        $started = \microtime(true);
+        $summary = (new \Carl\Timers\TimerService($this->app))->fire();
+
+        $lines = [
+            'timers fire',
+            \sprintf('due %d, fired %d, logged %d, pushed %d, emailed %d, failures %d, %.1f s',
+                $summary['considered'], $summary['fired'], $summary['logged'],
+                $summary['pushed'], $summary['emailed'], $summary['failures'],
+                \microtime(true) - $started),
+            '',
+        ];
+        foreach ($summary['log'] as $entry) {
+            $lines[] = '  ' . $entry;
+        }
+
+        return Response::text(\implode("\n", $lines) . "\n");
+    }
+
     public function mailSend(Request $request): Response
     {
         $limit = $request->query('limit');

@@ -75,6 +75,31 @@ final class MenuController extends Controller
             $models[(string) $day['source_model']] = true;
         }
 
+        // The one-tap timer (Phase 16): for every garden the model says to
+        // water, the minutes each zone with emitter figures would run to put
+        // the deficit back -- the same arithmetic as the sentence's "About
+        // 40 min on Drip east refills it", from the same stored row. One
+        // statement for every zone of every garden on the list, and one for
+        // the timers already counting.
+        $gardenIds = [];
+        foreach ($watering as $place) {
+            if ((string) $place['place_kind'] === 'garden' && (string) $place['tier'] !== 'skip') {
+                $gardenIds[] = (int) $place['garden_id'];
+            }
+        }
+        $zonesByGarden = $gardenIds === [] ? [] : $this->gardens()->zonesForGardens($gardenIds);
+        $timerOptions = [];
+        foreach ($watering as $place) {
+            if ((string) $place['place_kind'] !== 'garden') {
+                continue;
+            }
+            $options = \Carl\Timers\TimerService::refillOptions($place, $zonesByGarden[(int) $place['garden_id']] ?? []);
+            if ($options !== []) {
+                $timerOptions[(int) $place['garden_id']] = $options;
+            }
+        }
+        $timers = (new \Carl\Repo\TimerRepository($this->app->db(), $this->userId()))->running();
+
         return $this->render('menu', [
             'weather'       => $weather,
             'watering'      => $watering,
@@ -90,6 +115,9 @@ final class MenuController extends Controller
             'weatherModels' => \array_keys($models),
             'counts'        => $this->summaryCounts(),
             'onboarded'     => $user->isOnboarded(),
+            'timerOptions'  => $timerOptions,
+            'timers'        => $timers,
+            'timerZone'     => $this->app->clock()->zone($user->tz()),
         ]);
     }
 

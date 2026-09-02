@@ -17,6 +17,15 @@
     if (drawer.open && !drawer.contains(event.target)) { drawer.open = false; }
   });
 
+  // A keyboard that tabs out of the panel leaves it open behind it (Phase
+  // 16 handoff Section 3.5): focusout fires before the next element takes
+  // focus, so the check waits a tick and closes if focus landed outside.
+  drawer.addEventListener('focusout', function () {
+    setTimeout(function () {
+      if (drawer.open && !drawer.contains(document.activeElement)) { drawer.open = false; }
+    }, 0);
+  });
+
   document.addEventListener('keydown', function (event) {
     if (event.key !== 'Escape' || !drawer.open) { return; }
     drawer.open = false;

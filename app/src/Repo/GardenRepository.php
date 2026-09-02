@@ -188,6 +188,39 @@ final class GardenRepository extends Repository
         );
     }
 
+    /**
+     * The zones of several gardens in one statement, keyed by garden id
+     * (Phase 16): the MOTD's one-tap timer and the MCP garden list both want
+     * every zone the account has, and zones() per garden is a statement per
+     * bed (hosting Section 9).
+     *
+     * @param list<int> $gardenIds
+     * @return array<int,list<array<string,mixed>>>
+     */
+    public function zonesForGardens(array $gardenIds): array
+    {
+        $out = [];
+        foreach ($gardenIds as $id) {
+            $out[(int) $id] = [];
+        }
+        if ($gardenIds === []) {
+            return $out;
+        }
+        $params = [];
+        $in = self::inClause($gardenIds, 'g', $params);
+        $rows = $this->db->all(
+            'SELECT z.*, l.name AS method_name FROM `water_zone` z'
+            . ' LEFT JOIN `user_list_item` l ON l.id = z.water_method_id'
+            . ' WHERE z.user_id = :' . self::SCOPE . ' AND z.garden_id ' . $in
+            . ' ORDER BY z.garden_id, z.name',
+            $this->bind($params)
+        );
+        foreach ($rows as $row) {
+            $out[(int) $row['garden_id']][] = $row;
+        }
+        return $out;
+    }
+
     /** @return list<int> the garden_row ids a zone covers */
     public function zoneRowIds(int $zoneId): array
     {

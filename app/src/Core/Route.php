@@ -28,6 +28,19 @@ final class Route
     public const TOKEN_ACCESS  = 'token';
 
     /**
+     * A bearer token in the Authorization header, resolved before the
+     * controller runs (Phase 16, the MCP server): no session, no cookie, no
+     * CSRF token -- the bearer IS the credential, and the client is a program
+     * with a config file rather than a browser with a form. App::guard()
+     * turns a missing or wrong token into 401 and a busy one into 429, and
+     * signs the request in as the token's owner so every repository scopes
+     * exactly as it does for a page (handoff Section 5).
+     *
+     * Read-only by design: nothing behind this access level writes.
+     */
+    public const BEARER_ACCESS = 'bearer';
+
+    /**
      * @param class-string $controller
      * @param list<string> $parameterNames
      */

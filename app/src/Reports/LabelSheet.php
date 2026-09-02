@@ -146,18 +146,32 @@ final class LabelSheet extends \FPDF
         $g = LabelStock::geometry($this->stock);
         $this->AddPage();
 
-        $this->SetFont('Helvetica', 'B', 11);
+        // Where the instructions go. A stock whose labels start near the top
+        // of the page and carry a clear flap beside them (00757) has no room
+        // above the first label, so the words go INTO the flap column, which
+        // on the real sheet is clear film and on this plain-paper copy is the
+        // one wide space nothing else needs. Otherwise the top margin.
+        $inFlap = $g['flap_w'] > 40.0 && $g['origin_y'] < 30.0;
+        $textX = $inFlap ? $g['origin_x'] + $g['label_w'] + 2.0 : 12.0;
+        $textY = $inFlap ? $g['origin_y'] + $g['label_h'] + 2.0 : 8.0;
+        $textW = $inFlap ? $g['flap_w'] - 4.0 : 190.0;
+
+        $this->SetFont('Helvetica', 'B', $inFlap ? 9 : 11);
         $this->SetTextColor(0, 0, 0);
-        $this->SetXY(12, 8);
-        $this->Cell(0, 5, $this->t('Carl tag sheet - registration test for ' . LabelStock::name($this->stock)), 0, 1);
+        $this->SetXY($textX, $textY);
+        $this->MultiCell($textW, 5, $this->t('Carl tag sheet - registration test for ' . LabelStock::name($this->stock)), 0, 'L');
         $this->SetFont('Helvetica', '', 8);
-        $this->SetX(12);
-        $this->MultiCell(190, 4, $this->t(
+        $this->SetX($textX);
+        $this->MultiCell($textW, 4, $this->t(
             'Print this on PLAIN PAPER at 100% scale, then hold it against a sheet of '
             . LabelStock::name($this->stock) . ' up to a window. Every outline should sit on a label. '
             . 'If they drift across the sheet the pitch is wrong; if they are all shifted the same way '
             . 'the margin is wrong. Check the 100 mm rule at the foot first: if that does not measure '
             . '100 mm, the print was scaled and nothing else on this page means anything.'
+            . ($g['flap_w'] > 0.01
+                ? ' The right-hand outline of each pair is the clear flap: it must sit on the film, '
+                  . 'and the line between the two is the fold.'
+                : '')
         ), 0, 'L');
 
         $this->SetDrawColor(0, 0, 0);
@@ -168,9 +182,25 @@ final class LabelSheet extends \FPDF
             [$x, $y] = LabelStock::position($this->stock, $i);
             $this->Rect($x, $y, $g['label_w'], $g['label_h']);
 
-            // The printable half of a self-laminating label, where it differs
-            // from the die. The flap is what folds over, and printing into it
-            // wastes the sheet.
+            // The clear flap of a self-laminating label, BESIDE the label and
+            // hinged on its right-hand edge (Phase 16; LabelStock says how
+            // that was learned). It is drawn so the fold line can be checked
+            // against the real sheet, and it is the part of the die nothing
+            // may print on: a code in the flap is a code under the laminate's
+            // adhesive, and it looks fine until the flap is folded.
+            if ($g['flap_w'] > 0.01) {
+                $this->SetLineWidth(0.1);
+                $this->Rect($x + $g['label_w'], $y, $g['flap_w'], $g['label_h']);
+                $this->SetLineWidth(0.2);
+                if ($i === 0) {
+                    $this->SetXY($x + $g['label_w'] + 2, $y + 2);
+                    $this->Cell($g['flap_w'] - 4, 4, $this->t('fold <- clear flap, do not print here'), 0, 0);
+                }
+            }
+
+            // The printable part of a label whose flap folds UP from below,
+            // where a stock has one. Neither stock does now; kept because it
+            // is the other way a self-laminating die can be cut.
             if ($g['print_h'] < $g['label_h'] - 0.01) {
                 $this->SetLineWidth(0.1);
                 $this->Line($x, $y + $g['print_h'], $x + $g['label_w'], $y + $g['print_h']);

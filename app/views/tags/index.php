@@ -158,8 +158,8 @@ foreach ($inUse as $row) {
     <li>
       <a class="grow" href="<?= $e($app->url('t/' . $tag['code'])) ?>">
         <span class="mono tag-ref"><?= $e($tag['code']) ?></span>
-        <span class="muted">&middot; sheet <?= $e($tag['batch_id']) ?><?= (int) $tag['sheet'] > 1 ? ' p' . $e($tag['sheet']) : '' ?>,
-          row <?= $e($tag['row']) ?>, column <?= $e($tag['column']) ?></span>
+        <span class="muted">&middot; sheet <?= $e($tag['batch_id']) ?>,
+          <?= $e($LS::placeText((string) $tag['stock_sku'], (int) $tag['ordinal'])) ?></span>
       </a>
       <form method="post" action="<?= $e($app->url('t/' . $tag['code'] . '/retire')) ?>" class="flush">
         <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">

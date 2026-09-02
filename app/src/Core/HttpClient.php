@@ -83,8 +83,21 @@ final class HttpClient
         return \is_array($decoded) ? $result->withJson($decoded) : $result;
     }
 
+    /**
+     * A POST with a body of bytes and the caller's own headers: what a push
+     * service wants (Phase 16) -- an encrypted octet-stream with its own
+     * Content-Type, Content-Encoding and Authorization. No Accept: json is
+     * forced, because the caller set every header on purpose.
+     *
+     * @param list<string> $headers
+     */
+    public function postRaw(string $url, string $body, array $headers): HttpResult
+    {
+        return $this->request($url, $body, $headers, false);
+    }
+
     /** @param list<string> $headers */
-    private function request(string $url, ?string $postBody, array $headers): HttpResult
+    private function request(string $url, ?string $postBody, array $headers, bool $acceptJson = true): HttpResult
     {
         $started = \microtime(true);
         $handle = \curl_init();
@@ -100,7 +113,7 @@ final class HttpClient
             \CURLOPT_CONNECTTIMEOUT => \min(10, $this->timeout),
             \CURLOPT_TIMEOUT        => $this->timeout,
             \CURLOPT_USERAGENT      => $this->userAgent,
-            \CURLOPT_HTTPHEADER     => \array_merge(['Accept: application/json'], $headers),
+            \CURLOPT_HTTPHEADER     => \array_merge($acceptJson ? ['Accept: application/json'] : [], $headers),
             \CURLOPT_SSL_VERIFYPEER => true,
             \CURLOPT_SSL_VERIFYHOST => 2,
             \CURLOPT_ENCODING       => '',
