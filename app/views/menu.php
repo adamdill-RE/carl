@@ -184,25 +184,10 @@ $hasWeather = $weather['recent'] !== [] || $weather['forecast'] !== [];
   &middot; <?= $e($counts['events']) ?> logged events
 </p>
 
+<?php /* The tiles are partials/menu_links, which the top bar's drawer also
+       draws (Phase 15): one list, two shapes, so the drawer can never lack a
+       screen the menu has. The Menu pill in the bar opens the same list from
+       here too, for the reader who has scrolled past the weather. */ ?>
 <nav class="menu">
-  <a href="<?= $e($app->url('plants/new')) ?>">Start a New Plant
-    <span class="hint">Seed start, direct sow or transplant</span></a>
-  <a href="<?= $e($app->url('log')) ?>">Log Plant Activity
-    <span class="hint">Water, yield, pests, cull</span></a>
-  <a href="<?= $e($app->url('plants')) ?>">View Plants
-    <span class="hint">Timeline and photos</span></a>
-  <a href="<?= $e($app->url('calendar')) ?>">Calendar
-    <span class="hint">The month ahead, and what is due</span></a>
-  <a href="<?= $e($app->url('gardens/new')) ?>">Build Garden
-    <span class="hint">Rows, zones and soil</span></a>
-  <a href="<?= $e($app->url('gardens')) ?>">Garden Actions
-    <span class="hint">Water a zone, mulch, fertilise</span></a>
-  <a href="<?= $e($app->url('lists')) ?>">Lists
-    <span class="hint">Your seeds, soils, fertilisers</span></a>
-  <a href="<?= $e($app->url('pests')) ?>">Pests and diseases
-    <span class="hint">What it is, what it costs, what to do</span></a>
-  <a href="<?= $e($app->url('reports')) ?>">Reports
-    <span class="hint">Charts, PDFs, recommendations and exports</span></a>
-  <a href="<?= $e($app->url('tags')) ?>">Plant tags
-    <span class="hint">Print QR stakes, scan one to log in two taps</span></a>
+  <?= $view->partial('partials/menu_links') ?>
 </nav>

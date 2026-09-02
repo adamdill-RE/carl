@@ -24,6 +24,7 @@
  * @var array{parent:?array<string,mixed>,children:list<array<string,mixed>>} $lineage
  * @var list<array<string,mixed>> $tags
  * @var array{sheet:list<array<string,mixed>>,loose:list<array<string,mixed>>} $free
+ * @var array{title:string,url:string}|null $startAnother
  */
 $e = $view->e(...);
 $S = Carl\Domain\PlantingState::class;
@@ -69,7 +70,24 @@ $placeOf = static function (array $row): string {
     return (string) ($row['container_name']
         ?? \trim(((string) ($row['garden_name'] ?? '')) . ' ' . ((string) ($row['row_name'] ?? ''))));
 };
+$startAnother = $startAnother ?? null;
 ?>
+<?php if ($startAnother !== null): ?>
+<?php /* The page a new plant lands on, and the first thing on it is the way
+       to the next one (Phase 15). A tray is entered a variety at a time, so
+       "start another" of the SAME KIND -- seed start, direct sow, transplant
+       -- with the date already filled in is what turns six trips through
+       the menu into six presses of one button. The rest of the page is the
+       record of what was just saved, which is still worth a glance. */ ?>
+<section class="card card-tight start-another" id="start-another">
+  <a class="btn btn-block" href="<?= $e($startAnother['url']) ?>"
+     >Start another: <?= $e(\strtolower($startAnother['title'])) ?></a>
+  <p class="help flush gap-xs">
+    The same kind of start, on the same date, for the next variety.
+    Everything below is what you just recorded.
+  </p>
+</section>
+<?php endif; ?>
 <h1 class="page-title"><?= $e($planting['category']) ?> &middot; <?= $e($planting['type']) ?></h1>
 <p class="page-sub">
   <span class="badge<?= (string) $planting['state'] === $S::ENDED ? ' badge-muted' : '' ?>">

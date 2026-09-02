@@ -79,6 +79,48 @@ body {
   .topbar .who { display: none; }
 }
 
+/* ---------- The menu drawer (Phase 15) ----------
+ *
+ * The pill above is now the <summary> of a <details>, and the details holds
+ * the same ten destinations the main menu draws as tiles. From any screen,
+ * one tap opens the list and a second tap is the destination -- where before
+ * it was a tap, a page load, and a scroll past the weather and today's items
+ * to reach a tile. A <details> because it needs no script to work: nav.js
+ * only adds closing on an outside tap and on Escape.
+ *
+ * The panel is positioned against the top bar, which is sticky and so is a
+ * containing block, and it inherits the bar's z-index; it reads in the
+ * page's own colours, not the bar's, because it is a piece of page hanging
+ * off the bar and not a piece of the bar. Capped to the viewport and
+ * scrollable inside, because eleven rows at a thumb's height is taller than
+ * a small phone's screen. */
+.nav-drawer { flex: none; }
+.nav-drawer > summary { list-style: none; cursor: pointer; }
+.nav-drawer > summary::-webkit-details-marker { display: none; }
+.nav-drawer[open] > summary { background: var(--carl-text-inverse); color: var(--carl-primary); }
+.nav-drawer-panel {
+  position: absolute; left: 0; right: 0; top: 100%;
+  max-height: calc(100vh - 60px); overflow-y: auto;
+  padding: 4px 12px 10px;
+  background: var(--carl-surface); color: var(--carl-text);
+  border-bottom: 1px solid var(--carl-border);
+  box-shadow: var(--carl-shadow);
+}
+.nav-drawer-panel .wrap { padding: 0; }
+.topbar .nav-drawer-panel a {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px;
+  min-height: var(--carl-touch); padding: 9px 4px;
+  border-bottom: 1px solid var(--carl-border);
+  color: var(--carl-text); font-weight: 600; text-decoration: none;
+}
+.topbar .nav-drawer-panel a:last-child { border-bottom: none; }
+.topbar .nav-drawer-panel a:active { background: var(--carl-surface-sunk); }
+.topbar .nav-drawer-panel a[aria-current="page"] { color: var(--carl-primary-dark); }
+.nav-drawer-panel .hint { font-weight: 400; font-size: 12px; color: var(--carl-text-muted); }
+@media (min-width: 560px) {
+  .nav-drawer-panel .wrap { display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; }
+}
+
 .page-title { margin: 18px 0 4px; font-size: 22px; line-height: 1.25; }
 .page-sub { margin: 0 0 16px; color: var(--carl-text-muted); font-size: 14px; }
 
@@ -315,6 +357,11 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
 
 /* Links inside content use the palette; the topbar sets its own colour. */
 .card a, .timeline a, main p a { color: var(--carl-primary-dark); }
+/* ...except a link dressed as a button, which keeps the button's ink: the
+   rule above outranks .btn on specificity alone, and painted dark green on
+   dark green the "Start another" button was unreadable (Phase 15). */
+.card a.btn { color: var(--carl-text-inverse); }
+.card a.btn-secondary { color: var(--carl-text); }
 
 /* ---------- Timeline ---------- */
 
@@ -413,6 +460,22 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
 .cal-ahead { background: transparent; color: var(--carl-text-muted);
              border: 1px dashed var(--carl-border-strong); }
 
+/* A chip is a link to its day (Phase 15). It keeps the chip's own colour
+ * rather than the card's link colour -- `.card a` would otherwise win and
+ * paint every projected chip green, which is the one thing a chip's colour
+ * is not allowed to say. The underline on hover and focus is what says it
+ * can be tapped; the legend says so in words for everybody else. */
+a.cal-chip { text-decoration: none; }
+a.cal-chip:hover, a.cal-chip:focus-visible { text-decoration: underline; }
+.card a.cal-chip.cal-done  { color: var(--carl-primary-dark); }
+.card a.cal-chip.cal-ahead { color: var(--carl-text-muted); }
+
+/* The picked day: a fill the logged chip's own fill still stands out on,
+ * which primary-soft would not. Today keeps its outline on top of it. */
+.cal-picked { background: var(--carl-info-soft); }
+.cal-picked .cal-num { text-decoration: underline; }
+.cal-tools { margin: 0 0 8px; }
+
 /* Visible to a screen reader, not on the page. */
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
@@ -459,6 +522,9 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
  */
 
 .flush          { margin: 0; }
+/* The card a new plant lands under (Phase 15): above the title, so it is the
+   first thing on the page and not the last thing found on it. */
+.start-another  { margin-top: 12px; }
 .gap-xs         { margin-top: 6px; }
 .gap-sm         { margin-top: 8px; }
 .gap-md         { margin-top: 12px; }
@@ -561,7 +627,7 @@ table.data thead th { font-size: 12px; color: var(--carl-text-muted); }
 .skip-link:focus { left: 8px; top: 8px; z-index: 50; padding: 8px; background: var(--carl-surface); }
 
 @media print {
-  .topbar, .menu, .btn, .dismiss, .chart-tabs { display: none !important; }
+  .topbar, .menu, .btn, .dismiss, .chart-tabs, .cal-tools, .start-another { display: none !important; }
   body { background: #fff; }
   .card { border: none; box-shadow: none; padding: 0; }
 }

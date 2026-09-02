@@ -229,7 +229,13 @@ final class PlantController extends Controller
                 ? 'Plant recorded, and tag ' . $tagRows[0]['code'] . ' is on it. Scan it to log anything.'
                 : 'Plant recorded with ' . $stakes . ' stakes on it. Scan any of them to log anything.'));
 
-        return $this->redirect('plants/' . $plantingId);
+        // `started` is what makes the plant page offer "Start another" at the
+        // top (Phase 15). A query flag rather than a second flash, because a
+        // flash is spent on the next render and this one has to survive the
+        // reader pressing back from the form to look at what they just
+        // recorded. Nothing reads it but show(), and a stale one costs a
+        // button that is true anyway.
+        return $this->redirect('plants/' . $plantingId, ['started' => '1']);
     }
 
     /** View Plants: the list, living and culled (handoff Section 4.5). */
@@ -316,7 +322,39 @@ final class PlantController extends Controller
             // small one and a split with an unsplit; a constant on both
             // sides is what they allow.
             'free'          => $this->tags()->free(),
+            'startAnother'  => $request->query('started') !== null
+                ? $this->startAnother($planting) : null,
         ]);
+    }
+
+    /**
+     * "Start another" -- the same kind of start again, offered at the top of
+     * the page a new plant lands on (Phase 15).
+     *
+     * A tray of starts is entered one variety at a time, and until this
+     * existed each one was three taps back through the menu and the kind
+     * chooser. The kind is the plant's own start_method, so the button says
+     * "Start another indoor seed start" and not "start another plant"; the
+     * date rides along because a batch sown last Saturday is backdated once,
+     * not once per variety. Nothing else is carried: the next variety is a
+     * different packet, and prefilling the last one is how a tray of six
+     * gets recorded as six of the same thing.
+     *
+     * @param array<string,mixed> $planting
+     * @return array{title:string,url:string}|null
+     */
+    private function startAnother(array $planting): ?array
+    {
+        $kind = (string) $planting['start_method'];
+        if (!isset(self::KINDS[$kind])) {
+            return null;
+        }
+        return [
+            'title' => self::KINDS[$kind]['title'],
+            'url'   => $this->app->url('plants/new/' . $kind, [
+                'start_date' => (string) $planting['start_date'],
+            ]),
+        ];
     }
 
     /**

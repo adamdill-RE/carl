@@ -477,3 +477,55 @@ A failure that only happens under a setting the development environment
 does not share survives every test that runs in the development
 environment. The fix for that is not a bigger suite; it is running the
 suite under the setting.
+
+---
+
+## 9. Interim: five UX tweaks, 2 September 2026
+
+Made ahead of the Phase 15 build proper, on the owner's walk through the
+screens. None touches the schema, the crons or a third party; the suite is
+**657 tests** and the route table is **110** (one added, `/calendar.pdf`).
+
+1. **The calendar prints.** `GET /calendar.pdf` carries the page's own
+   month and filter and returns `Carl\Reports\CalendarSheet`: the grid, a
+   legend, then every worked-out date on the grid written out in full. It
+   follows the field sheet's rules and not the report's — black on white,
+   no grey, one hairline weight, 210 × 270 mm so A4 and Letter print it at
+   actual size — because it is a sheet for a shed wall and the design notes
+   are explicit that a mono laser halftones a grey rule into a broken line.
+   Logged and projected are told apart by shape (a filled square against an
+   open one), never tone; the neighbouring month's days are named ("30 Aug")
+   rather than greyed; today is boxed in a heavier line. A cell with more
+   lines than room says "+n more" and counts itself, and the sheet measures
+   its own depth, so `23_calendar_test.php` proves a crowded month stays
+   above the Letter limit on every page without a rasteriser.
+2. **A chip opens its day.** Every chip on the grid is a link to
+   `?day=YYYY-MM-DD#day`, and a panel under the grid lists that day's entries
+   with the title, the reason and a link to the plant. No script: the URL is
+   bookmarkable and the back button is the way out. A day off the grid, or
+   not a date, is simply no panel. The ask was that "Transplant" three months
+   out meant nothing — the upcoming table looks ninety days ahead and a
+   title attribute is invisible on a phone.
+3. **"Start another" on the page a new plant lands on.** `create()` now
+   redirects with `started=1`, and only then does the plant page draw a card
+   above its title offering the same kind of start — seed start, direct sow,
+   transplant — with the start date carried into the form. Nothing else is
+   carried: the next packet is a different variety, and prefilling the last
+   one is how a tray of six becomes six of the same thing.
+4. **The Menu pill is a drawer.** Deciding between "move the tiles above the
+   MOTD" and "make the pill open the menu everywhere": the second. Moving the
+   tiles fixes one page and costs the glance at the weather that the page
+   exists for; the drawer fixes every page, including the menu itself, where
+   the pill did nothing. It is a `<details>` — no script to work — holding
+   `partials/menu_links`, which the tiles now also render, so the two cannot
+   drift; `nav.js` only closes it on an outside tap and on Escape. The Phase
+   13 test in `25_size_test.php` now asks for `>Menu</summary>` and for the
+   drawer's rows on every screen.
+5. **A seed start counts six.** The quantity box on the indoor seed start
+   form starts at 6, a tray, not 12. Direct sow (12) and transplant (1) are
+   unchanged, and `03_flow_test.php` pins all three.
+
+Worth knowing for whoever builds §3: the sheet's `wrap()` is the first
+word-wrap in the PDF layer that measures before it draws; if the timer or
+the MCP work ever prints a list, it is the one to reuse rather than
+`MultiCell`, whose height cannot be known until it has been drawn.
