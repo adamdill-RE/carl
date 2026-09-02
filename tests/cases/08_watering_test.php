@@ -124,7 +124,11 @@ $t->group('What a drip zone puts down (Phase 14, migration 025)');
 $t->test('the application rate is 231 x gph over the area each emitter wets', function ($t): void {
     // Rain Bird's worked example: 0.9 gph every 12 in, lines 18 in apart,
     // is 0.96 in/h. 231 cubic inches to the gallon, 25.4 mm to the inch.
-    $t->same(24.447, DripLine::rateMmPerHour(0.9, 12.0, 18.0));
+    // That is exactly 24.4475 mm/h, a rounding tie that PHP 8.2 and 8.4
+    // resolve differently at three decimals -- so within a hundredth, not
+    // equal to a digit that depends on the interpreter.
+    $rate = DripLine::rateMmPerHour(0.9, 12.0, 18.0);
+    $t->ok(\abs($rate - 24.4475) < 0.001, 'expected about 24.4475 mm/h, got ' . $rate);
     $t->same(0.96, DripLine::mmPerHourToInchesPerHour(DripLine::rateMmPerHour(0.9, 12.0, 18.0)));
     // Half a gallon every foot on a foot grid is about 20 mm/h; the same
     // line at a three-foot row spacing is a third of that.
