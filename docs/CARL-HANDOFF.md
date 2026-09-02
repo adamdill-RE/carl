@@ -566,6 +566,16 @@ Model (FAO-56 checkbook, simplified for gardeners):
   flow rate → depth; otherwise a per-method default depth per 10 minutes
   (hand/can 3 mm, hose 6 mm, sprinkler 5 mm) stated in the reason text so the
   user can correct the assumption.
+- *(Phase 14)* A zone may carry its emitter figures — flow in gph, emitter
+  spacing and line spacing in inches, and an efficiency defaulting to 80 % —
+  and a zone watering then applies
+  `efficiency × minutes/60 × 231 × gph / (emitter spacing × line spacing)`
+  inches (×25.4 for mm), which takes precedence over the method's rate. A
+  missing emitter spacing is assumed 12 in; a missing line spacing is the
+  garden's row spacing (width ÷ row count) or else the emitter spacing. The
+  reason text opens with how full the root zone is (`1 − D/TAW`) and, where
+  a zone has a rate, ends with the minutes on that zone that would refill
+  the deficit. See `Carl\Domain\DripLine`.
 - Tier: **water** if `D ≥ MAD` and forecast `rain_prob < 50 %` or forecast
   `precip_mm < D`, or forecast Tmax ≥ 35 °C and `D ≥ 0.4·MAD`; **likely**
   if `D ≥ 0.4·MAD` and meaningful rain is probable within 48 h; else

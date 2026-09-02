@@ -11,6 +11,7 @@
  * @var Carl\Core\App $app @var Carl\Core\View $view
  * @var array<string,mixed> $garden
  * @var list<array<string,mixed>> $rows @var list<array<string,mixed>> $zones
+ * @var float|null $rowSpacingIn
  * @var list<array<string,mixed>> $plantings @var list<array<string,mixed>> $events
  * @var list<array<string,mixed>> $photos
  * @var array<int,array<string,mixed>> $yieldByRow
@@ -25,6 +26,8 @@ $E = Carl\Domain\EventType::class;
 $U = Carl\Support\Units::class;
 $L = Carl\Domain\ListType::class;
 $Soil = Carl\Domain\SoilType::class;
+$Drip = Carl\Domain\DripLine::class;
+$rowSpacingIn = $rowSpacingIn ?? null;
 $pageTitle = (string) $garden['name'];
 ?>
 <h1 class="page-title"><?= $e($garden['name']) ?></h1>
@@ -91,10 +94,29 @@ $pageTitle = (string) $garden['name'];
      watering the zone logs it against every living plant in those rows at once.</p>
 <?php else: ?>
   <ul class="list">
-<?php foreach ($zones as $zone): ?>
+<?php foreach ($zones as $zone): $drip = $Drip::resolve($zone, $rowSpacingIn); ?>
     <li>
       <span class="grow"><strong><?= $e($zone['name']) ?></strong>
         <?php if (!empty($zone['method_name'])): ?><span class="muted">-- <?= $e($zone['method_name']) ?></span><?php endif; ?>
+<?php if ($drip !== null): ?>
+        <br><span class="muted small">
+<?php /* What the zone puts down, in the gardener's units, with every
+       assumption the model will make said out loud (Phase 14). */ ?>
+<?php if ($units->isUs()): ?>
+          <?= $e($Drip::trimNumber((float) $zone['emitter_gph'])) ?> gph every
+          <?= $e($Drip::trimNumber($drip['emitter_spacing_in'])) ?> in<?= empty($zone['emitter_spacing_in']) ? ' (assumed)' : '' ?>,
+          lines <?= $e($Drip::trimNumber($drip['line_spacing_in'])) ?> in apart<?= empty($zone['line_spacing_in']) ? ($rowSpacingIn !== null ? ' (this garden\'s row spacing)' : ' (assumed)') : '' ?>,
+          <?= $e($drip['efficiency_pct']) ?>% reaching the roots:
+          about <?= $e($Drip::mmPerHourToInchesPerHour($drip['rate_mm_h'])) ?> in/h
+<?php else: ?>
+          <?= $e($Drip::trimNumber($Drip::gphToLitresPerHour((float) $zone['emitter_gph']))) ?> L/h every
+          <?= $e($Drip::trimNumber($Drip::inchesToCm($drip['emitter_spacing_in']))) ?> cm<?= empty($zone['emitter_spacing_in']) ? ' (assumed)' : '' ?>,
+          lines <?= $e($Drip::trimNumber($Drip::inchesToCm($drip['line_spacing_in']))) ?> cm apart<?= empty($zone['line_spacing_in']) ? ($rowSpacingIn !== null ? ' (this garden\'s row spacing)' : ' (assumed)') : '' ?>,
+          <?= $e($drip['efficiency_pct']) ?>% reaching the roots:
+          about <?= $e(\round($drip['rate_mm_h'], 1)) ?> mm/h
+<?php endif; ?>
+        </span>
+<?php endif; ?>
       </span>
       <form method="post" action="<?= $e($app->url('gardens/' . $garden['id'] . '/zones')) ?>" class="flush">
         <input type="hidden" name="_csrf" value="<?= $e($csrf) ?>">
@@ -125,6 +147,53 @@ $pageTitle = (string) $garden['name'];
         <label for="zr-<?= $e($row['id']) ?>"><?= $e($row['name']) ?></label>
       </span>
 <?php endforeach; ?>
+    </div>
+<?php /* What the zone puts down (Phase 14). Every field optional: with none
+       of them the zone keeps using the water method's rate, exactly as
+       before. Typed in the gardener's units; stored as gph and inches, the
+       units on the emitter packet. */ ?>
+<?php $usUnits = $units->isUs(); ?>
+    <h3>What it puts down <span class="muted small">(optional)</span></h3>
+    <p class="help">
+      From the emitter packet. With these, Carl works out how deep each watering
+      went and how long to run the zone to refill the soil, instead of guessing
+      from the method's name.
+    </p>
+    <div class="field">
+      <label for="emitter_flow">Emitter flow (<?= $usUnits ? 'gallons per hour per emitter' : 'litres per hour per emitter' ?>)</label>
+      <input type="number" id="emitter_flow" name="emitter_flow" inputmode="decimal" step="any"
+             min="<?= $usUnits ? '0.01' : '0.04' ?>" max="<?= $usUnits ? '60' : '227' ?>" placeholder="<?= $usUnits ? '0.5' : '1.9' ?>">
+    </div>
+    <div class="field">
+      <label for="emitter_spacing">Emitter spacing (<?= $usUnits ? 'inches' : 'cm' ?> between emitters)</label>
+      <input type="number" id="emitter_spacing" name="emitter_spacing" inputmode="decimal" step="any"
+             min="<?= $usUnits ? '1' : '2.5' ?>" max="<?= $usUnits ? '240' : '610' ?>" placeholder="<?= $usUnits ? '12' : '30' ?>">
+      <p class="help">Blank means <?= $usUnits ? '12 inches' : '30 cm' ?>, the common inline spacing.</p>
+    </div>
+    <div class="field">
+      <label for="line_spacing">Line spacing (<?= $usUnits ? 'inches' : 'cm' ?> between lines)</label>
+      <input type="number" id="line_spacing" name="line_spacing" inputmode="decimal" step="any"
+             min="<?= $usUnits ? '1' : '2.5' ?>" max="<?= $usUnits ? '240' : '610' ?>" placeholder="<?= $usUnits ? '24' : '60' ?>">
+      <p class="help">
+<?php if ($rowSpacingIn !== null): ?>
+        Blank means this garden's row spacing, about
+        <?= $usUnits ? $e($Drip::trimNumber($rowSpacingIn)) . ' inches' : $e($Drip::trimNumber($Drip::inchesToCm($rowSpacingIn))) . ' cm' ?>
+        from its size and row count.
+<?php else: ?>
+        Blank means the same as the emitter spacing. Give the garden a size and a
+        row count and Carl will use its row spacing instead.
+<?php endif; ?>
+      </p>
+    </div>
+    <div class="field">
+      <label for="efficiency_pct">Efficiency (% of that water reaching the roots)</label>
+      <input type="number" id="efficiency_pct" name="efficiency_pct" inputmode="numeric"
+             min="<?= $e($Drip::EFFICIENCY_MIN_PCT) ?>" max="<?= $e($Drip::EFFICIENCY_MAX_PCT) ?>" value="<?= $e($Drip::DEFAULT_EFFICIENCY_PCT) ?>">
+      <p class="help">
+        Not all drip line is perfect: a clogged emitter, a slope, a run past the end
+        of the bed. 80% is a fair figure for a home system; a new, level, flushed
+        line can be 90 or better.
+      </p>
     </div>
     <button type="submit" class="btn btn-secondary">Save zone</button>
   </form>

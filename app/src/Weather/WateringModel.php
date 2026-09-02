@@ -6,6 +6,7 @@ namespace Carl\Weather;
 
 use Carl\Core\App;
 use Carl\Core\Database;
+use Carl\Domain\DripLine;
 use Carl\Domain\EventType;
 use Carl\Domain\KcCurve;
 use Carl\Domain\PlantingState;
@@ -119,16 +120,21 @@ final class WateringModel
         $params = $onlyUserId !== null ? ['user_id' => $onlyUserId, 'ended' => PlantingState::ENDED]
                                        : ['ended' => PlantingState::ENDED];
 
+        // The garden's size and row count come along because a drip zone
+        // that leaves its line spacing blank is spaced at the garden's row
+        // spacing (Phase 14, Carl\Domain\DripLine::rowSpacingIn).
         $gardens = $this->db->all(
             "SELECT CONCAT('g:', g.id) AS `key`, 'garden' AS kind, g.id AS place_id,"
-            . ' g.user_id, g.name, g.soil_type, u.weather_location_id, u.timezone'
+            . ' g.user_id, g.name, g.soil_type, g.ns_ft, g.ew_ft, g.row_count, g.row_orientation,'
+            . ' u.weather_location_id, u.timezone'
             . ' FROM `garden` g'
             . ' JOIN `user` u ON u.id = g.user_id'
             . ' JOIN `planting` p ON p.garden_id = g.id AND p.state <> :ended'
             . '   AND p.quantity_live > 0'
             . ' WHERE g.is_active = 1 AND g.is_indoor = 0'
             . '   AND u.weather_location_id IS NOT NULL' . $filter
-            . ' GROUP BY g.id, g.user_id, g.name, g.soil_type, u.weather_location_id, u.timezone',
+            . ' GROUP BY g.id, g.user_id, g.name, g.soil_type, g.ns_ft, g.ew_ft, g.row_count,'
+            . '   g.row_orientation, u.weather_location_id, u.timezone',
             $params
         );
 
@@ -174,8 +180,10 @@ final class WateringModel
         $locationId = (int) $place['weather_location_id'];
         $weather = $this->weatherByDate($locationId, (string) Clock::addDays($startDate, -1), $today);
         $forecast = $this->forecastByDate($locationId, $today);
-        $irrigation = $this->irrigationByDate($place, (string) Clock::addDays($startDate, -1), $today);
+        $zones = $this->zonesFor($place);
+        $irrigation = $this->irrigationByDate($place, $zones, (string) Clock::addDays($startDate, -1), $today);
         $mulchedUntil = $this->mulchedUntil($place);
+        $refill = $this->refillOptions($place, $zones);
 
         $written = 0;
         $cursor = $startDate;
@@ -207,8 +215,9 @@ final class WateringModel
             $dayAfter = $forecast[(string) Clock::addDays($cursor, 1)] ?? null;
 
             $tier = self::tier($deficit, $mad, $tomorrow, $dayAfter);
-            $reason = $this->reason($tier, $deficit, $mad, $etLoss, $rainEff, $applied, $mulched,
-                $tomorrow, $irrigation[$yesterday]['basis'] ?? null, $et0 === null);
+            $reason = $this->reason($tier, $deficit, $taw, $mad, $etLoss, $rainEff, $applied, $mulched,
+                $tomorrow, $irrigation[$yesterday]['basis'] ?? null,
+                $irrigation[$yesterday]['basis_kind'] ?? null, $et0 === null, $refill);
 
             $rows[] = $this->row($place, $cursor, $tier, $deficit, $taw, $mad, $kc,
                 $et0, $rainEff, $applied, $reason);
@@ -394,6 +403,7 @@ final class WateringModel
     private function reason(
         string $tier,
         float $deficit,
+        float $taw,
         float $mad,
         float $etLoss,
         float $rainEff,
@@ -401,9 +411,18 @@ final class WateringModel
         bool $mulched,
         ?array $tomorrow,
         ?string $irrigationBasis,
+        ?string $irrigationBasisKind,
         bool $weatherMissing,
+        array $refill,
     ): string {
-        $parts = [\sprintf('Deficit %.0f mm of an allowed %.0f', $deficit, $mad)];
+        // How full the root zone is -- the deficit read the other way up,
+        // which is the way a gardener reads it (Phase 14). 1 - D/TAW is
+        // FAO-56's own fraction of available water still in the ground.
+        $full = $taw > 0.0 ? (int) \round(100.0 * \max(0.0, 1.0 - $deficit / $taw)) : 0;
+        $parts = [
+            \sprintf('Root zone about %d%% full', $full),
+            \sprintf('deficit %.0f mm of an allowed %.0f', $deficit, $mad),
+        ];
 
         if ($rainEff > 0) {
             $parts[] = \sprintf('%.0f mm of rain soaked in', $rainEff);
@@ -436,8 +455,28 @@ final class WateringModel
             default           => ' No need to water today.',
         };
 
+        // How long to run the zone to put the deficit back (Phase 14): the
+        // number a timer wants, and only possible where a zone knows its
+        // emitters. Two decimals of arithmetic, one assumption already
+        // stated on the zone, and the deficit it is refilling is the one in
+        // this sentence.
+        if ($tier !== self::TIER_SKIP && $deficit > 0.0 && $refill !== []) {
+            $options = [];
+            foreach (\array_slice($refill, 0, 3) as $zone) {
+                $minutes = DripLine::minutesFor($deficit, $zone['rate_mm_h'], $zone['efficiency_pct']);
+                if ($minutes !== null) {
+                    $options[] = \sprintf('%d min on %s', $minutes, $zone['name']);
+                }
+            }
+            if ($options !== []) {
+                $sentence .= ' About ' . \implode(', or ', $options) . ' refills it.';
+            }
+        }
+
         if ($irrigationBasis !== null) {
-            $sentence .= ' (' . $irrigationBasis . ' -- correct the flow rate under Lists if that is wrong.)';
+            $sentence .= ' (' . $irrigationBasis . ($irrigationBasisKind === 'zone'
+                ? ' -- correct the emitter figures on the zone if that is wrong.)'
+                : ' -- correct the flow rate under Lists if that is wrong.)');
         }
         if ($weatherMissing) {
             $sentence .= ' Yesterday\'s weather has not arrived yet, so this carries forward unchanged.';
@@ -493,9 +532,10 @@ final class WateringModel
      * six plants in a bed by hand is one irrigation of the bed, not six.
      *
      * @param array<string,mixed> $place
-     * @return array<string,array{mm:float,basis:?string}> keyed by event_date
+     * @param array<int,array<string,mixed>> $zones this garden's zones by id, from zonesFor()
+     * @return array<string,array{mm:float,basis:?string,basis_kind:?string}> keyed by event_date
      */
-    private function irrigationByDate(array $place, string $from, string $to): array
+    private function irrigationByDate(array $place, array $zones, string $from, string $to): array
     {
         $out = [];
 
@@ -505,8 +545,13 @@ final class WateringModel
             // is where a drip line's flow rate lives (handoff Section 11). So
             // the event's method wins if it has one, and the zone's is the
             // fallback rather than the generic assumption.
+            //
+            // Above both, from Phase 14: the zone's own emitter figures. A
+            // zone that says "0.5 gph every 12 inches" knows its depth to a
+            // decimal, which neither a method name nor a typed mm/h does,
+            // and it is the figure the gardener entered for exactly this.
             $gardenEvents = $this->db->all(
-                'SELECT ge.event_date, ge.duration_min,'
+                'SELECT ge.event_date, ge.duration_min, ge.water_zone_id,'
                 . ' COALESCE(l.name, zl.name) AS method_name,'
                 . ' COALESCE(l.attr_1, zl.attr_1) AS flow_rate'
                 . ' FROM `garden_event` ge'
@@ -518,16 +563,27 @@ final class WateringModel
                 ['place_id' => (int) $place['place_id'], 'watered' => EventType::WATERED,
                  'from' => $from, 'to' => $to]
             );
+            $rowSpacing = DripLine::rowSpacingIn($place);
 
             foreach ($gardenEvents as $event) {
-                $depth = WaterMethod::depth(
-                    (int) ($event['duration_min'] ?? 0),
-                    $event['method_name'] === null ? null : (string) $event['method_name'],
-                    $event['flow_rate'] === null ? null : (string) $event['flow_rate'],
-                );
+                $minutes = (int) ($event['duration_min'] ?? 0);
+                $zoneId = $event['water_zone_id'] === null ? null : (int) $event['water_zone_id'];
+                $depth = $zoneId !== null && isset($zones[$zoneId])
+                    ? DripLine::depth($minutes, $zones[$zoneId], $rowSpacing)
+                    : null;
+                $kind = 'zone';
+                if ($depth === null) {
+                    $kind = 'method';
+                    $depth = WaterMethod::depth(
+                        $minutes,
+                        $event['method_name'] === null ? null : (string) $event['method_name'],
+                        $event['flow_rate'] === null ? null : (string) $event['flow_rate'],
+                    );
+                }
                 $date = (string) $event['event_date'];
                 $out[$date]['mm'] = ($out[$date]['mm'] ?? 0.0) + $depth['mm'];
                 $out[$date]['basis'] ??= $depth['basis'];
+                $out[$date]['basis_kind'] ??= $kind;
             }
         }
 
@@ -565,12 +621,67 @@ final class WateringModel
         foreach ($byDate as $date => $depth) {
             $out[$date]['mm'] = ($out[$date]['mm'] ?? 0.0) + $depth['mm'];
             $out[$date]['basis'] ??= $depth['basis'];
+            $out[$date]['basis_kind'] ??= 'method';
         }
 
         foreach ($out as $date => $entry) {
-            $out[$date] = ['mm' => \round($entry['mm'], 2), 'basis' => $entry['basis'] ?? null];
+            $out[$date] = [
+                'mm'         => \round($entry['mm'], 2),
+                'basis'      => $entry['basis'] ?? null,
+                'basis_kind' => $entry['basis_kind'] ?? null,
+            ];
         }
 
+        return $out;
+    }
+
+    /**
+     * This garden's water zones, keyed by id, for the emitter figures
+     * (Phase 14). One statement per garden per run; a container has none.
+     *
+     * @param array<string,mixed> $place
+     * @return array<int,array<string,mixed>>
+     */
+    private function zonesFor(array $place): array
+    {
+        if ($place['kind'] !== 'garden') {
+            return [];
+        }
+        $rows = $this->db->all(
+            'SELECT `id`, `name`, `emitter_gph`, `emitter_spacing_in`, `line_spacing_in`, `efficiency_pct`'
+            . ' FROM `water_zone` WHERE `garden_id` = :garden_id ORDER BY `name`',
+            ['garden_id' => (int) $place['place_id']]
+        );
+        $out = [];
+        foreach ($rows as $row) {
+            $out[(int) $row['id']] = $row;
+        }
+        return $out;
+    }
+
+    /**
+     * The zones that can say how long they need to run: each one's net rate,
+     * for the "about 40 min on Drip east refills it" clause of the reason.
+     *
+     * @param array<string,mixed> $place
+     * @param array<int,array<string,mixed>> $zones
+     * @return list<array{name:string,rate_mm_h:float,efficiency_pct:int}>
+     */
+    private function refillOptions(array $place, array $zones): array
+    {
+        $rowSpacing = DripLine::rowSpacingIn($place);
+        $out = [];
+        foreach ($zones as $zone) {
+            $spec = DripLine::resolve($zone, $rowSpacing);
+            if ($spec === null || $spec['rate_mm_h'] <= 0.0) {
+                continue;
+            }
+            $out[] = [
+                'name'           => (string) $zone['name'],
+                'rate_mm_h'      => $spec['rate_mm_h'],
+                'efficiency_pct' => $spec['efficiency_pct'],
+            ];
+        }
         return $out;
     }
 

@@ -339,11 +339,26 @@ final class App
         $missingTable = $e instanceof \PDOException
             && ((string) $e->getCode() === '42S02' || \str_contains($e->getMessage(), '42S02'));
 
-        return $missingTable
+        $hint = $missingTable
             ? 'The database is missing a table this page needs. That almost always means a '
               . 'deploy added migrations that have not been run yet: open /status to see which '
-              . 'are pending, then apply them at /setup.'
+              . 'are pending, then apply them at /setup. '
             : '';
+
+        // The one line the error log would show, for the admin who cannot
+        // read the error log (hosting Section 1: no shell, and the log is a
+        // file under the home directory). The Phase 14 PDF failure was live
+        // for a phase because the page said only "it has been logged" and
+        // nobody could get at the log. Truncated, because an FPDF message
+        // can carry an image body; and the DSN never reaches an exception
+        // message (Database re-throws without it, hosting Section 7), so
+        // nothing here can echo a credential.
+        $detail = $e::class . ': ' . $e->getMessage();
+        if (\strlen($detail) > 300) {
+            $detail = \substr($detail, 0, 300) . '...';
+        }
+        return $hint . 'Error detail (shown to admins only): ' . $detail
+            . ' at ' . \basename($e->getFile()) . ':' . $e->getLine();
     }
 
     private function errorResponse(

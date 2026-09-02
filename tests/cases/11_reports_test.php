@@ -601,7 +601,13 @@ $t->test('twenty photographs stay inside the time and memory budget',
     }
 
     try {
+        // allow_url_fopen OFF in the child: the setting is unverified on
+        // the host (hosting Section 12) and a report that needed it on was a
+        // 500 on the live site for a phase (Phase 14). A child that builds
+        // twenty photographs and three charts with URL wrappers refused is
+        // the proof that nothing in the PDF path opens one.
         $measured = Carl\Tests\Harness::measureInChildProcess([
+            '-d', 'allow_url_fopen=0',
             \dirname(__DIR__) . '/measure_report.php',
             (string) $owner['id'],
             (string) $plantingId,

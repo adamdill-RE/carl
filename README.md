@@ -13,7 +13,7 @@ weather that actually happened.
 | Document | Authority over |
 | --- | --- |
 | [`docs/CARL-HANDOFF.md`](docs/CARL-HANDOFF.md) | Scope. What Carl is, the screens, the data model, the phasing. |
-| [`docs/PHASE-14-HANDOFF.md`](docs/PHASE-14-HANDOFF.md) | What to build next, and the facts each phase measured that the original scope could only assume. Always the highest-numbered one. The earlier phase handoffs are kept as they were written, and each one's §4 (what must not regress) and §7 (where the bodies are buried) stay in force unless a later phase withdraws an entry by number. |
+| [`docs/PHASE-15-HANDOFF.md`](docs/PHASE-15-HANDOFF.md) | What to build next, and the facts each phase measured that the original scope could only assume. Always the highest-numbered one. The earlier phase handoffs are kept as they were written, and each one's §4 (what must not regress) and §7 (where the bodies are buried) stay in force unless a later phase withdraws an entry by number. |
 | [`docs/hosting.md`](docs/hosting.md) | Every platform constraint. Overrides the handoff where they conflict. |
 | [`docs/weather.md`](docs/weather.md) | Weather ingestion. Overrides the handoff where they conflict. |
 | [`docs/deploy.md`](docs/deploy.md) | The runbook, and §0 is every measurement taken on the live host. |
@@ -210,6 +210,20 @@ And, from Phase 10, the last item in the specification:
   in. `tokens-dark.css`, the same names under `prefers-color-scheme`.
 - **A web manifest and home-screen icons**, so the thing you use one-handed in
   a garden can live on the home screen rather than in a browser tab.
+
+And, from Phase 14:
+
+- **A water zone knows what it puts down.** Emitter flow, emitter spacing,
+  line spacing and an efficiency (default 80 %), all optional, typed off the
+  emitter packet. The nightly model turns a zone watering of *n* minutes into
+  millimetres from them — `231 × gph / (spacing × spacing)` inches an hour,
+  the arithmetic every extension service prints — and the recommendation now
+  says how full the root zone is and how many minutes on which zone would
+  refill it. A zone with none of the figures behaves exactly as before.
+- **PDF reports work with `allow_url_fopen` off.** Images are handed to FPDF
+  from memory rather than through a `data://` URL, which the host may refuse;
+  `/status` reports the setting, and a 500 now tells an admin which exception
+  it was.
 
 `public/assets/css/tokens.css` is still the only file that names a colour —
 including the two QR tokens, which are marked contrast-critical and must not
