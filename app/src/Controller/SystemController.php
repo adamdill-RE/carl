@@ -58,6 +58,12 @@ final class SystemController extends Controller
         $lines[] = \sprintf('  upload_max_filesize %s', \ini_get('upload_max_filesize'));
         $lines[] = \sprintf('  post_max_size      %s', \ini_get('post_max_size'));
         $lines[] = \sprintf('  max_input_vars     %s', \ini_get('max_input_vars'));
+        // Unverified on the host (hosting Section 12) and the setting that
+        // decided whether a PDF with an image in it was a report or a 500
+        // until Phase 14 stopped depending on it. Reported so the answer is
+        // on record; nothing in Carl needs it either way any more.
+        $lines[] = \sprintf('  allow_url_fopen    %s (Carl does not depend on it; recorded for the log)',
+            \filter_var(\ini_get('allow_url_fopen'), \FILTER_VALIDATE_BOOLEAN) ? 'on' : 'off');
         $lines[] = '';
 
         // -- Extensions -----------------------------------------------------

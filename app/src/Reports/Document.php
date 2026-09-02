@@ -33,8 +33,8 @@ require_once (\defined('CARL_ROOT') ? \CARL_ROOT : \dirname(__DIR__, 3)) . '/ven
  *
  * Memory is the constraint (Section 13.2: under 10 s and 64 MB on a 20-photo
  * report), and it is spent on images, not on this file. Every image arrives
- * as an already-downscaled JPEG string and is handed to FPDF through a
- * data:// URL, so nothing is written to disk -- Section 13.2 says stream it
+ * as an already-downscaled JPEG string and is handed to FPDF from memory --
+ * see embed() -- so nothing is written to disk: Section 13.2 says stream it
  * and keep nothing, and a temp file is something kept.
  */
 final class Document extends \FPDF
@@ -55,6 +55,13 @@ final class Document extends \FPDF
     private array $tint;
 
     private bool $started = false;
+
+    /**
+     * In-memory images by the name embed() gave them; see _parsejpg().
+     *
+     * @var array<string,string>
+     */
+    private array $blobs = [];
 
     public function __construct(
         private string $documentTitle,
@@ -351,14 +358,81 @@ final class Document extends \FPDF
     /**
      * Hand FPDF an in-memory JPEG.
      *
-     * FPDF::Image() takes a path, and PHP's data:// wrapper is a path it can
-     * read -- which keeps the promise in Section 13.2 that a report streams
-     * and keeps nothing. A temp file would be simpler and would be a file on
-     * a shared host with the user's photographs in it.
+     * FPDF::Image() takes a path. Until Phase 14 that path was a data:// URL
+     * carrying the bytes, which read as the obvious way to keep the Section
+     * 13.2 promise that a report streams and keeps nothing. It is also the
+     * reason every report with a chart or a photograph in it was a 500 on the
+     * live site while the field sheet and the label sheets -- no images --
+     * were fine: data:// is a URL wrapper, and PHP refuses URL wrappers when
+     * `allow_url_fopen` is off, which on a cPanel host it commonly is. Both
+     * getimagesize() and file_get_contents() then return false, FPDF throws
+     * "Missing or incorrect image file", and the message it throws carries
+     * the whole base64 body into the error log. Locally, and in CI, the
+     * setting is on and nothing ever noticed.
+     *
+     * So the bytes are parked here under a name FPDF has never heard of, and
+     * _parsejpg() below answers from memory when asked for that name. No
+     * wrapper, no file, no setting to depend on. The name is a hash of the
+     * bytes because FPDF caches by name: a different name per call would
+     * embed the same photograph twice, and the same name for different
+     * bytes would print the first photograph twenty times.
      */
     private function embed(string $jpeg, float $x, ?float $y, float $w, float $h): void
     {
-        $this->Image('data://image/jpeg;base64,' . \base64_encode($jpeg), $x, $y, $w, $h, 'JPG');
+        $key = 'carl-image-' . \sha1($jpeg) . '.jpg';
+        $this->blobs[$key] = $jpeg;
+        try {
+            $this->Image($key, $x, $y, $w, $h, 'JPG');
+        } finally {
+            // FPDF keeps its own copy of the bytes in $this->images; this
+            // one would be a second copy of every photograph for the life
+            // of the document.
+            unset($this->blobs[$key]);
+        }
+    }
+
+    /**
+     * FPDF's JPEG reader, answering from memory for a name embed() parked.
+     *
+     * The body is FPDF 1.86's own _parsejpg() with getimagesize() and
+     * file_get_contents() replaced by their string forms. No type
+     * declarations on the parameter, because the parent has none and PHP
+     * will not let an override narrow one. Anything not parked falls
+     * through to the parent, so a real path still works.
+     *
+     * @param mixed $file
+     * @return array<string,mixed>
+     */
+    protected function _parsejpg($file)   // phpcs:ignore -- FPDF's name, not ours
+    {
+        if (!\is_string($file) || !isset($this->blobs[$file])) {
+            return parent::_parsejpg($file);
+        }
+        $bytes = $this->blobs[$file];
+
+        $a = @\getimagesizefromstring($bytes);
+        if ($a === false) {
+            $this->Error('Missing or incorrect image: ' . $file);
+        }
+        if ((int) $a[2] !== \IMAGETYPE_JPEG) {
+            $this->Error('Not a JPEG image: ' . $file);
+        }
+        if (!isset($a['channels']) || (int) $a['channels'] === 3) {
+            $colspace = 'DeviceRGB';
+        } elseif ((int) $a['channels'] === 4) {
+            $colspace = 'DeviceCMYK';
+        } else {
+            $colspace = 'DeviceGray';
+        }
+
+        return [
+            'w'    => (int) $a[0],
+            'h'    => (int) $a[1],
+            'cs'   => $colspace,
+            'bpc'  => isset($a['bits']) ? (int) $a['bits'] : 8,
+            'f'    => 'DCTDecode',
+            'data' => $bytes,
+        ];
     }
 
     /** A horizontal rule in the border colour. */
