@@ -200,20 +200,40 @@ final class GardenRepository extends Repository
         return \array_map(\intval(...), $ids);
     }
 
-    public function createZone(int $gardenId, string $name, ?int $methodId): int
+    /**
+     * Create a zone, or -- the same name in the same garden -- replace what
+     * it carries. Saving a zone twice is how it is edited.
+     *
+     * @param array{emitter_gph:?float,emitter_spacing_in:?float,line_spacing_in:?float,
+     *              efficiency_pct:int} $emitter what the zone puts down (Phase 14,
+     *              migration 025); see Carl\Domain\DripLine
+     */
+    public function createZone(int $gardenId, string $name, ?int $methodId, array $emitter = []): int
     {
         $now = $this->now();
         $this->db->run(
-            'INSERT INTO `water_zone` (user_id, garden_id, name, water_method_id, created_at, updated_at)'
-            . ' VALUES (:user_id, :garden_id, :name, :method_id, :created_at, :updated_at)'
-            . ' ON DUPLICATE KEY UPDATE `id` = LAST_INSERT_ID(`id`), `water_method_id` = VALUES(`water_method_id`)',
+            'INSERT INTO `water_zone` (user_id, garden_id, name, water_method_id,'
+            . ' emitter_gph, emitter_spacing_in, line_spacing_in, efficiency_pct, created_at, updated_at)'
+            . ' VALUES (:user_id, :garden_id, :name, :method_id,'
+            . ' :emitter_gph, :emitter_spacing_in, :line_spacing_in, :efficiency_pct, :created_at, :updated_at)'
+            . ' ON DUPLICATE KEY UPDATE `id` = LAST_INSERT_ID(`id`),'
+            . ' `water_method_id` = VALUES(`water_method_id`),'
+            . ' `emitter_gph` = VALUES(`emitter_gph`),'
+            . ' `emitter_spacing_in` = VALUES(`emitter_spacing_in`),'
+            . ' `line_spacing_in` = VALUES(`line_spacing_in`),'
+            . ' `efficiency_pct` = VALUES(`efficiency_pct`),'
+            . ' `updated_at` = VALUES(`updated_at`)',
             [
-                'user_id'    => $this->userId,
-                'garden_id'  => $gardenId,
-                'name'       => \substr($name, 0, 80),
-                'method_id'  => $methodId,
-                'created_at' => $now,
-                'updated_at' => $now,
+                'user_id'            => $this->userId,
+                'garden_id'          => $gardenId,
+                'name'               => \substr($name, 0, 80),
+                'method_id'          => $methodId,
+                'emitter_gph'        => $emitter['emitter_gph'] ?? null,
+                'emitter_spacing_in' => $emitter['emitter_spacing_in'] ?? null,
+                'line_spacing_in'    => $emitter['line_spacing_in'] ?? null,
+                'efficiency_pct'     => (int) ($emitter['efficiency_pct'] ?? \Carl\Domain\DripLine::DEFAULT_EFFICIENCY_PCT),
+                'created_at'         => $now,
+                'updated_at'         => $now,
             ]
         );
         return $this->db->insertId();

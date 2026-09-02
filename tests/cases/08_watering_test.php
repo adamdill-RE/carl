@@ -15,6 +15,7 @@
 declare(strict_types=1);
 
 use Carl\Auth\Password;
+use Carl\Domain\DripLine;
 use Carl\Domain\EventType;
 use Carl\Domain\KcCurve;
 use Carl\Domain\SoilType;
@@ -116,6 +117,78 @@ $t->test('an unrecognised method takes the lowest assumption, and says so',
     $depth = WaterMethod::depth(10, 'The thing by the shed', null);
     $t->same(3.0, $depth['mm'], 'under-estimating irrigation errs toward watering');
     $t->contains('not recognised', $depth['basis']);
+});
+
+$t->group('What a drip zone puts down (Phase 14, migration 025)');
+
+$t->test('the application rate is 231 x gph over the area each emitter wets', function ($t): void {
+    // Rain Bird's worked example: 0.9 gph every 12 in, lines 18 in apart,
+    // is 0.96 in/h. 231 cubic inches to the gallon, 25.4 mm to the inch.
+    $t->same(24.447, DripLine::rateMmPerHour(0.9, 12.0, 18.0));
+    $t->same(0.96, DripLine::mmPerHourToInchesPerHour(DripLine::rateMmPerHour(0.9, 12.0, 18.0)));
+    // Half a gallon every foot on a foot grid is about 20 mm/h; the same
+    // line at a three-foot row spacing is a third of that.
+    $t->same(20.373, DripLine::rateMmPerHour(0.5, 12.0, 12.0));
+    $t->same(6.791, DripLine::rateMmPerHour(0.5, 12.0, 36.0));
+    $t->same(0.0, DripLine::rateMmPerHour(0.5, 0.0, 12.0), 'no area, no rate');
+});
+
+$t->test('the net depth is rate x time x efficiency, and the assumptions are said out loud',
+    function ($t): void {
+    $zone = ['name' => 'Drip east', 'emitter_gph' => '0.500', 'emitter_spacing_in' => '12.00',
+             'line_spacing_in' => '24.00', 'efficiency_pct' => 80];
+    $depth = DripLine::depth(60, $zone, null);
+    $t->ok($depth !== null);
+    // 231 x 0.5 / (12 x 24) = 0.401 in/h = 10.186 mm/h; 80% of an hour of it.
+    $t->same(10.186, $depth['rate_mm_h']);
+    $t->same(8.15, $depth['mm']);
+    $t->contains('Drip east: 0.5 gph emitters every 12 in, lines 24 in apart, 80% reaching the roots',
+        $depth['basis']);
+    $t->contains('60 min put down about 8 mm', $depth['basis']);
+
+    $t->same(0.0, DripLine::depth(0, $zone, null)['mm'], 'no duration, no water');
+    $t->same(null, DripLine::depth(60, ['name' => 'Hose end', 'emitter_gph' => null], null),
+        'no emitter figure: not this class\'s watering, fall back to the method');
+});
+
+$t->test('a missing spacing is assumed, and the garden\'s row spacing is preferred for the lines',
+    function ($t): void {
+    $zone = ['name' => 'Tape', 'emitter_gph' => '0.25', 'emitter_spacing_in' => null,
+             'line_spacing_in' => null, 'efficiency_pct' => 90];
+
+    $square = DripLine::resolve($zone, null);
+    $t->same(12.0, $square['emitter_spacing_in'], 'twelve inches, the common inline spacing');
+    $t->same(12.0, $square['line_spacing_in'], 'and with nothing better, a square grid');
+    $t->contains('every 12 in (assumed)', $square['description']);
+    $t->contains('lines 12 in apart (assumed, same as the emitters)', $square['description']);
+
+    $bed = DripLine::resolve($zone, 30.0);
+    $t->same(30.0, $bed['line_spacing_in']);
+    $t->contains('lines 30 in apart (this garden\'s row spacing)', $bed['description']);
+    $t->same(90, $bed['efficiency_pct']);
+
+    $t->same(24.0, DripLine::rowSpacingIn(['row_count' => 5, 'ew_ft' => '10.0', 'row_orientation' => 'ns']),
+        'north-south rows are spaced across the east-west side');
+    $t->same(24.0, DripLine::rowSpacingIn(['row_count' => 5, 'ns_ft' => '10.0', 'ew_ft' => '3', 'row_orientation' => 'ew']));
+    $t->same(null, DripLine::rowSpacingIn(['row_count' => 0, 'ew_ft' => '10.0', 'row_orientation' => 'ns']));
+    $t->same(null, DripLine::rowSpacingIn(['row_count' => 3, 'ew_ft' => null, 'row_orientation' => 'ns']));
+});
+
+$t->test('how long to run the zone to refill the deficit, to the next five minutes', function ($t): void {
+    // 25 mm deficit at 10.186 mm/h gross and 80% net: 184 minutes, so 185.
+    $t->same(185, DripLine::minutesFor(25.0, 10.186, 80));
+    $t->same(75, DripLine::minutesFor(25.0, 20.373, 100));
+    $t->same(null, DripLine::minutesFor(0.0, 10.0, 80), 'nothing to refill');
+    $t->same(null, DripLine::minutesFor(25.0, 0.0, 80), 'no rate, no answer');
+});
+
+$t->test('the packet units and the metric ones round-trip', function ($t): void {
+    $t->same(1.89, DripLine::gphToLitresPerHour(0.5));
+    $t->same(0.5, DripLine::litresPerHourToGph(1.8927));
+    $t->same(30.5, DripLine::inchesToCm(12.0));
+    $t->same(12.0, DripLine::cmToInches(30.48));
+    $t->same('0.5', DripLine::trimNumber(0.5));
+    $t->same('12', DripLine::trimNumber(12.0));
 });
 
 $t->group('The tier');
@@ -271,9 +344,12 @@ $t->test('the reason text carries the numbers, as Section 11 asks',
         . ' ORDER BY for_date DESC LIMIT 1',
         ['k' => $placeKey]
     );
-    $t->contains('Deficit', $reason);
+    $t->contains('deficit', $reason);
     $t->contains('mm', $reason);
     $t->contains('Water today', $reason);
+    // Phase 14: the same number the other way up, which is how a gardener
+    // reads it. Twenty rainless days on loam is an empty root zone.
+    $t->contains('Root zone about 0% full', $reason);
 });
 
 $t->test('rain refills the checkbook', function ($t) use ($db, $app, $userId, $placeKey, $today, $putWeather): void {
@@ -346,6 +422,116 @@ $t->test('a zone watering is counted once, not once per plant it reached',
         'one application of the bed, not one per plant in it');
     $t->contains('mm per 10 min', (string) $reco['reason_text'],
         'and the assumption is stated so it can be corrected');
+});
+
+$t->test('a zone that knows its emitters is counted by them, and says how long to run',
+    function ($t) use ($client, $db, $app, $userId, $gardenId, $gardens, $today, $placeKey,
+                      $putWeather): void {
+    $row = $gardens->rows($gardenId)[0];
+
+    // Half a gallon every foot, lines two feet apart, four fifths of it
+    // reaching the roots: 10.186 mm/h gross, 8.15 mm net in an hour.
+    $client->post('/gardens/' . $gardenId . '/zones', [
+        'zone_name' => 'Zone B', 'water_method_new' => 'Drip line',
+        'zone_rows' => [(string) $row['id']],
+        'emitter_flow' => '0.5', 'emitter_spacing' => '12', 'line_spacing' => '24',
+        'efficiency_pct' => '80',
+    ]);
+    $zone = $db->one('SELECT * FROM `water_zone` WHERE garden_id = :g AND name = :n',
+        ['g' => $gardenId, 'n' => 'Zone B']);
+    $t->ok($zone !== null, 'the zone was created');
+    $t->same(0.5, (float) $zone['emitter_gph']);
+    $t->same(12.0, (float) $zone['emitter_spacing_in']);
+    $t->same(24.0, (float) $zone['line_spacing_in']);
+    $t->same(80, (int) $zone['efficiency_pct']);
+
+    // Saving the same name again is how a zone is edited: the figures move.
+    $client->post('/gardens/' . $gardenId . '/zones', [
+        'zone_name' => 'Zone B', 'water_method_new' => 'Drip line',
+        'zone_rows' => [(string) $row['id']],
+        'emitter_flow' => '0.5', 'emitter_spacing' => '12', 'line_spacing' => '24',
+        'efficiency_pct' => '90',
+    ]);
+    $t->same(90, (int) $db->value('SELECT efficiency_pct FROM `water_zone` WHERE id = :id',
+        ['id' => (int) $zone['id']]));
+    $t->same(1, (int) $db->value('SELECT COUNT(*) FROM `water_zone` WHERE garden_id = :g AND name = :n',
+        ['g' => $gardenId, 'n' => 'Zone B'], 0), 'and it is still one zone');
+    $client->post('/gardens/' . $gardenId . '/zones', [
+        'zone_name' => 'Zone B', 'water_method_new' => 'Drip line',
+        'zone_rows' => [(string) $row['id']],
+        'emitter_flow' => '0.5', 'emitter_spacing' => '12', 'line_spacing' => '24',
+        'efficiency_pct' => '80',
+    ]);
+
+    // An hour on it two days ago, on a day with nothing else in the balance.
+    $twoDaysAgo = (string) Clock::addDays($today, -2);
+    $client->post('/gardens/' . $gardenId . '/actions', [
+        'event_type' => EventType::WATERED, 'water_zone_id' => (string) $zone['id'],
+        'duration_min' => '60', 'event_date' => $twoDaysAgo,
+    ]);
+    $putWeather($twoDaysAgo, 5.0, 0.0, 0.0);
+
+    // Recompute from that day forward: the walk resumes after the newest
+    // row left standing, so the day after the watering is rebuilt.
+    $db->run('DELETE FROM `watering_recommendation` WHERE place_key = :k AND for_date > :d',
+        ['k' => $placeKey, 'd' => $twoDaysAgo]);
+    (new WateringModel($app))->run($userId);
+
+    $dayAfter = $db->one(
+        'SELECT * FROM `watering_recommendation` WHERE place_key = :k AND for_date = :d',
+        ['k' => $placeKey, 'd' => (string) Clock::addDays($today, -1)]
+    );
+    $t->ok($dayAfter !== null, 'the day after the watering was recomputed');
+    $t->same(8.15, (float) $dayAfter['irrigation_mm'],
+        'the emitter figures, not the method\'s name, say how deep it went');
+    $t->contains('Zone B: 0.5 gph emitters every 12 in, lines 24 in apart, 80% reaching the roots',
+        (string) $dayAfter['reason_text']);
+    $t->contains('correct the emitter figures on the zone', (string) $dayAfter['reason_text'],
+        'and the correction points at the zone, not at Lists');
+
+    // And every row since carries the fullness, and -- whenever it is not a
+    // skip -- how long Zone B needs to run to put the deficit back.
+    $todayRow = $db->one(
+        'SELECT * FROM `watering_recommendation` WHERE place_key = :k AND for_date = :d',
+        ['k' => $placeKey, 'd' => $today]
+    );
+    $t->contains('Root zone about', (string) $todayRow['reason_text']);
+    if ((string) $todayRow['tier'] !== WateringModel::TIER_SKIP) {
+        $t->contains('min on Zone B refills it', (string) $todayRow['reason_text']);
+        $expected = DripLine::minutesFor((float) $todayRow['deficit_mm'], 10.186, 80);
+        $t->contains('About ' . $expected . ' min on Zone B', (string) $todayRow['reason_text'],
+            'the minutes are the deficit in this sentence over this zone\'s net rate');
+    }
+
+    // The garden page says what the zone puts down, in the gardener's units.
+    $page = $client->get('/gardens/' . $gardenId)->body;
+    $t->contains('0.5 gph every', $page);
+    $t->contains('about 0.4 in/h', $page);
+});
+
+$t->test('an implausible emitter figure is refused rather than stored', function ($t) use ($client, $db, $gardenId, $gardens): void {
+    $row = $gardens->rows($gardenId)[0];
+    foreach ([
+        ['emitter_flow' => '500'],                        // gph typed where litres were meant
+        ['emitter_flow' => '0.5', 'efficiency_pct' => '5'],
+        ['emitter_spacing' => '12'],                      // spacing with no flow
+        ['emitter_flow' => '0.5', 'line_spacing' => '9999'],
+    ] as $i => $bad) {
+        $client->post('/gardens/' . $gardenId . '/zones', [
+            'zone_name' => 'Bad zone ' . $i, 'zone_rows' => [(string) $row['id']],
+        ] + $bad);
+        $t->same(0, (int) $db->value('SELECT COUNT(*) FROM `water_zone` WHERE garden_id = :g AND name = :n',
+            ['g' => $gardenId, 'n' => 'Bad zone ' . $i], 0), 'refused: ' . \json_encode($bad));
+    }
+    // And a zone with none of the figures is still exactly what it was.
+    $client->post('/gardens/' . $gardenId . '/zones', [
+        'zone_name' => 'Plain zone', 'zone_rows' => [(string) $row['id']],
+    ]);
+    $plain = $db->one('SELECT * FROM `water_zone` WHERE garden_id = :g AND name = :n',
+        ['g' => $gardenId, 'n' => 'Plain zone']);
+    $t->ok($plain !== null);
+    $t->same(null, $plain['emitter_gph']);
+    $t->same(80, (int) $plain['efficiency_pct'], 'the default, which nothing reads until there is a flow');
 });
 
 $t->test('the recursion reads yesterday back rather than recomputing the season',
@@ -443,7 +629,8 @@ $t->test('the main menu renders the recommendation', function ($t) use ($client)
     $response = $client->get('/');
     $t->same(200, $response->status);
     $t->contains('Watering', $response->body);
-    $t->contains('Deficit', $response->body);
+    $t->contains('Root zone about', $response->body);
+    $t->contains('deficit', $response->body);
     // No inline style attribute may appear: the CSP silently refuses them
     // (Phase 3 handoff Section 1.5).
     $t->notContains('style="', $response->body);

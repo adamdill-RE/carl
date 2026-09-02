@@ -7,6 +7,7 @@ namespace Carl\Controller;
 use Carl\Core\HttpException;
 use Carl\Core\Request;
 use Carl\Core\Response;
+use Carl\Domain\DripLine;
 use Carl\Domain\EventType;
 use Carl\Domain\ListType;
 use Carl\Domain\SoilType;
@@ -163,7 +164,17 @@ final class GardenController extends Controller
             $request->input('water_method_new')
         );
 
-        $zoneId = $this->gardens()->createZone($gardenId, $name, $methodId);
+        // What the zone puts down (Phase 14). All optional; a zone with no
+        // emitter figure keeps using the method's rate. Typed in the
+        // gardener's units and stored in the packet's (gph, inches), which
+        // is the one conversion DripLine owns.
+        $emitter = $this->readEmitter($request);
+        if (\is_string($emitter)) {
+            $this->flash($emitter, 'error');
+            return $this->redirect('gardens/' . $gardenId);
+        }
+
+        $zoneId = $this->gardens()->createZone($gardenId, $name, $methodId, $emitter);
 
         // Only rows that belong to this garden may join the zone.
         $wanted = $request->intList('zone_rows');
@@ -177,6 +188,68 @@ final class GardenController extends Controller
 
         $this->flash('Water zone saved.');
         return $this->redirect('gardens/' . $gardenId);
+    }
+
+    /**
+     * The emitter fields off the zone form, validated, in gph and inches --
+     * or a sentence saying what was wrong with them.
+     *
+     * The bounds are DripLine's: outside them a value is far more likely a
+     * typo (or gph typed where litres were asked for) than a real system,
+     * and a wrong rate does not fail loudly -- it quietly tells the model
+     * the bed had a season's water in an afternoon.
+     *
+     * @return array{emitter_gph:?float,emitter_spacing_in:?float,line_spacing_in:?float,
+     *               efficiency_pct:int}|string
+     */
+    private function readEmitter(Request $request): array|string
+    {
+        $us = $this->app->units()->isUs();
+
+        $flow = $request->floatInput('emitter_flow');
+        $emitterSpacing = $request->floatInput('emitter_spacing');
+        $lineSpacing = $request->floatInput('line_spacing');
+        $efficiency = $request->intInput('efficiency_pct');
+
+        if ($flow !== null && !$us) {
+            $flow = DripLine::litresPerHourToGph($flow);
+        }
+        if ($emitterSpacing !== null && !$us) {
+            $emitterSpacing = DripLine::cmToInches($emitterSpacing);
+        }
+        if ($lineSpacing !== null && !$us) {
+            $lineSpacing = DripLine::cmToInches($lineSpacing);
+        }
+
+        if ($flow !== null && ($flow < DripLine::GPH_MIN || $flow > DripLine::GPH_MAX)) {
+            return \sprintf('Emitter flow should be between %s and %s %s per hour per emitter.',
+                $us ? DripLine::trimNumber(DripLine::GPH_MIN) : DripLine::trimNumber(DripLine::gphToLitresPerHour(DripLine::GPH_MIN)),
+                $us ? DripLine::trimNumber(DripLine::GPH_MAX) : DripLine::trimNumber(DripLine::gphToLitresPerHour(DripLine::GPH_MAX)),
+                $us ? 'gallons' : 'litres');
+        }
+        foreach ([['Emitter spacing', $emitterSpacing], ['Line spacing', $lineSpacing]] as [$label, $value]) {
+            if ($value !== null && ($value < DripLine::SPACING_MIN_IN || $value > DripLine::SPACING_MAX_IN)) {
+                return $label . ' should be between ' . ($us ? '1 and 240 inches' : '2.5 and 610 cm') . '.';
+            }
+        }
+        if ($efficiency === null) {
+            $efficiency = DripLine::DEFAULT_EFFICIENCY_PCT;
+        }
+        if ($efficiency < DripLine::EFFICIENCY_MIN_PCT || $efficiency > DripLine::EFFICIENCY_MAX_PCT) {
+            return 'Efficiency should be between ' . DripLine::EFFICIENCY_MIN_PCT . ' and '
+                . DripLine::EFFICIENCY_MAX_PCT . ' per cent.';
+        }
+        if ($flow === null && ($emitterSpacing !== null || $lineSpacing !== null)) {
+            return 'Give the emitter flow as well as the spacing, or leave all three blank to use'
+                . ' the water method\'s rate.';
+        }
+
+        return [
+            'emitter_gph'        => $flow === null ? null : \round($flow, 3),
+            'emitter_spacing_in' => $emitterSpacing === null ? null : \round($emitterSpacing, 2),
+            'line_spacing_in'    => $lineSpacing === null ? null : \round($lineSpacing, 2),
+            'efficiency_pct'     => $efficiency,
+        ];
     }
 
     /** View Garden: the garden report in list form (handoff Section 4.8). */
@@ -213,6 +286,9 @@ final class GardenController extends Controller
             'garden'     => $garden,
             'rows'       => $rows,
             'zones'      => $this->gardens()->zones($gardenId),
+            // The line spacing the model falls back to when a zone leaves
+            // it blank (Phase 14), so the form can say what "blank" means.
+            'rowSpacingIn' => DripLine::rowSpacingIn($garden),
             'plantings'  => $plantings,
             'events'     => $this->events()->gardenTimeline($gardenId),
             'photos'     => $this->photos()->forGarden($gardenId),
