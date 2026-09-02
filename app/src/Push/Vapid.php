@@ -136,6 +136,25 @@ final class Vapid
 
     // -- Keys as openssl wants them ------------------------------------------
 
+    /**
+     * The two keys as openssl wants them: DER, wrapped in PEM.
+     *
+     * NOT openssl_pkey_new(['ec' => ['x' => ..., 'y' => ...]]). PHP 8.4
+     * accepts a public key built from raw coordinates; PHP 8.2 -- CI, and
+     * the host -- builds one that openssl then cannot use ("Don't know how
+     * to get public key from this private key"), and the suite passed on
+     * the wrong PHP for a whole phase. RFC 5480 SubjectPublicKeyInfo and
+     * RFC 5915 ECPrivateKey are a few fixed bytes around the point and the
+     * scalar, and every OpenSSL reads them.
+     */
+
+    /** SubjectPublicKeyInfo for an uncompressed P-256 point: everything before the 65 bytes. */
+    private const SPKI_PREFIX = "\x30\x59\x30\x13\x06\x07\x2a\x86\x48\xce\x3d\x02\x01"
+        . "\x06\x08\x2a\x86\x48\xce\x3d\x03\x01\x07\x03\x42\x00";
+
+    /** The prime256v1 OID, as the [0] parameters of an ECPrivateKey. */
+    private const CURVE_OID = "\x06\x08\x2a\x86\x48\xce\x3d\x03\x01\x07";
+
     /** @param array{public:string,private:string} $pair */
     public static function privateKey(array $pair): \OpenSSLAsymmetricKey
     {
@@ -144,12 +163,13 @@ final class Vapid
         if (\strlen($point) !== 65 || $point[0] !== "\x04" || \strlen($d) !== 32) {
             throw new \InvalidArgumentException('Not a P-256 key pair.');
         }
-        $key = \openssl_pkey_new(['ec' => [
-            'curve_name' => self::CURVE,
-            'x' => \substr($point, 1, 32),
-            'y' => \substr($point, 33, 32),
-            'd' => $d,
-        ]]);
+        // RFC 5915: SEQUENCE { INTEGER 1, OCTET STRING d, [0] OID, [1] BIT STRING point }
+        $inner = "\x02\x01\x01"
+            . "\x04\x20" . $d
+            . "\xa0\x0a" . self::CURVE_OID
+            . "\xa1\x44" . "\x03\x42\x00" . $point;
+        $der = "\x30" . \chr(\strlen($inner)) . $inner;
+        $key = \openssl_pkey_get_private(self::pem('EC PRIVATE KEY', $der));
         if ($key === false) {
             throw new \RuntimeException('openssl refused the private key: ' . (string) \openssl_error_string());
         }
@@ -162,15 +182,17 @@ final class Vapid
         if (\strlen($point) !== 65 || $point[0] !== "\x04") {
             throw new \InvalidArgumentException('Not an uncompressed P-256 point.');
         }
-        $key = \openssl_pkey_new(['ec' => [
-            'curve_name' => self::CURVE,
-            'x' => \substr($point, 1, 32),
-            'y' => \substr($point, 33, 32),
-        ]]);
+        $key = \openssl_pkey_get_public(self::pem('PUBLIC KEY', self::SPKI_PREFIX . $point));
         if ($key === false) {
             throw new \RuntimeException('openssl refused the public key: ' . (string) \openssl_error_string());
         }
         return $key;
+    }
+
+    private static function pem(string $label, string $der): string
+    {
+        return '-----BEGIN ' . $label . "-----\n" . \chunk_split(\base64_encode($der), 64, "\n")
+            . '-----END ' . $label . "-----\n";
     }
 
     /** The 65-byte uncompressed point of an openssl EC key. */
