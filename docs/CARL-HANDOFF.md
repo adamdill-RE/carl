@@ -164,6 +164,13 @@ for users).
   same place and always did; what it does not do is say so. On the menu itself
   the link is marked current rather than removed — a control that comes and
   goes moves everything beside it on every navigation.
+- **The Menu pill opens the menu rather than going to it (Phase 15).** It is
+  the summary of a drawer holding the same destinations as the tiles, with
+  "Main menu" as its first row, so Garden Actions is two taps from any
+  scroll position on any screen instead of a page load and a scroll past the
+  MOTD. The tiles and the drawer are one partial (`partials/menu_links`), so
+  neither can lack a screen the other has. The menu page itself is unchanged:
+  the MOTD stays at the top, where this section puts it.
 
 ### 4.3 Start a New Plant
 Three entry forms; the choice sets the initial event and state.
@@ -172,7 +179,8 @@ Three entry forms; the choice sets the initial event and state.
 (type list filtered to those with a `plant_region` row for the user's region,
 recommended ones marked; others available under "show all"); on select, show
 the research card (windows, DTM, germination, notes, confidence marker); seed
-source; seed-starting soil; seed-starting vessel; **quantity sown**; date.
+source; seed-starting soil; seed-starting vessel; **quantity sown** (default 6,
+a tray — Phase 15); date.
 
 **Direct Sow**: category/type + research card; seed source; fertilizer used at
 sow; collar used Y/N; seeds per collar; trellis/cage Y/N; garden + row (or
@@ -185,6 +193,13 @@ quantity (default 1).
 
 Light occupancy hint on row selection: "Row 3 already has 4 living plants."
 Not a block.
+
+**After saving, the plant page opens with "Start another" at the top**
+(Phase 15): the same kind of start — seed start, direct sow or transplant —
+with the date already filled in, so a tray is entered a variety at a time
+without going back through the menu and the kind chooser. It is offered only
+on the page a new plant lands on (a `started=1` marker on the redirect), not
+on every visit to every plant.
 
 ### 4.4 Log Plant Activity
 Table of plants (garden, row/container, category/type, state, days since
@@ -854,7 +869,13 @@ Three, and the third is a decision rather than a feature.
    computes nothing the digest does not: the digest decides when to SPEAK and
    this draws WHEN IT IS, from the same research values, calling the digest's
    own `dtmAnchor()` so there is one writer for the rule that decides which
-   end a days-to-maturity count starts from.
+   end a days-to-maturity count starts from. From Phase 15 every chip on the
+   grid is a link to its day (`?day=`), and a panel under the grid lists
+   that day's entries with title and reason — the upcoming table looks ninety
+   days out, and a month paged past it had chips and nothing behind them.
+   `/calendar.pdf` is the same month, same filter, on paper:
+   `Carl\Reports\CalendarSheet`, black on white and A4/Letter-safe like the
+   field sheet, the grid and then every worked-out date on it in full.
 
 3. **A pest and disease catalogue that ships with Carl.**
    `db/migrations/022_pest_reference.sql` is the argument and it is worth

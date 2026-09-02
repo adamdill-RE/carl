@@ -178,6 +178,12 @@ final class Calendar
         return \sprintf('%04d-%02d', $year, $index + 1);
     }
 
+    /** "September 2026", for a heading -- the screen's and the sheet's. */
+    public static function monthName(string $month): string
+    {
+        return \date('F Y', (int) \strtotime(self::firstOfMonth($month) . ' 00:00:00 UTC'));
+    }
+
     /** A YYYY-MM from user input, or the month $today falls in. */
     public static function normaliseMonth(?string $month, string $today): string
     {

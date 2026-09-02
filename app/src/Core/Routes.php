@@ -124,6 +124,11 @@ final class Routes
         // writes and nothing here computes anything the digest does not --
         // see Carl\Planting\Calendar.
         $r->get('/calendar', CalendarController::class, 'index');
+        // The same month on paper (Phase 15): the grid, then every worked-out
+        // date on it in full. A GET like the field sheet, so the link carries
+        // the page's own month and filter and a paper jam costs nothing. The
+        // dot is escaped by the router, so this answers to nothing else.
+        $r->get('/calendar.pdf', CalendarController::class, 'pdf');
 
         // -- Gardens --------------------------------------------------------
         $r->get('/gardens', GardenController::class, 'index');

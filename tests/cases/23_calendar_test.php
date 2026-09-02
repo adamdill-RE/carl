@@ -33,6 +33,7 @@ use Carl\Domain\PlantingState;
 use Carl\Domain\ReminderKind;
 use Carl\Planting\Calendar;
 use Carl\Reminders\ReminderBuilder;
+use Carl\Reports\CalendarSheet;
 use Carl\Repo\EventRepository;
 use Carl\Repo\GardenRepository;
 use Carl\Repo\PlantingRepository;
@@ -575,4 +576,132 @@ $t->test('a repeated action collapses in a cell instead of stacking',
     );
     $t->same(1, \count($chips[0]), 'one chip, however many waterings the day carries');
     $t->ok((int) ($chips[1][0] ?? 0) >= 2, 'and it says how many, rather than repeating itself');
+});
+
+// ========================================================================
+// 4. A chip opens its day, and the month goes to paper (Phase 15)
+// ========================================================================
+
+$t->group('A chip opens its day');
+
+$t->test('every chip on the grid is a link to its day', function ($t) use ($client, $today): void {
+    // A chip says "Transplant"; a title attribute is the only place it said
+    // for which plant, which on a phone is nowhere. Every chip is a link to
+    // its day and the panel under the grid says the rest.
+    $response = $client->get('/calendar');
+    \preg_match_all('/<a class="cal-chip[^"]*"\s+href="([^"]*)"/', $response->body, $links);
+    $t->ok(\count($links[1]) >= 1, 'there is at least the Watered chip to click');
+    foreach ($links[1] as $href) {
+        $t->contains('day=', $href, 'a chip carries its day');
+        $t->ok(\str_ends_with($href, '#day'), 'and lands on the panel: ' . $href);
+    }
+    $t->contains('day=' . $today . '#day', $response->body, 'today\'s watering links to today');
+});
+
+$t->test('a day opens a panel with the title and the reason behind each chip',
+    function ($t) use ($client, $today, $suffix): void {
+    $response = $client->get('/calendar', ['day' => $today]);
+    $t->same(200, $response->status);
+    $t->contains('id="day"', $response->body, 'the panel is drawn');
+    $t->contains('cal-picked', $response->body, 'and the cell is marked');
+
+    $panel = \substr($response->body, (int) \strpos($response->body, 'id="day"'));
+    $t->contains('Watered -- Calendar One ' . $suffix, $panel,
+        'the chip said Watered; the panel says of what');
+    $t->contains('Open the plant', $panel, 'and the plant is a tap away');
+});
+
+$t->test('a day off the grid, or not a day at all, is no panel', function ($t) use ($client): void {
+    foreach (['nonsense', '1999-01-01', '2026-02-30'] as $bad) {
+        $response = $client->get('/calendar', ['day' => $bad]);
+        $t->same(200, $response->status, $bad . ' still renders the month');
+        $t->notContains('id="day"', $response->body, $bad . ' draws no panel');
+    }
+});
+
+$t->group('The month on paper');
+
+$t->test('the page offers the PDF and the route answers with one, filter and all',
+    function ($t) use ($client, $oneId, $thisMonth): void {
+    $page = $client->get('/calendar');
+    $t->contains('calendar.pdf?', $page->body, 'the link is on the page');
+
+    $response = $client->get('/calendar.pdf');
+    $t->same(200, $response->status);
+    $t->same('application/pdf', $response->headers()['Content-Type'] ?? '');
+    $t->contains('carl-calendar-' . $thisMonth . '.pdf', $response->headers()['Content-Disposition'] ?? '');
+    $t->contains('no-store', $response->headers()['Cache-Control'] ?? '', 'personal data, never cached');
+    $t->ok(\str_starts_with($response->body, '%PDF-'), 'it is a PDF');
+
+    // The same month and the same filter as the page it was pressed on.
+    $october = $client->get('/calendar.pdf', ['month' => '2026-10', 'f' => '1', 'plant_id' => [$oneId]]);
+    $t->same(200, $october->status);
+    $t->contains('carl-calendar-2026-10.pdf', $october->headers()['Content-Disposition'] ?? '');
+});
+
+$t->test('a heavy month fits on A4 and on Letter, and says what a cell could not show',
+    function ($t): void {
+    // There is no rasteriser on the build machine, so the sheet measures
+    // itself the way the field sheet does: AutoPageBreak is off and content
+    // past the Letter limit prints off the paper, not onto page two.
+    $weeks = Calendar::grid('2026-08');   // 1 August 2026 is a Saturday: six weeks
+    $t->same(6, \count($weeks));
+
+    $entry = static fn (string $date, string $label, bool $projected, string $title): array => [
+        'date'        => $date,
+        'kind'        => $projected ? ReminderKind::TRANSPLANT_WINDOW : Calendar::LOGGED,
+        'label'       => $label,
+        'title'       => $title,
+        'detail'      => 'Your area\'s spring window for Cherokee Purple runs 04-01 to 05-15,'
+            . ' and this sentence is long enough to wrap onto a second line of the list.',
+        'planting_id' => 1,
+        'projected'   => $projected,
+    ];
+
+    $entries = [];
+    // Twelve different things on one day: more lines than a cell has room
+    // for, so the cell must say "+n more" rather than print off its edge.
+    for ($i = 0; $i < 12; $i++) {
+        $entries[] = $entry('2026-08-12', 'Thing ' . $i, true, 'Thing ' . $i . ' on the twelfth');
+    }
+    // Nine waterings on the next day, which must collapse to ONE line.
+    for ($i = 0; $i < 9; $i++) {
+        $entries[] = $entry('2026-08-13', 'Watered', false, 'Watered -- plant ' . $i);
+    }
+    // And four worked-out dates on every day of the grid, written out in
+    // full underneath: far more than a page.
+    $coming = [];
+    foreach ($weeks as $week) {
+        foreach ($week as $cell) {
+            for ($i = 0; $i < 4; $i++) {
+                $coming[] = $entry($cell['date'], 'Harvest', true, 'Plant ' . $i . ' should be ready');
+            }
+        }
+    }
+
+    $sheet = new CalendarSheet();
+    $sheet->month('August 2026', $weeks, Calendar::byDate($entries), $coming,
+        '2026-08-13', '13 Aug 2026', 'Every plant, with garden-wide dates');
+    $pdf = $sheet->render();
+
+    $t->ok(\str_starts_with($pdf, '%PDF-'), 'it is a PDF');
+    $t->same(1, $sheet->overflowCount(),
+        'the crowded cell said "+n more", and the nine waterings were one line and did not');
+    $t->ok($sheet->pageCount() >= 2, \count($coming) . ' entries in full is more than one page');
+    $t->same($sheet->pageCount(), \preg_match_all('#/Type\s*/Page[^s]#', $pdf),
+        'and the file has exactly the pages the sheet counted');
+    $t->ok($sheet->contentBottom() <= $sheet->bottomLimit() - 8,
+        'content reached ' . $sheet->contentBottom() . ' mm against a '
+        . ($sheet->bottomLimit() - 8) . ' mm limit');
+});
+
+$t->test('an empty month is one page that says so', function ($t): void {
+    $sheet = new CalendarSheet();
+    $sheet->month('February 2027', Calendar::grid('2027-02'), [], [],
+        '2026-09-02', '2 Sep 2026', 'Every plant, plants only');
+    $pdf = $sheet->render();
+    $t->same(1, $sheet->pageCount());
+    $t->same(1, \preg_match_all('#/Type\s*/Page[^s]#', $pdf));
+    $t->same(0, $sheet->overflowCount());
+    $t->ok($sheet->contentBottom() <= $sheet->bottomLimit() - 8);
 });

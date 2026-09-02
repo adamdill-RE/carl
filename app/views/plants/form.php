@@ -26,6 +26,16 @@ $old = $old ?? [];
 $val = static fn (string $k, string $default = ''): string
     => (string) ($old[$k] ?? $default);
 
+// What the quantity box starts at. A seed-starting tray is six cells, and a
+// tray is what an indoor start is: the box says six, not the twelve it said
+// until Phase 15, which nobody's tray held. A direct sow is a row's worth
+// and a nursery plant is bought one at a time.
+$defaultQuantity = match ($kind) {
+    'indoor_seed'        => '6',
+    'nursery_transplant' => '1',
+    default              => '12',
+};
+
 // Categories, in the order the region overlay put them: in-region and
 // recommended first (handoff Section 4.3).
 $byCategory = [];
@@ -108,7 +118,7 @@ foreach ($plantTypes as $type) {
   <div class="field">
     <label for="quantity_initial"><?= $kind === 'nursery_transplant' ? 'How many plants' : 'Quantity sown' ?></label>
     <input type="number" id="quantity_initial" name="quantity_initial" min="1" max="100000"
-           value="<?= $e($val('quantity_initial', $kind === 'nursery_transplant' ? '1' : '12')) ?>" required>
+           value="<?= $e($val('quantity_initial', $defaultQuantity)) ?>" required>
   </div>
 
 <?php if ($kind === 'indoor_seed'): ?>
@@ -221,7 +231,7 @@ foreach ($plantTypes as $type) {
     </p>
     <?= $view->partial('partials/tag_picker', [
           'free' => $free, 'name' => 'tags', 'checked' => $chosenTags,
-          'wanted' => (int) $val('quantity_initial', $kind === 'nursery_transplant' ? '1' : '12')]) ?>
+          'wanted' => (int) $val('quantity_initial', $defaultQuantity)]) ?>
   </div>
 <?php endif; ?>
 

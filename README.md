@@ -175,7 +175,10 @@ And, from Phase 9, three refinements:
   it had a page: the digest works out eight of these rules every morning but
   only ever for today. It computes nothing the digest does not, from the same
   research values and the digest's own arithmetic, so the two cannot disagree
-  about the date of the same harvest.
+  about the date of the same harvest. Every chip on the grid opens its day —
+  what each entry is and why Carl thinks so — and the month goes to paper as
+  a PDF that follows the field sheet's rules: black on white, A4 and Letter
+  from one page, the grid and then every worked-out date on it in full.
 - **A pest and disease reference that is not empty.** Seventy-six entries ship
   with Carl — insects, diseases and the disorders that get mistaken for them —
   each with what you will see, what it costs to ignore, what it is confused

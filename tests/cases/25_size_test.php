@@ -532,7 +532,14 @@ $t->test('every signed-in screen carries a labelled link to the menu',
         $response = $client->get($path);
         $t->same(200, $response->status, $path . ' renders');
         $t->contains('class="nav-menu"', $response->body, $path . ' has the way back');
-        $t->contains('>Menu</a>', $response->body, $path . ' says the word');
+        // From Phase 15 the pill is the summary of a drawer rather than a
+        // link: it still says the word, and behind it is every destination
+        // the main menu has, so Garden Actions is two taps from anywhere
+        // and not a page load and a scroll.
+        $t->contains('>Menu</summary>', $response->body, $path . ' says the word');
+        $t->contains('class="nav-drawer-panel"', $response->body, $path . ' opens the drawer');
+        $t->contains('>Main menu', $response->body, $path . ' and the way back is its first row');
+        $t->contains('>Garden Actions', $response->body, $path . ' lists the destinations');
     }
 });
 

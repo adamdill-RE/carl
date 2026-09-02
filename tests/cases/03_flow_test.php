@@ -161,6 +161,8 @@ $t->test('an indoor seed start is recorded 60 days ago', function ($t) use ($cli
         'vessel_new' => '72-cell tray',
     ]);
     $t->same(303, $response->status);
+    // The marker that makes the plant page offer the next start (Phase 15).
+    $t->contains('started=1', (string) ($response->headers()['Location'] ?? ''));
 
     $plantings = new PlantingRepository($db, $alice['id']);
     $rows = $plantings->where('`start_method` = :m', ['m' => 'indoor_seed'], '`id` DESC', 1);
@@ -170,6 +172,40 @@ $t->test('an indoor seed start is recorded 60 days ago', function ($t) use ($cli
     $t->same(12, (int) $rows[0]['quantity_live']);
     $t->same(null, $rows[0]['in_ground_date'], 'a seedling is not in the ground yet');
     $plantIds['seed'] = (int) $rows[0]['id'];
+});
+
+$t->test('the page a new plant lands on offers the next one of the same kind (Phase 15)',
+    function ($t) use ($client, $today, &$plantIds): void {
+    // A tray is entered a variety at a time. The page the first one lands
+    // on carries a button for the second: the same KIND of start, with the
+    // date already filled in, so a batch sown last Saturday is backdated
+    // once and not once per packet.
+    $date = (string) Clock::addDays($today, -60);
+    $landed = $client->get('/plants/' . $plantIds['seed'], ['started' => '1']);
+    $t->same(200, $landed->status);
+    $t->contains('id="start-another"', $landed->body, 'the card is drawn');
+    $t->contains('Start another: indoor seed start', $landed->body, 'the same kind, named');
+    $t->contains('/plants/new/indoor_seed?start_date=' . $date, $landed->body, 'and the date rides along');
+
+    // Without the marker the page is the plant's report and nothing else:
+    // a "start another" on every visit to every plant is a button nobody
+    // asked for on a page about something else.
+    $plain = $client->get('/plants/' . $plantIds['seed']);
+    $t->same(200, $plain->status);
+    $t->notContains('id="start-another"', $plain->body);
+});
+
+$t->test('the seed-start form counts a tray of six, not twelve (Phase 15)',
+    function ($t) use ($client): void {
+    // Six is what a seed-starting tray holds. A direct sow is a row's worth
+    // and a nursery plant is bought one at a time; those did not move.
+    $expected = ['indoor_seed' => '6', 'direct_sow' => '12', 'nursery_transplant' => '1'];
+    foreach ($expected as $kind => $quantity) {
+        $response = $client->get('/plants/new/' . $kind);
+        $t->same(200, $response->status);
+        $t->same(1, \preg_match('/id="quantity_initial"[^>]*value="' . $quantity . '"/', $response->body),
+            $kind . ' starts at ' . $quantity);
+    }
 });
 
 $t->test('the backdated start pulled the weather backfill window back', function ($t) use ($alice, $db, $today): void {

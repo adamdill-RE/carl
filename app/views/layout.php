@@ -20,7 +20,19 @@ $pageTitle = $pageTitle ?? null;
    The brand still goes to the same place, which is the convention and costs
    nothing; what it does not do is TELL anybody it does. Two links to one
    destination is only a bug when they look like the same control (Phase 11
-   handoff Section 3.2) -- a wordmark and a labelled pill do not. */
+   handoff Section 3.2) -- a wordmark and a labelled pill do not.
+
+   FROM PHASE 15 THE PILL OPENS THE MENU RATHER THAN GOING TO IT. The Phase
+   13 link was the way back; what it was not was the way ON. Reaching Garden
+   Actions from a plant page meant the pill, a page load, and a scroll past
+   the weather matrix, the watering advice and today's items to a tile below
+   them all -- and on the main menu itself the pill did nothing. So the pill
+   is now the summary of a drawer that holds the same ten destinations, plus
+   the main menu as its first row: one tap opens it from any scroll position
+   on any screen, the second tap is the destination, and the menu page keeps
+   its MOTD at the top where handoff Section 4.2 puts it. The alternative --
+   moving the tiles above the MOTD -- fixes the menu page and nothing else,
+   and costs the one glance at the weather the page exists for. */
 $currentPath = $app->request()?->path ?? '';
 $onMenu = $currentPath === '/' || $currentPath === '';
 ?><!DOCTYPE html>
@@ -58,8 +70,16 @@ $onMenu = $currentPath === '/' || $currentPath === '';
 <?php if ($user !== null): ?>
   <?php /* Signed out there is no menu to go to: /login and the setup screens
          are the whole of what a stranger can reach. */ ?>
-  <a class="nav-menu<?= $onMenu ? ' is-current' : '' ?>" href="<?= $e($app->url()) ?>"
-     <?= $onMenu ? 'aria-current="page"' : '' ?>>Menu</a>
+  <details class="nav-drawer">
+    <summary class="nav-menu<?= $onMenu ? ' is-current' : '' ?>">Menu</summary>
+    <nav class="nav-drawer-panel" aria-label="Main menu">
+      <div class="wrap">
+        <a href="<?= $e($app->url()) ?>" <?= $onMenu ? 'aria-current="page"' : '' ?>>Main menu
+          <span class="hint">Weather, watering and today's items</span></a>
+        <?= $view->partial('partials/menu_links') ?>
+      </div>
+    </nav>
+  </details>
 <?php endif; ?>
   <span class="spacer"></span>
 <?php if ($user !== null): ?>
@@ -96,5 +116,10 @@ $onMenu = $currentPath === '/' || $currentPath === '';
     <?= $view->partial('partials/attribution', ['models' => $weatherModels ?? []]) ?>
   </footer>
 </main>
+<?php if ($user !== null): ?>
+<?php /* Manners for the drawer: close on an outside tap and on Escape. The
+       drawer works without it. */ ?>
+<script src="<?= $e($app->asset('assets/js/nav.js')) ?>" defer></script>
+<?php endif; ?>
 </body>
 </html>

@@ -12,8 +12,16 @@
  * listed waterings is a month nobody can read. The full set is still there:
  * filter to one plant, or open the plant's own timeline.
  *
+ * EVERY CHIP IS A LINK TO ITS DAY (Phase 15). A chip says "Transplant" and a
+ * title attribute is the only place it said for which plant, which on a phone
+ * is nowhere. Paging three months ahead put the reader past the upcoming
+ * table's ninety-day horizon with a grid of one-word chips and no way in. So
+ * a chip opens its day in the panel under the grid -- every entry on that
+ * date, with the title and the reason -- with no script, a URL that can be
+ * bookmarked, and the back button as the way out.
+ *
  * @var Carl\Core\App $app @var Carl\Core\View $view
- * @var string $month @var string $prev @var string $next @var string $thisMonth
+ * @var string $month @var string $monthName @var string $prev @var string $next @var string $thisMonth
  * @var list<list<array{date:string,in_month:bool}>> $weeks
  * @var array<string,list<array<string,mixed>>> $byDate
  * @var list<array<string,mixed>> $upcoming
@@ -21,6 +29,7 @@
  * @var list<array<string,mixed>> $plantings
  * @var array{plant_ids:list<int>,wide:bool} $filter
  * @var bool $hasRegion @var string $today
+ * @var string|null $day @var list<array<string,mixed>> $onDay
  */
 $e = $view->e(...);
 $U = Carl\Support\Units::class;
@@ -28,12 +37,14 @@ $C = Carl\Planting\Calendar::class;
 $pageTitle = 'Calendar';
 
 $selected = \array_flip($filter['plant_ids']);
-$monthName = \date('F Y', (int) \strtotime($month . '-01 00:00:00 UTC'));
+$day = $day ?? null;
+$onDay = $onDay ?? [];
 
 /**
  * The query string that carries the current filter onto another month.
  * http_build_query() nests an array as plant_id[0]=..., which is the shape
  * Request::queryIntList() reads back -- so paging months keeps the filter.
+ * The picked day is NOT carried: it belongs to the month it was picked in.
  */
 $carry = static function (string $toMonth) use ($filter): array {
     $query = ['month' => $toMonth, 'f' => '1'];
@@ -92,18 +103,25 @@ $carry = static function (string $toMonth) use ($filter): array {
        href="<?= $e($app->url('calendar', $carry($next))) ?>"
        aria-label="Next month">&rarr;</a>
   </div>
+  <?php /* The way to paper (Phase 15): the same month, the same filter, as a
+         PDF that follows the field sheet's rules. Beside "back to this
+         month" because both are about WHICH month is in front of you. */ ?>
+  <p class="tiny cal-tools">
 <?php if ($month !== $thisMonth): ?>
-  <p class="tiny flush"><a href="<?= $e($app->url('calendar', $carry($thisMonth))) ?>">Back to this month</a></p>
+    <a href="<?= $e($app->url('calendar', $carry($thisMonth))) ?>">Back to this month</a>
+    &middot;
 <?php endif; ?>
+    <a href="<?= $e($app->url('calendar.pdf', $carry($month))) ?>">Print this month (PDF)</a>
+  </p>
 
   <div class="matrix-scroll">
   <table class="cal">
     <caption class="sr-only"><?= $e($monthName) ?> in the garden</caption>
     <thead>
       <tr>
-<?php foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $day): ?>
-        <th scope="col"><abbr title="<?= $e($day) ?>"><?= $e(\substr($day, 0, 1)) ?></abbr>
-          <span class="cal-dayname"><?= $e($day) ?></span></th>
+<?php foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $dayName): ?>
+        <th scope="col"><abbr title="<?= $e($dayName) ?>"><?= $e(\substr($dayName, 0, 1)) ?></abbr>
+          <span class="cal-dayname"><?= $e($dayName) ?></span></th>
 <?php endforeach; ?>
       </tr>
     </thead>
@@ -122,15 +140,17 @@ $carry = static function (string $toMonth) use ($filter): array {
         $classes = 'cal-cell';
         if (!$cell['in_month']) { $classes .= ' cal-outside'; }
         if ($cell['date'] === $today) { $classes .= ' cal-today'; }
+        if ($cell['date'] === $day) { $classes .= ' cal-picked'; }
+        $dayUrl = $app->url('calendar', $carry($month) + ['day' => $cell['date']]) . '#day';
 ?>
         <td class="<?= $e($classes) ?>">
           <span class="cal-num"><?= $e((int) \substr($cell['date'], 8, 2)) ?></span>
 <?php foreach ($rolled as $group): $entry = $group['entry']; ?>
-          <span class="cal-chip <?= $entry['projected'] ? 'cal-ahead' : 'cal-done' ?>"
-                title="<?= $e($entry['title']) ?>">
+          <a class="cal-chip <?= $entry['projected'] ? 'cal-ahead' : 'cal-done' ?>"
+             href="<?= $e($dayUrl) ?>" title="<?= $e($entry['title']) ?>">
             <?= $e($entry['label']) ?><?php if ($group['count'] > 1): ?>
               &times;<?= $e($group['count']) ?><?php endif; ?>
-          </span>
+          </a>
 <?php endforeach; ?>
         </td>
 <?php endforeach; ?>
@@ -142,9 +162,50 @@ $carry = static function (string $toMonth) use ($filter): array {
   <p class="tiny muted flush">
     <span class="cal-chip cal-done">logged</span> happened.
     <span class="cal-chip cal-ahead">ahead</span> is worked out from days to maturity,
-    a hardening duration, or your county's windows.
+    a hardening duration, or your county's windows. Tap any entry for what it means.
   </p>
 </section>
+
+<?php if ($day !== null): ?>
+<?php /* The picked day, in full. Every entry on it and not only the ones
+       that were tapped: the chip was one line of a collapsed group, and the
+       question a reader had was "what is on this day". The `list guidance`
+       shape is the MOTD's, so a kind label and a sentence look the same
+       here as they do on the menu. */ ?>
+<section class="card" id="day">
+  <h2 class="flush"><?= $e($U::longDate($day)) ?>
+    <span class="muted small"><?= $e($U::relativeDays(Carl\Support\Clock::daysBetween($today, $day))) ?></span>
+  </h2>
+<?php if ($onDay === []): ?>
+  <p class="muted gap-sm flush">Nothing logged or worked out for this day.</p>
+<?php else: ?>
+  <ul class="list guidance gap-sm">
+<?php foreach ($onDay as $entry): ?>
+    <li>
+      <div class="grow">
+        <span class="topic kind-<?= $e($entry['kind']) ?>"><?= $e($entry['label']) ?></span>
+        <span class="tiny muted"><?= $entry['projected'] ? 'worked out' : 'logged' ?></span><br>
+        <strong><?= $e($entry['title']) ?></strong>
+<?php if ((string) $entry['detail'] !== ''): ?>
+        <div class="small muted"><?= $e($entry['detail']) ?></div>
+<?php endif; ?>
+<?php if ($entry['planting_id'] !== null): ?>
+        <div class="tiny gap-xs">
+          <a href="<?= $e($app->url('plants/' . (int) $entry['planting_id'])) ?>">Open the plant</a>
+          &middot;
+          <a href="<?= $e($app->url('log/' . (int) $entry['planting_id'])) ?>">Log it</a>
+        </div>
+<?php endif; ?>
+      </div>
+    </li>
+<?php endforeach; ?>
+  </ul>
+<?php endif; ?>
+  <p class="tiny muted flush gap-sm">
+    <a href="<?= $e($app->url('calendar', $carry($month))) ?>">Close</a>
+  </p>
+</section>
+<?php endif; ?>
 
 <section class="card">
   <h2>Upcoming actions</h2>
