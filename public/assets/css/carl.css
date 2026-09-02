@@ -522,6 +522,13 @@ a.cal-chip:hover, a.cal-chip:focus-visible { text-decoration: underline; }
  */
 
 .flush          { margin: 0; }
+/* The one-tap timer under a watering line (Phase 16): a form per zone, so
+   the buttons sit in a row and wrap on a narrow phone. */
+.timer-start    { display: inline-block; margin: 6px 6px 0 0; }
+.push-setup h3  { margin-top: 14px; }
+/* .btn sets display, which beats the hidden attribute's UA rule: without
+   this both push buttons draw at once (found by the Phase 16 screenshot). */
+.push-controls .btn[hidden] { display: none; }
 /* The card a new plant lands under (Phase 15): above the title, so it is the
    first thing on the page and not the last thing found on it. */
 .start-another  { margin-top: 12px; }
@@ -651,6 +658,15 @@ a.cal-chip:hover, a.cal-chip:focus-visible { text-decoration: underline; }
 .qr-code { font-family: var(--carl-font-mono); font-size: 22px; letter-spacing: .12em; margin: 0 0 4px; }
 
 .mono { font-family: var(--carl-font-mono); }
+
+/* A token and a config snippet on the Connect screen (Phase 16): shown once,
+   copied whole, so they must not wrap mid-token on a phone -- they scroll. */
+.token { display: inline-block; max-width: 100%; overflow-x: auto; padding: 6px 8px;
+         font-size: 13px; background: var(--carl-surface-sunk); border-radius: 6px;
+         white-space: nowrap; -webkit-overflow-scrolling: touch; }
+.snippet { margin: 4px 0 8px; padding: 8px 10px; overflow-x: auto; font-size: 12px;
+           line-height: 1.5; background: var(--carl-surface-sunk); border-radius: 6px; }
+.snippet code { font-family: var(--carl-font-mono); }
 .break { overflow-wrap: anywhere; }
 
 /*

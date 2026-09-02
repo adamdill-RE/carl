@@ -307,6 +307,13 @@ final class GardenController extends Controller
         $gardenId = (int) $params['id'];
         $garden = $this->gardens()->findOrFail($gardenId);
 
+        // The timer (Phase 16): what is counting in this garden, what has
+        // just finished, and whether this phone can be told. Three statements
+        // beside the page's own; the push key is read, never made, here.
+        $timers = new \Carl\Repo\TimerRepository($this->app->db(), $this->userId());
+        $subscriptions = new \Carl\Repo\PushSubscriptionRepository($this->app->db(), $this->userId());
+        $pushKey = \Carl\Push\Vapid::existing($this->app->db());
+
         return $this->render('gardens/actions', [
             'garden' => $garden,
             'rows'   => $this->gardens()->rows($gardenId),
@@ -316,6 +323,13 @@ final class GardenController extends Controller
                 ListType::MULCH_TYPE, ListType::PEST_DISEASE, ListType::PEST_TREATMENT,
             ]),
             'actions' => EventType::gardenTypes(),
+            'timers'         => $timers->running($gardenId),
+            'finishedTimers' => $timers->recentlyFinished($gardenId),
+            'pushKey'        => $pushKey === null ? null : $pushKey['public'],
+            'pushCount'      => \count($subscriptions->live()),
+            'timerMinutes'   => \max(1, \min(720, (int) ($request->query('minutes') ?? '30'))),
+            'timerZone'      => (int) ($request->query('zone') ?? '0'),
+            'timerMax'       => $this->app->config()->int('timers.max_minutes', 720),
         ]);
     }
 

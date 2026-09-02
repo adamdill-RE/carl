@@ -61,6 +61,18 @@ final class Client
         return $this->send('POST', $path, [], $post, $files);
     }
 
+    /**
+     * A request with a raw body and its own headers -- the MCP client's
+     * shape (Phase 16): JSON in, no form, a bearer in the Authorization
+     * header, no CSRF token because there is no session to hold one.
+     *
+     * @param array<string,string> $headers header name => value
+     */
+    public function postRaw(string $path, string $body, array $headers = [], string $method = 'POST'): Response
+    {
+        return $this->send($method, $path, [], [], [], $headers, $body);
+    }
+
     public function csrfToken(): string
     {
         return $this->app()->csrf()->token();
@@ -89,10 +101,30 @@ final class Client
      * @param array<string,mixed> $post
      * @param array<string,array<string,mixed>> $files
      */
-    private function send(string $method, string $path, array $query, array $post, array $files = []): Response
-    {
+    private function send(
+        string $method,
+        string $path,
+        array $query,
+        array $post,
+        array $files = [],
+        array $headers = [],
+        ?string $rawBody = null,
+    ): Response {
         $app = $this->makeApp();
         $this->lastApp = $app;
+
+        // Headers from a previous request must not leak into this one: a
+        // bearer left in $_SERVER would sign the next page in as a program.
+        foreach (\array_keys($_SERVER) as $key) {
+            if (\str_starts_with((string) $key, 'HTTP_') && !\in_array($key, ['HTTP_USER_AGENT', 'HTTP_HOST'], true)) {
+                unset($_SERVER[$key]);
+            }
+        }
+        unset($_SERVER['CONTENT_TYPE']);
+        foreach ($headers as $name => $value) {
+            $key = \strtoupper(\str_replace('-', '_', $name));
+            $_SERVER[$key === 'CONTENT_TYPE' ? $key : 'HTTP_' . $key] = $value;
+        }
 
         $_GET = $query;
         $_POST = $post;
@@ -104,9 +136,10 @@ final class Client
         $_SERVER['HTTPS'] = 'on';
         $_SERVER['HTTP_USER_AGENT'] = 'CarlTests/1.0';
         $_SERVER['REMOTE_ADDR'] = '203.0.113.10';
-        $_SERVER['CONTENT_LENGTH'] = (string) ($post === [] && $files === [] ? 0 : 100);
+        $_SERVER['CONTENT_LENGTH'] = (string) ($rawBody !== null
+            ? \strlen($rawBody) : ($post === [] && $files === [] ? 0 : 100));
 
-        $request = Request::fromGlobals($app->basePath());
+        $request = Request::fromGlobals($app->basePath(), $rawBody);
         $response = $app->handle($request);
 
         foreach ($response->cookies() as $cookie) {

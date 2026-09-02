@@ -239,6 +239,40 @@ return [
         'retention_days' => 365,         // answers are kept a season; failures stay
     ],
 
+    // --- The MCP server (Phase 16; Phase 15 handoff Section 3.1) ---------
+    // POST /mcp, read-only, one bearer token per machine, minted on the
+    // Connect Claude Code screen under Reports. Nothing here is secret.
+    'mcp' => [
+        // What initialize reports as the server version.
+        'version' => '1.0',
+        // Per token. The login limiter's shape: loose, because a locked-out
+        // conversation is a worse failure than a busy one on a hobby tool,
+        // and every call is one ordinary request with a statement count.
+        'calls_per_minute' => 60,
+        // A tool result over this is refused with a message saying how to
+        // narrow it. The raw export of a five-year account is 3.3 MB and
+        // 918,000 tokens; a tool that returned it would have failed.
+        'max_response_bytes' => 262144,
+        // Origins beyond the site's own that may call the endpoint from a
+        // browser context. Claude Code sends no Origin at all; leave empty.
+        'allowed_origins' => [],
+    ],
+
+    // --- The watering timer, and the phone it reaches (Phase 16) ---------
+    'timers' => [
+        'max_minutes' => 720,        // twelve hours; past that it is not a timer
+        'batch'       => 50,         // rows per cron run
+    ],
+    'push' => [
+        // Who a push service writes to about a misbehaving sender (RFC
+        // 8292). Apple requires a mailto: or an https URL here.
+        'subject' => 'mailto:carl@reshiftmanager.com',
+        // How long the push service holds an undelivered message for a
+        // phone that is off. An hour: a "your timer is done" that arrives
+        // the next morning is worse than none.
+        'ttl'     => 3600,
+    ],
+
     // --- Crop rotation (Phase 5 handoff Section 3.4) ---------------------
     // How far back a bed's history still counts against planting the same
     // family in it again. Three years is the conventional rotation for the

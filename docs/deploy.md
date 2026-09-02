@@ -481,7 +481,7 @@ plant catalog and the plant forms have nothing to offer.
 
 ## 7. Cron
 
-**cPanel → Cron Jobs.** Six jobs. The weather one is the one whose hour
+**cPanel → Cron Jobs.** Seven jobs. The weather one is the one whose hour
 matters; the rest do their own clock arithmetic and can fire whenever.
 
 | What | Minute | Hour | Day | Month | Weekday | Command |
@@ -492,6 +492,7 @@ matters; the rest do their own clock arithmetic and can fire whenever.
 | Mail outbox | `*/10` | `*` | `*` | `*` | `*` | `bin/mail_send.php` |
 | Digest | `15` | `*` | `*` | `*` | `*` | `bin/daily_digest.php` |
 | Analyses | `40` | `*` | `*` | `*` | `*` | `bin/analysis_run.php` |
+| Timers | `*` | `*` | `*` | `*` | `*` | `bin/timers_fire.php` |
 
 Each command in full, with the pinned PHP binary and the output redirect —
 cPanel emails the account on every run otherwise, and a job that mails 365
@@ -504,7 +505,17 @@ times a year trains everyone to ignore it:
 */10 * * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/mail_send.php >/dev/null 2>&1
 15 * * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/daily_digest.php >/dev/null 2>&1
 40 * * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/analysis_run.php >/dev/null 2>&1
+* * * * * /usr/local/bin/ea-php82 -q /home/reshiftmanager/carl-app/bin/timers_fire.php >/dev/null 2>&1
 ```
+
+**The timer job runs every minute, and that is the whole feature (Phase
+16).** A watering timer is a row with an end time; nothing on this host can
+hold a connection open or run except from cron (hosting §3), so this is what
+notices the row. A run with nothing due costs one statement and exits in
+well under a second, which is one short LVE entry process a minute. It
+writes no run row of its own — 1,440 rows a day saying "nothing" is not a
+health record — and `/status` reads the timers instead: one that is more
+than three minutes late means this entry is missing.
 
 **The watering model runs after the weather, not with it.** It reads
 `weather_daily` and `weather_forecast` and computes; it fetches nothing. Half
@@ -930,6 +941,43 @@ openssl rand -hex 24
 
 Push, then **Deploy HEAD Commit**. There is no build and no restart; the next
 request picks the files up, because there is no OPcache on this host.
+
+### The Phase 16 deploy adds TWO migrations, ONE cron job and ONE setup step
+
+Migration **026** (`api_token`), pure DDL, one table. Nothing reads it until
+somebody opens Connect Claude Code under Reports, so a pending 026 leaves
+every existing screen working; that screen and `POST /mcp` are 500 until it
+runs.
+
+Migration **027** (`timers`), pure DDL, three tables: `water_timer`,
+`push_subscription` and `push_key`. **The garden actions page and the main
+menu read two of them**, so until 027 runs both pages are 500 — the same
+window as Phase 3's, and the error page names the missing table to an admin.
+Run the migration straight after the file copy.
+
+**Then, on the same `/setup?key=` page, nothing more to press:** applying
+the migrations also generates the Web Push key pair (VAPID, RFC 8292) and
+stores it in `push_key`, once, because this account has no shell to run
+`openssl` in. The flash says "Push key pair generated." `/status` shows
+`push key  present`. Until it exists, timers fall back to email and the
+garden actions page says so. Never delete the row: a new pair invalidates
+every phone that subscribed.
+
+**The cron job** is the per-minute line in §7. Add it. Without it a timer
+is a row that never fires, and `/status` will say `overdue` under TIMERS
+three minutes after the first one should have.
+
+**Two facts about this host that only the walk can settle** (Phase 15
+handoff §3.2, unchanged): whether iOS keeps a push subscription alive across
+a week of the app not being opened, and whether `web.push.apple.com` and
+`fcm.googleapis.com` answer from sh193 — outbound HTTPS is open (§0.1) but
+neither host was in the spike. The first timer with a phone subscribed is
+the test; a failure lands in the timer's `fire_error`, on its landing page,
+and in the cron's output, and the email still goes.
+
+`.htaccess` gained two lines that re-export the `Authorization` header to
+PHP; LiteSpeed drops it otherwise and every MCP token would be
+"unauthorised". `.cpanel.yml` copies `public/.` whole, so it rides along.
 
 ### The Phase 9 deploy adds TWO migrations and one file that is not code
 

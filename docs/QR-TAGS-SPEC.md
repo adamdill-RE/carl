@@ -877,7 +877,13 @@ publishes the label size, the sheet size, the per-sheet count and (for 60517) a
 reachable.
 
 `Carl\Domain\LabelStock` marks every number `[published]` or `[derived]`, the
-derived ones being the grid centred on the sheet at the published margin.
+derived ones being the grid centred on the sheet at the published margin —
+and, from Phase 16, `[observed]`: read off a real sheet by the owner. That
+is how 00757 was found to be **one column of ten, each label with its clear
+flap beside it to the right**, and not the two columns of five that "10 per
+sheet at 3½ in wide" had been derived into. Two columns of five printed half
+the codes into the flaps. The registration sheet now draws the flap and the
+fold line as well as the label, because the fold is the thing to check.
 
 §5.6 already named the acceptance test and the build takes it literally: the
 **registration test sheet** is built, it is linked from every batch page, the

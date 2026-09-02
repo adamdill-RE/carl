@@ -13,7 +13,7 @@ weather that actually happened.
 | Document | Authority over |
 | --- | --- |
 | [`docs/CARL-HANDOFF.md`](docs/CARL-HANDOFF.md) | Scope. What Carl is, the screens, the data model, the phasing. |
-| [`docs/PHASE-15-HANDOFF.md`](docs/PHASE-15-HANDOFF.md) | What to build next, and the facts each phase measured that the original scope could only assume. Always the highest-numbered one. The earlier phase handoffs are kept as they were written, and each one's §4 (what must not regress) and §7 (where the bodies are buried) stay in force unless a later phase withdraws an entry by number. |
+| [`docs/PHASE-17-HANDOFF.md`](docs/PHASE-17-HANDOFF.md) | What to build next, and the facts each phase measured that the original scope could only assume. Always the highest-numbered one. The earlier phase handoffs are kept as they were written, and each one's §4 (what must not regress) and §7 (where the bodies are buried) stay in force unless a later phase withdraws an entry by number. |
 | [`docs/hosting.md`](docs/hosting.md) | Every platform constraint. Overrides the handoff where they conflict. |
 | [`docs/weather.md`](docs/weather.md) | Weather ingestion. Overrides the handoff where they conflict. |
 | [`docs/deploy.md`](docs/deploy.md) | The runbook, and §0 is every measurement taken on the live host. |
@@ -227,6 +227,25 @@ And, from Phase 14:
   from memory rather than through a `data://` URL, which the host may refuse;
   `/status` reports the setting, and a 500 now tells an admin which exception
   it was.
+- **Claude Code can read Carl directly** (Phase 16). `POST /mcp` is a
+  Model Context Protocol server over the Streamable HTTP transport — one
+  POST per message, plain JSON back, never a held-open stream, which is the
+  only shape this host allows — with eight read-only tools (gardens, plants,
+  one plant in full, weather, today's watering, garden actions, the research
+  card, the pest reference) and the season summary as a resource. A bearer
+  token per machine, minted and revoked on **Connect Claude Code** under
+  Reports, rate-limited per token, every result bounded. Nothing writes.
+- **A watering timer that reaches a phone** (Phase 16). "Sixty minutes on
+  Drip east, ping me" is a row with an end time; a per-minute cron fires it,
+  logs the watering (fan-out and all) if asked, and tells the phone — Web
+  Push to the home-screen app, written directly against RFC 8291 and 8292
+  with the core openssl extension and tested against the RFC's own vector,
+  or the mail outbox when no phone has asked. The MOTD's "About 40 min on
+  Drip east refills it" is now a button that starts exactly that.
+- **The self-laminating label sheet is one column of ten**, not two of five
+  (Phase 16, from a real sheet in hand): each Avery 00757 label has its clear
+  flap beside it, not below, and the registration sheet now draws the flap
+  and the fold so the layout can be checked against the film.
 
 `public/assets/css/tokens.css` is still the only file that names a colour —
 including the two QR tokens, which are marked contrast-critical and must not
@@ -246,11 +265,12 @@ carl/
   db/seed/zcta.csv          33,791 ZIP rows, public-domain Census data
   db/seed/pest_catalog.csv  76 pest, disease and disorder entries, editorial
   bin/                      migrate.php, weather_sync.php, alerts_poll.php,
-                            daily_digest.php, mail_send.php, analysis_run.php
+                            daily_digest.php, mail_send.php, analysis_run.php,
+                            timers_fire.php
   app/bootstrap.php         autoloader, config, the parse-error guard
   app/src/                  Core, Auth, Repo, Domain, Controller, Research,
                             Weather, Mail, Reminders, Reports, Analysis,
-                            Planting, Support
+                            Planting, Support, Mcp, Push, Timers
   app/views/                plain PHP templates
   public/                   the ONLY directory the web reaches
   tests/                    run.php --strict, plus the CI lint scripts

@@ -25,10 +25,16 @@ final class Request
         public readonly array $files,
         public readonly array $server,
         public readonly array $cookies,
+        /** The raw body, for a JSON request; null until read (see rawBody()). */
+        private ?string $rawBody = null,
     ) {
     }
 
-    public static function fromGlobals(string $basePath): self
+    /**
+     * @param string|null $rawBody the body, when the caller already has it
+     *        (tests); otherwise php://input is read on first use
+     */
+    public static function fromGlobals(string $basePath, ?string $rawBody = null): self
     {
         $method = \strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
         $uri    = (string) ($_SERVER['REQUEST_URI'] ?? '/');
@@ -69,7 +75,24 @@ final class Request
             $_FILES,
             $_SERVER,
             \array_map(static fn ($v): string => \is_string($v) ? $v : '', $_COOKIE),
+            $rawBody,
         );
+    }
+
+    /**
+     * The request body as bytes: a JSON-RPC message, not a form (Phase 16).
+     *
+     * php://input can be read once under some SAPIs, so it is read once here
+     * and kept. Bounded at 1 MB: the largest legitimate MCP message is a tool
+     * call with a search string in it, and post_max_size is 8M anyway.
+     */
+    public function rawBody(): string
+    {
+        if ($this->rawBody === null) {
+            $body = @\file_get_contents('php://input', false, null, 0, 1048576);
+            $this->rawBody = \is_string($body) ? $body : '';
+        }
+        return $this->rawBody;
     }
 
     /**
@@ -220,6 +243,12 @@ final class Request
     {
         $key = 'HTTP_' . \strtoupper(\str_replace('-', '_', $name));
         $value = $this->server[$key] ?? null;
+        if (!\is_string($value) && $key === 'HTTP_AUTHORIZATION') {
+            // Apache and LiteSpeed strip Authorization from the CGI
+            // environment unless told otherwise; public/.htaccess re-exports
+            // it, and a rewrite can land it under the REDIRECT_ prefix.
+            $value = $this->server['REDIRECT_HTTP_AUTHORIZATION'] ?? null;
+        }
         return \is_string($value) ? $value : null;
     }
 

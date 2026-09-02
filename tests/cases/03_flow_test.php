@@ -829,7 +829,15 @@ $t->test('every GET route a user can reach returns 200',
     $boundCode = (string) $sheet[0]['code'];
     $freeCode = (string) $sheet[1]['code'];
 
+    // A timer (Phase 16), so its landing page is walked too.
+    $timerId = (new Carl\Repo\TimerRepository($db, $alice['id']))->insert([
+        'garden_id' => (int) $garden['id'], 'water_zone_id' => null, 'minutes' => 10,
+        'started_at' => \gmdate('Y-m-d H:i:s'), 'ends_at' => \gmdate('Y-m-d H:i:s', \time() + 600),
+        'log_when_done' => 0,
+    ]);
+
     $substitutions = [
+        '/timers/{id:\d+}'                => (string) $timerId,
         // The lower-case route is the bound tag, so the field screen renders;
         // the upper-case one -- which exists because a printed URL may be
         // upper-cased for QR alphanumeric mode -- is the free tag, so the bind

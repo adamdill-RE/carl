@@ -114,6 +114,7 @@ carl/
   db/migrations/NNN_*.sql
   db/seed/zcta.csv              (see §8.3)
   bin/weather_sync.php  bin/daily_digest.php  bin/alerts_poll.php
+  bin/mail_send.php  bin/analysis_run.php  bin/timers_fire.php
   config/app.php (committed)  config/local.php (gitignored, credentials)
   var/sessions  var/photos  var/imports  var/reports   (0700, outside web root)
   vendor/fpdf/fpdf.php
@@ -251,6 +252,19 @@ Water (zone or method, duration) · Observe pest/disease · Treat pest/disease
 `garden_event`; watering a zone also fans out a derived water record to every
 living plant in the zone's rows (stored as `plant_event` rows with
 `source_garden_event_id` so it is not double-counted).
+
+**A timer (Phase 16).** "Water Zone 1 for 60 minutes; ping me when it is
+done." A zone (or the whole garden), the minutes, and "log the watering when
+it finishes". A timer is a `water_timer` row with an end time — nothing runs
+and nothing is held open (hosting §3) — and `bin/timers_fire.php`, on a
+per-minute cron, claims each due row with a compare-and-swap, writes the same
+`garden_event` the form above would (zone, minutes, the zone's method, the
+fan-out) when asked, and reaches the phone: Web Push to every browser that
+asked to be told (`push_subscription`; the declarative Web Push body iOS
+18.4+ shows without a service worker, and `sw.js` shows elsewhere), else the
+mail outbox. The notification opens `/timers/{id}`, where the watering is
+either already logged or one button away. The page carries "Notify this
+phone"; the VAPID pair is made once at `/setup` and kept in `push_key`.
 
 ### 4.8 View Garden
 Garden report: layout summary, all plants (living and culled) with state and
@@ -446,6 +460,15 @@ every POST; output escaping everywhere; CSP, nosniff, X-Frame-Options DENY,
 no-store on personal pages; CSV export cells guarded against formula
 injection. Photos served only through an ownership-checking controller.
 Admin routes require role admin **and** are hidden (404) to users.
+
+*(Phase 16)* A fifth access level, `Route::BEARER_ACCESS`, for the MCP
+endpoint alone: no session and no cookie, a bearer token in the
+`Authorization` header resolved before the controller runs — selector and
+verifier like the login token, only a hash stored, no rotation because a
+config file cannot follow one — with the `Origin` header checked against the
+site's own, a per-token rate limit, and the request signed in as the token's
+owner so the repositories scope exactly as for a page. CSRF-exempt because
+the bearer is the credential and there is no form.
 
 ---
 
@@ -704,6 +727,18 @@ events, gardens, weather for the covered dates, and the research values in
 force, in a shape designed for pasting to Claude. This is the v2
 "Recommendations" bridge.
 
+**Connect Claude Code (Phase 16).** The pasting can be skipped: `POST /mcp`
+is a Model Context Protocol server (Streamable HTTP, stateless, JSON only —
+never an event stream, hosting §3), authenticated by a bearer token minted on
+`/connect` under Reports, one per machine, shown once, revocable, with the
+date each was last used. Eight read-only tools — `list_gardens`,
+`list_plants`, `plant`, `weather`, `watering`, `garden_actions`,
+`research_card`, `pests` — and one resource, `carl://export/summary`, which
+is the `Analysis\Document` above. Every read goes through the same
+user-scoped repositories the pages use (§5); every result is bounded and a
+token is limited per minute. It does not write, and growing a verb is a
+decision, not a side effect.
+
 ### 13.4 Field-recording sheet — **Built, Phase 6**
 Printable A4/Letter sheet mirroring the Log Plant Activity and Garden Actions
 fields: plant/garden identifier, date, action tick boxes, quantity, duration,
@@ -922,6 +957,15 @@ no controller touched: every change is a stylesheet, a template or a static
 asset. Two static CI checks were added, both guarding failures that produce no
 error anybody would see. See `docs/PHASE-11-HANDOFF.md`.
 
+### Phase 16 — Claude Code reads Carl, and a timer reaches a phone
+
+The two candidates `docs/PHASE-15-HANDOFF.md` §3 researched, built as it
+specified them: the MCP server (§13.3, §7) and the watering timer (§4.7,
+§4.2), plus the label-sheet correction the owner found with a real sheet in
+hand (`docs/QR-TAGS-SPEC.md` §12.5). Two migrations, 026 and 027; one new
+cron, every minute; one setup step, the push key pair. See
+`docs/PHASE-17-HANDOFF.md`.
+
 ---
 
 ## 15. Explicitly deferred or dropped
@@ -932,7 +976,7 @@ error anybody would see. See `docs/PHASE-11-HANDOFF.md`.
 | Expense / cost tracking | Dropped v1 | Market-farm feature; revisit if testers ask |
 | QR / plant labels, multi-user sharing | Sharing dropped; QR **specified, Phase 7** | Sharing still contradicts data isolation. The label half was re-opened by `docs/QR-TAGS-SPEC.md`, and that spec's Section 10 Q1 -- may twelve tags point at one planting? -- is what produced the split spec. With splits built the question dissolves: a planting is location-singular by construction, so one tag per planting is simply correct |
 | Splitting a planting | **Built, Phase 7** | A planting is a group in one place, and moving part of it somewhere else makes a planting. The two rejected models are in `docs/PLANTING-SPLIT-SPEC.md` Section 2 and should not be re-proposed: a placement table needs a quantity-weighted join in five features, and a row per physical plant reintroduces the group it removes |
-| Offline / PWA | Deferred | Paper field sheet is the answer for now; service worker only caches the shell |
+| Offline / PWA | Deferred | Paper field sheet is the answer for now; service worker only caches the shell, and (Phase 16) shows a push notification; it is registered only by a phone that asks to be told |
 | Succession planting | **Built, Phase 6** | Both shapes, sharing one calculator: `/succession` lays the season out, and a digest reminder is the one line of it true today. No accepted-plan table — a plan in its own table is a second answer to "when should I sow" |
 | Task calendar UI | Deferred | Still the digest's job. The succession planner is the nearest thing and it proposes rather than schedules |
 | Crop rotation warnings | **Built, Phase 5** | It was free later, exactly as predicted: one grouped statement over `plant_family` and `garden_row_id` |

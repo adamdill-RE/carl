@@ -280,6 +280,39 @@ $t->test('every stock fits on US Letter', function ($t): void {
     }
 });
 
+$t->test('the self-laminating sheet is one column of ten with the flap beside each label',
+    function ($t): void {
+    // Phase 16, from a real sheet in the owner's hand: ten labels down the
+    // left, each with a clear flap of its own width to the RIGHT. The earlier
+    // two-columns-of-five layout put five codes into the flaps. Nothing a
+    // test can measure told the two layouts apart, so this pins the shape
+    // that was observed rather than deriving one.
+    $g = LabelStock::geometry(LabelStock::AVERY_00757);
+    $t->same(1, $g['columns']);
+    $t->same(10, $g['rows']);
+    $t->same(10, LabelStock::perSheet(LabelStock::AVERY_00757));
+    $t->same($g['label_w'], $g['flap_w'], 'the flap is the label\'s own width');
+    $t->same($g['label_h'], $g['print_h'], 'and nothing folds up from below');
+
+    // Label plus flap is seven inches, centred on eight and a half.
+    $t->ok(\abs($g['origin_x'] - 19.05) < 0.001, 'three quarters of an inch in from the left');
+    $t->ok(\abs(($g['origin_x'] + $g['label_w'] + $g['flap_w']) - (LabelStock::PAGE_W - 19.05)) < 0.01,
+        'and the same from the right');
+    // Ten contiguous rows of 1-1/32 in, centred on eleven.
+    [$x9, $y9] = LabelStock::position(LabelStock::AVERY_00757, 9);
+    $t->same($g['origin_x'], $x9, 'the tenth label is in the same column as the first');
+    $t->ok(\abs(($y9 + $g['label_h']) - (LabelStock::PAGE_H - $g['origin_y'])) < 0.02,
+        'and its foot is the top margin off the bottom of the page');
+    $t->ok($g['flap_w'] === 0.0 || LabelStock::fitsPage(LabelStock::AVERY_00757), 'flap and all, it fits');
+
+    // The registration sheet draws the flap so the fold can be checked.
+    $sheet = new LabelSheet(LabelStock::AVERY_00757, 'HTTPS://EXAMPLE.COM/T/');
+    $sheet->registrationSheet();
+    $pdf = $sheet->render();
+    $t->contains('%PDF', \substr($pdf, 0, 8));
+    $t->same(1, \substr_count($pdf, '/Type /Page' . "\n"), 'one page');
+});
+
 $t->test('positions march across then down, and wrap at the sheet',
     function ($t): void {
     $geometry = LabelStock::geometry(LabelStock::AVERY_60517);

@@ -35,6 +35,9 @@ namespace Carl\Domain;
  *
  *   [published]  Avery states it: page size, label size, labels per sheet,
  *                and 60517's 0.325 in margin.
+ *   [observed]   Read off a real sheet by the owner, holding it (Phase 16):
+ *                the 00757 die is ONE column of ten, not two columns of
+ *                five, and the clear flap is BESIDE each label, not below.
  *   [derived]    Computed here by centring the grid on the sheet at the
  *                published margin. Symmetric top-to-bottom and left-to-right,
  *                which every Avery die is.
@@ -46,6 +49,18 @@ namespace Carl\Domain;
  * the acceptance test for these constants, it is not optional the first time
  * a SKU is printed, and it is why the print screen puts it in front of the
  * user rather than in a help page.
+ *
+ * THE 00757 LAYOUT WAS WRONG FOR FIFTEEN PHASES AND THE SUITE COULD NOT
+ * KNOW. Phase 8 derived "10 per sheet at 3.5 in wide can only be 2 across"
+ * and stacked five rows of two, with the flap folding UP from under each
+ * label. The real sheet -- in the owner's hand, Phase 16 -- is ten labels in
+ * one column down the left, each with its clear flap to the RIGHT, folding
+ * over sideways. Two columns of five is not a rounding error: it prints five
+ * codes into the flaps, where they are wiped off by the laminate, and five
+ * more into the margin between rows. Every number that a test can check
+ * (fits the page, rows do not overlap) was true of both layouts, which is
+ * exactly why the registration sheet, and not the suite, is the acceptance
+ * test.
  *
  * If a sheet comes back misregistered, correct the numbers HERE -- one entry,
  * no migration, and every batch already minted re-renders correctly, because
@@ -67,7 +82,7 @@ final class LabelStock
      * @var array<string,array{
      *   name:string, size:string, printer:string, note:string,
      *   columns:int, rows:int,
-     *   label_w:float, label_h:float, print_h:float,
+     *   label_w:float, label_h:float, print_h:float, flap_w:float,
      *   origin_x:float, origin_y:float, pitch_x:float, pitch_y:float
      * }>
      */
@@ -87,6 +102,7 @@ final class LabelStock
             'label_h' => 25.4,
             // The whole label is printable; there is no flap.
             'print_h' => 25.4,
+            'flap_w'  => 0.0,
             // [published] Avery's own margin note for 60517: 0.325 in.
             'origin_x' => 8.255,
             // [derived] (215.9 - 2 x 8.255 - 63.5) / 2 columns of gap.
@@ -99,28 +115,36 @@ final class LabelStock
             'name'    => 'Avery Easy Align 00757',
             'size'    => 'self-laminating, 1-1/32 x 3-1/2 in printable, 10 per sheet',
             'printer' => 'Laser or inkjet',
-            'note'    => 'Half the label is printable white and half is a clear flap that folds '
-                       . 'over and seals the print under polyester. The ink never touches water, '
-                       . 'so ordinary inkjet output survives. Pick this if there is no laser printer.',
-            // [published] 10 per sheet at 3.5 in wide on Letter can only be 2 across.
-            'columns' => 2,
-            'rows'    => 5,
+            'note'    => 'Each label is printable white on the left with a clear flap of the same '
+                       . 'size to its right, which folds over sideways and seals the print under '
+                       . 'polyester. The ink never touches water, so ordinary inkjet output '
+                       . 'survives. Pick this if there is no laser printer.',
+            // [observed] ONE column of ten, down the left of the sheet. The
+            // "two across" of earlier phases put half the codes into the
+            // flaps.
+            'columns' => 1,
+            'rows'    => 10,
             // [published] the printable area is 1-1/32 x 3-1/2 in.
             'label_w' => 88.9,
+            'label_h' => 26.194,
+            // The whole label is printable; the flap is beside it, not below,
+            // so nothing here folds up over the print.
             'print_h' => 26.194,
-            // [derived] The die is the printable area plus a laminating flap of
-            // the same height: 2-1/16 in. THE PRINT GOES IN THE TOP HALF and the
-            // clear flap folds up over it -- which is the one thing about this
-            // stock the registration sheet exists to confirm, because printing
-            // into the flap wastes a whole sheet and looks fine until it is
-            // folded.
-            'label_h' => 52.3875,
-            // [derived] Two 3.5 in columns centred on 8.5 in leaves 0.625 in a side.
-            'origin_x' => 15.875,
-            'pitch_x'  => 95.25,
-            // [derived] Five 2-1/16 in rows centred on 11 in.
-            'origin_y' => 8.73125,
-            'pitch_y'  => 52.3875,
+            // [observed] The clear flap: the same width as the label, to its
+            // right, hinged on the label's right-hand edge. Drawn on the
+            // registration sheet so the fold line can be checked, and never
+            // printed on.
+            'flap_w'  => 88.9,
+            // [derived] Label plus flap is 7 in on an 8.5 in sheet; centred,
+            // that leaves 0.75 in a side, which puts the LABEL left of centre
+            // -- the "biased left" look of the real sheet.
+            'origin_x' => 19.05,
+            // One column: the pitch is never stepped. It is set to the
+            // label-plus-flap width so fitsPage() measures the whole die.
+            'pitch_x'  => 177.8,
+            // [derived] Ten 1-1/32 in rows, contiguous, centred on 11 in.
+            'origin_y' => 8.73,
+            'pitch_y'  => 26.194,
         ],
     ];
 
@@ -171,6 +195,12 @@ final class LabelStock
         return self::STOCKS[self::orFallback($sku)]['note'];
     }
 
+    /** How many labels sit side by side; 1 means "row" is the whole address. */
+    public static function columns(?string $sku): int
+    {
+        return self::STOCKS[self::orFallback($sku)]['columns'];
+    }
+
     public static function perSheet(?string $sku): int
     {
         $stock = self::STOCKS[self::orFallback($sku)];
@@ -182,7 +212,7 @@ final class LabelStock
      *
      * @return array{
      *   columns:int, rows:int, per_sheet:int,
-     *   label_w:float, label_h:float, print_h:float,
+     *   label_w:float, label_h:float, print_h:float, flap_w:float,
      *   origin_x:float, origin_y:float, pitch_x:float, pitch_y:float
      * }
      */
@@ -196,6 +226,7 @@ final class LabelStock
             'label_w'   => $stock['label_w'],
             'label_h'   => $stock['label_h'],
             'print_h'   => $stock['print_h'],
+            'flap_w'    => $stock['flap_w'],
             'origin_x'  => $stock['origin_x'],
             'origin_y'  => $stock['origin_y'],
             'pitch_x'   => $stock['pitch_x'],
@@ -248,6 +279,22 @@ final class LabelStock
     }
 
     /**
+     * The same place as words: "row 3", or "row 3, column 2" on a stock that
+     * has columns, with "page 2, " in front when the batch ran to a second
+     * sheet. "Column 1" on a one-column sheet is noise, and the two screens
+     * that print a place should not each decide that for themselves.
+     */
+    public static function placeText(?string $sku, int $ordinal): string
+    {
+        $place = self::place($sku, $ordinal);
+        $text = ($place['sheet'] > 1 ? 'page ' . $place['sheet'] . ', ' : '') . 'row ' . $place['row'];
+        if (self::columns($sku) > 1) {
+            $text .= ', column ' . $place['column'];
+        }
+        return $text;
+    }
+
+    /**
      * Does the last label fit on the page?
      *
      * Not decoration: AutoPageBreak is off on a label sheet (Section 5.5), so
@@ -260,7 +307,9 @@ final class LabelStock
     public static function fitsPage(?string $sku): bool
     {
         $g = self::geometry($sku);
-        $right = $g['origin_x'] + ($g['columns'] - 1) * $g['pitch_x'] + $g['label_w'];
+        // The flap counts: it is part of the die, and a flap off the edge of
+        // the paper is a label that cannot be sealed.
+        $right = $g['origin_x'] + ($g['columns'] - 1) * $g['pitch_x'] + $g['label_w'] + $g['flap_w'];
         $bottom = $g['origin_y'] + ($g['rows'] - 1) * $g['pitch_y'] + $g['label_h'];
 
         return $right <= self::PAGE_W + 0.001 && $bottom <= self::PAGE_H + 0.001;

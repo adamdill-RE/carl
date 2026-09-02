@@ -71,7 +71,7 @@ foreach ($free['sheet'] as $tag) {
         <input type="checkbox" name="<?= $e($name) ?>[]" value="<?= $e($tag['code']) ?>"
                <?= \in_array((string) $tag['code'], $checked, true) ? 'checked' : '' ?>>
         <span class="mono"><?= $e($tag['code']) ?></span>
-        <span class="muted tiny">r<?= $e($tag['row']) ?> c<?= $e($tag['column']) ?></span>
+        <span class="muted tiny">r<?= $e($tag['row']) ?><?= $LS::columns((string) $tag['stock_sku']) > 1 ? ' c' . $e($tag['column']) : '' ?></span>
       </label>
 <?php endforeach; ?>
     </div>

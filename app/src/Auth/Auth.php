@@ -65,14 +65,7 @@ final class Auth
             return null;
         }
 
-        $row = $this->app->db()->one(
-            'SELECT id, username, email, name, role, must_reset_password, zip, county_fips,'
-            . ' region_id, latitude, longitude, timezone, weather_location_id,'
-            . ' email_digest_enabled, label_stock, tagging_started_at,'
-            . ' onboarded_at, onboarding_step'
-            . ' FROM user WHERE id = :id',
-            ['id' => $userId]
-        );
+        $row = $this->fetch($userId);
         if ($row === null) {
             // The account was deleted under a live session.
             $session->forget('user_id');
@@ -81,6 +74,39 @@ final class Auth
         }
 
         return $this->user = User::fromRow($row);
+    }
+
+    /**
+     * Sign this request in as a user WITHOUT a session or a cookie (Phase 16).
+     *
+     * For a bearer request: the token names the account, and the point of the
+     * transport is that there is no browser to hold a cookie. Nothing is
+     * written, no session is started, and the answer is the same User the
+     * cookie path would have built -- so Controller::user() and every
+     * repository behind it behave exactly as they do for a page.
+     */
+    public function assume(int $userId): ?User
+    {
+        $this->resolved = true;
+        $this->user = null;
+        $row = $this->fetch($userId);
+        if ($row === null) {
+            return null;
+        }
+        return $this->user = User::fromRow($row);
+    }
+
+    /** @return array<string,mixed>|null the columns User::fromRow() reads */
+    private function fetch(int $userId): ?array
+    {
+        return $this->app->db()->one(
+            'SELECT id, username, email, name, role, must_reset_password, zip, county_fips,'
+            . ' region_id, latitude, longitude, timezone, weather_location_id,'
+            . ' email_digest_enabled, label_stock, tagging_started_at,'
+            . ' onboarded_at, onboarding_step'
+            . ' FROM user WHERE id = :id',
+            ['id' => $userId]
+        );
     }
 
     /** For error pages, where a failed lookup must not cascade. */

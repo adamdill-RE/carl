@@ -42,10 +42,15 @@ final class WateringRepository extends Repository
         // Not aliased: Repository::scoped() writes the predicate with the
         // real table name, which is what keeps the user filter in one place
         // instead of in every query (handoff Section 5).
+        // The garden's dimensions come too (Phase 16): the MOTD's one-tap
+        // timer turns the stored deficit into minutes per zone with
+        // DripLine, which wants the row spacing, and that is a fact about
+        // the garden already joined here. No extra statement.
         return $this->db->all(
             'SELECT `watering_recommendation`.*, COALESCE(g.name, c.name) AS place_name,'
             . " CASE WHEN `watering_recommendation`.`container_id` IS NULL"
-            . "      THEN 'garden' ELSE 'container' END AS place_kind"
+            . "      THEN 'garden' ELSE 'container' END AS place_kind,"
+            . ' g.row_count, g.ns_ft, g.ew_ft, g.row_orientation'
             . ' FROM `watering_recommendation`'
             . ' LEFT JOIN `garden` g ON g.id = `watering_recommendation`.`garden_id`'
             . ' LEFT JOIN `container` c ON c.id = `watering_recommendation`.`container_id`'
