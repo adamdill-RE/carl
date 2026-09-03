@@ -62,6 +62,8 @@ final class CalendarController extends Controller
         }
 
         return $this->render('calendar/index', [
+            'inWindow'   => $page['inWindow'],
+            'onDayWindows' => $day === null ? [] : Calendar::windowsOpenOn($page['windows'], $day),
             'month'      => $page['month'],
             'monthName'  => Calendar::monthName($page['month']),
             'weeks'      => Calendar::grid($page['month']),
@@ -124,7 +126,7 @@ final class CalendarController extends Controller
      * @return array{month:string,today:string,gridFrom:string,gridTo:string,horizon:string,
      *               grid:list<array<string,mixed>>,upcoming:list<array<string,mixed>>,
      *               plantings:list<array<string,mixed>>,filter:array{plant_ids:list<int>,wide:bool},
-     *               hasRegion:bool}
+     *               hasRegion:bool,windows:list<array<string,mixed>>,inWindow:array<string,int>}
      */
     private function assemble(Request $request): array
     {
@@ -149,6 +151,7 @@ final class CalendarController extends Controller
 
         $regionId = $user->regionId;
         $region = $regionId === null ? null : $this->reference()->findRegion($regionId);
+        $regionWindows = $this->reference()->windowsForRegion($regionId);
 
         $entries = Calendar::build(
             $from,
@@ -157,12 +160,24 @@ final class CalendarController extends Controller
             $this->events()->calendarEvents($gridFrom, $gridTo),
             $this->events()->calendarGardenEvents($gridFrom, $gridTo),
             $region,
-            $this->reference()->windowsForRegion($regionId),
+            $regionWindows,
             $this->reference()->pestWindowsForRegion($regionId),
         );
 
         $filter = $this->readFilter($request, $plantings);
         $entries = self::applyFilter($entries, $filter);
+
+        // The harvest windows themselves (Phase 17): the span between the
+        // "starts" and "ends" chips, for the band on the grid and the day
+        // panel. No statement of their own -- the same rows and the same
+        // research the entries came from -- and the plant filter applies as
+        // it does to entries, since every window belongs to a plant.
+        $windows = Calendar::harvestWindows($plantings, $regionWindows);
+        if ($filter['plant_ids'] !== []) {
+            $wanted = \array_flip($filter['plant_ids']);
+            $windows = \array_values(\array_filter($windows,
+                static fn (array $w): bool => isset($wanted[$w['planting_id']])));
+        }
 
         $grid = [];
         $upcoming = [];
@@ -189,6 +204,8 @@ final class CalendarController extends Controller
             'plantings' => $plantings,
             'filter'    => $filter,
             'hasRegion' => $region !== null && (string) $region['research_status'] === 'researched',
+            'windows'   => $windows,
+            'inWindow'  => Calendar::datesInWindows($windows, $gridFrom, $gridTo),
         ];
     }
 

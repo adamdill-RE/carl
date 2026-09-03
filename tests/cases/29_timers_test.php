@@ -429,6 +429,145 @@ $t->test('a subscription the push service says is gone is marked, and the mail g
     $t->same([], $subs->all(), 'and asking to stop removes it');
 });
 
+$t->test('when the phone says no and the mail goes instead, the timer row says what the phone said',
+    function ($t) use ($client, $timers, $gardenId, $atUtc, $db, $owner): void {
+    // Phase 17. A push that fails and a mail that goes used to leave "you
+    // were told by email" and nothing else -- the one fact the owner needed
+    // ("nothing is coming up on the phone") was in a cron log nobody reads.
+    $client->post('/push/subscribe', [
+        'endpoint' => 'https://web.push.apple.com/QF2r4', 'p256dh' => RFC_UA_PUBLIC, 'auth' => RFC_AUTH,
+    ]);
+    $client->post('/timers', ['garden_id' => (string) $gardenId, 'minutes' => '5', 'log_when_done' => '1']);
+    $timer = $timers->running($gardenId)[0];
+    $id = (int) $timer['id'];
+
+    $refused = static fn (string $url, string $body, array $headers): array
+        => ['status' => 403, 'error' => 'HTTP 403', 'body' => '{"reason":"BadJwtToken"}'];
+    $summary = (new TimerService($atUtc((string) $timer['ends_at']), $refused))->fire();
+    $t->same(0, $summary['failures'], 'the mail went, so the timer did not fail');
+
+    $row = $timers->findDetailed($id);
+    $t->same('email', $row['notified_via']);
+    $t->contains('BadJwtToken', (string) $row['fire_error'], 'the service\'s own reason, on the row');
+    $t->contains('Apple', (string) $row['fire_error'], 'and which service');
+    $t->contains('emailed instead', (string) $row['fire_error']);
+    $t->contains('BadJwtToken', $client->get('/timers/' . $id)->body, 'and on the landing page');
+
+    // A 403 is not "gone": the subscription stays live for the next try.
+    $subs = new PushSubscriptionRepository($db, $owner['id']);
+    $t->same(1, \count($subs->live()));
+    $client->post('/push/unsubscribe', ['endpoint' => 'https://web.push.apple.com/QF2r4']);
+});
+
+$t->test('"send a test notification" pushes now and reports what the push service said',
+    function ($t) use ($client, $db, $owner, $app): void {
+    $client->post('/push/subscribe', [
+        'endpoint' => 'https://web.push.apple.com/QF2r4', 'p256dh' => RFC_UA_PUBLIC, 'auth' => RFC_AUTH,
+    ]);
+
+    $sent = [];
+    $app->setPushTransport(static function (string $url, string $body, array $headers) use (&$sent): array {
+        $sent[] = ['url' => $url, 'body' => $body, 'headers' => $headers];
+        return ['status' => 201, 'error' => null, 'body' => ''];
+    });
+    try {
+        $response = $client->post('/push/test', ['endpoint' => 'https://web.push.apple.com/QF2r4']);
+        $t->same(200, $response->status, $response->body);
+        $data = \json_decode($response->body, true);
+        $t->same(true, $data['ok'], $response->body);
+        $t->contains('Apple', (string) $data['message']);
+        $t->contains('201', (string) $data['message']);
+        $t->same(1, \count($sent), 'one phone, one push');
+        $t->same('https://web.push.apple.com/QF2r4', $sent[0]['url']);
+
+        $headers = \implode("\n", $sent[0]['headers']);
+        $t->contains('Topic: carl-test', $headers);
+        $t->same(1, \preg_match('/Authorization: vapid t=([^,]+), k=(\S+)/', $headers, $m));
+        [, $claims] = \explode('.', $m[1]);
+        $t->same('https://web.push.apple.com', \json_decode(Vapid::b64urlDecode($claims), true)['aud'],
+            'the audience is Apple\'s origin, no path');
+        $t->contains('mailto:', \json_decode(Vapid::b64urlDecode($claims), true)['sub']);
+
+        $payload = \json_decode(WebPush::decrypt($sent[0]['body'], RFC_UA_PRIVATE, RFC_UA_PUBLIC, RFC_AUTH), true);
+        $t->same(8030, $payload['web_push'], 'declarative, as the timer\'s is');
+        $t->same('Carl can reach this phone', $payload['notification']['title']);
+        $t->contains($app->config()->string('tags.origin'), $payload['notification']['navigate']);
+        $subs = new PushSubscriptionRepository($db, $owner['id']);
+        $t->ok($subs->live()[0]['last_used_at'] !== null, 'a push the service took counts as used');
+
+        // The service saying no: its reason comes back in words.
+        $app->setPushTransport(static fn (string $url, string $body, array $headers): array
+            => ['status' => 403, 'error' => 'HTTP 403', 'body' => '{"reason":"VapidPkHashMismatch"}']);
+        $refused = \json_decode($client->post('/push/test', ['endpoint' => 'https://web.push.apple.com/QF2r4'])->body, true);
+        $t->same(false, $refused['ok']);
+        $t->contains('VapidPkHashMismatch', (string) $refused['message']);
+        $t->same(1, \count($subs->live()), 'a refusal is not "gone"');
+
+        // Gone marks the row, and says so.
+        $app->setPushTransport(static fn (string $url, string $body, array $headers): array
+            => ['status' => 410, 'error' => 'HTTP 410', 'body' => '']);
+        $gone = \json_decode($client->post('/push/test', ['endpoint' => 'https://web.push.apple.com/QF2r4'])->body, true);
+        $t->same(false, $gone['ok']);
+        $t->contains('dead', (string) $gone['message']);
+        $t->same([], $subs->live());
+
+        // With nothing live, a sentence rather than a 500.
+        $none = \json_decode($client->post('/push/test', [])->body, true);
+        $t->same(false, $none['ok']);
+        $t->contains('No phone', (string) $none['message']);
+        $again = \json_decode($client->post('/push/test', ['endpoint' => 'https://web.push.apple.com/QF2r4'])->body, true);
+        $t->contains('not subscribed any more', (string) $again['message']);
+    } finally {
+        $app->setPushTransport(null);
+    }
+    $db->run('DELETE FROM `push_subscription` WHERE `user_id` = :u', ['u' => $owner['id']]);
+});
+
+$t->test('the actions page names every phone that asked, and tells a home-screen iPhone from Safari',
+    function ($t) use ($client, $gardenId, $db, $owner): void {
+    // The user agent of a home-screen web app on an iPhone has no "Safari/"
+    // token; Safari's does. Only the first can be told anything, so the
+    // page saying which one subscribed is the diagnosis nine times in ten.
+    $homeScreen = 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
+    $safari = 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1';
+    $t->same('iPhone, home-screen app', PushSubscriptionRepository::deviceName($homeScreen));
+    $t->same('iPhone, Safari', PushSubscriptionRepository::deviceName($safari));
+    $t->same('Android, Chrome', PushSubscriptionRepository::deviceName(
+        'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36'));
+    $t->same('Mac, Safari', PushSubscriptionRepository::deviceName(
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15'));
+    $t->same('Windows PC, Edge', PushSubscriptionRepository::deviceName(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0'));
+    $t->same('a browser, no user agent', PushSubscriptionRepository::deviceName(''));
+
+    $t->same('Apple (web.push.apple.com)', PushSubscriptionRepository::serviceName('https://web.push.apple.com/QF2r4'));
+    $t->same('Google (fcm.googleapis.com)', PushSubscriptionRepository::serviceName('https://fcm.googleapis.com/fcm/send/abc'));
+    $t->same('Mozilla (updates.push.services.mozilla.com)',
+        PushSubscriptionRepository::serviceName('https://updates.push.services.mozilla.com/wpush/v2/x'));
+    $t->same('push.example.test', PushSubscriptionRepository::serviceName('https://push.example.test/send/1'));
+
+    $t->same('BadJwtToken', WebPush::reason('{"reason":"BadJwtToken"}'));
+    $t->same('', WebPush::reason(''));
+    $t->same('', WebPush::reason('{"ok":true}'));
+    $t->contains('Invalid token', WebPush::reason('<html><body><h1>Invalid token</h1></body></html>'));
+    $t->contains('quota', WebPush::reason('{"error":{"message":"quota exceeded","status":"RESOURCE_EXHAUSTED"}}'));
+
+    // On the page: one subscribed from the home-screen app, one from Safari,
+    // and nothing left over from a test above that did not get to clean up.
+    $db->run('DELETE FROM `push_subscription` WHERE `user_id` = :u', ['u' => $owner['id']]);
+    $subs = new PushSubscriptionRepository($db, $owner['id']);
+    $subs->save('https://web.push.apple.com/home', RFC_UA_PUBLIC, RFC_AUTH, $homeScreen);
+    $subs->save('https://web.push.apple.com/safari', RFC_UA_PUBLIC, RFC_AUTH, $safari);
+    $page = $client->get('/gardens/' . $gardenId . '/actions');
+    $t->same(200, $page->status);
+    $t->contains('iPhone, home-screen app, through Apple (web.push.apple.com)', $page->body);
+    $t->contains('iPhone, Safari, through Apple (web.push.apple.com)', $page->body);
+    $t->contains('Nothing pushed to it yet', $page->body);
+    $t->contains('push-test', $page->body, 'the test button is on the page');
+    $t->contains('2 phones will be told', $page->body);
+    $db->run('DELETE FROM `push_subscription` WHERE `user_id` = :u', ['u' => $owner['id']]);
+});
+
 $t->test('a subscription that is not the shape a browser sends is refused', function ($t) use ($client): void {
     $t->same(400, $client->post('/push/subscribe', ['endpoint' => 'http://plain.example/x', 'p256dh' => RFC_UA_PUBLIC, 'auth' => RFC_AUTH])->status);
     $t->same(400, $client->post('/push/subscribe', ['endpoint' => 'https://push.example.test/y', 'p256dh' => 'AAAA', 'auth' => RFC_AUTH])->status);

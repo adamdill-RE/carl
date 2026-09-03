@@ -291,17 +291,17 @@ $t->test('the self-laminating sheet is one column of ten with the flap beside ea
     $t->same(1, $g['columns']);
     $t->same(10, $g['rows']);
     $t->same(10, LabelStock::perSheet(LabelStock::AVERY_00757));
-    $t->same($g['label_w'], $g['flap_w'], 'the flap is the label\'s own width');
+    $t->same($g['die_w'], $g['flap_w'], 'the flap is the die\'s own width');
     $t->same($g['label_h'], $g['print_h'], 'and nothing folds up from below');
 
-    // Label plus flap is seven inches, centred on eight and a half.
+    // Die plus flap is seven inches, centred on eight and a half.
     $t->ok(\abs($g['origin_x'] - 19.05) < 0.001, 'three quarters of an inch in from the left');
-    $t->ok(\abs(($g['origin_x'] + $g['label_w'] + $g['flap_w']) - (LabelStock::PAGE_W - 19.05)) < 0.01,
+    $t->ok(\abs(($g['origin_x'] + $g['die_w'] + $g['flap_w']) - (LabelStock::PAGE_W - 19.05)) < 0.01,
         'and the same from the right');
-    // Ten contiguous rows of 1-1/32 in, centred on eleven.
-    [$x9, $y9] = LabelStock::position(LabelStock::AVERY_00757, 9);
-    $t->same($g['origin_x'], $x9, 'the tenth label is in the same column as the first');
-    $t->ok(\abs(($y9 + $g['label_h']) - (LabelStock::PAGE_H - $g['origin_y'])) < 0.02,
+    // Ten contiguous dies of 1-1/32 in, centred on eleven.
+    [$dx9, $dy9] = LabelStock::diePosition(LabelStock::AVERY_00757, 9);
+    $t->same($g['origin_x'], $dx9, 'the tenth label is in the same column as the first');
+    $t->ok(\abs(($dy9 + $g['die_h']) - (LabelStock::PAGE_H - $g['origin_y'])) < 0.02,
         'and its foot is the top margin off the bottom of the page');
     $t->ok($g['flap_w'] === 0.0 || LabelStock::fitsPage(LabelStock::AVERY_00757), 'flap and all, it fits');
 
@@ -311,6 +311,58 @@ $t->test('the self-laminating sheet is one column of ten with the flap beside ea
     $pdf = $sheet->render();
     $t->contains('%PDF', \substr($pdf, 0, 8));
     $t->same(1, \substr_count($pdf, '/Type /Page' . "\n"), 'one page');
+});
+
+$t->test('the 00757 face is 3/4 by 3-1/4 in inside its 1-1/32 by 3-1/2 in laminate',
+    function ($t): void {
+    // Phase 17. Every listing says "1-1/32 x 3-1/2 in" and sixteen phases
+    // read that as the printable label; Avery's own brochure gives the
+    // white face as 3/4 x 3-1/4 in and the larger size as "with clear
+    // laminate". A code sized to the laminate ran off the face by exactly
+    // the amount the owner saw. The die and the face are two rectangles
+    // now, and the face is centred on the die.
+    $g = LabelStock::geometry(LabelStock::AVERY_00757);
+    $t->ok(\abs($g['label_h'] - 19.05) < 0.001, 'the face is 3/4 in tall');
+    $t->ok(\abs($g['label_w'] - 82.55) < 0.001, 'and 3-1/4 in wide');
+    $t->ok(\abs($g['die_h'] - 26.194) < 0.001, 'inside a 1-1/32 in laminate');
+    $t->ok(\abs($g['die_w'] - 88.9) < 0.001, 'that is 3-1/2 in wide');
+
+    [$x, $y] = LabelStock::position(LabelStock::AVERY_00757, 0);
+    [$dx, $dy] = LabelStock::diePosition(LabelStock::AVERY_00757, 0);
+    $t->ok(\abs(($x - $dx) - ($g['die_w'] - $g['label_w']) / 2) < 0.001, 'the face is centred across the die');
+    $t->ok(\abs(($y - $dy) - ($g['die_h'] - $g['label_h']) / 2) < 0.001, 'and down it');
+
+    // Row 10's face is still on the page, and above the calibration rule.
+    [, $y9] = LabelStock::position(LabelStock::AVERY_00757, 9);
+    $t->ok($y9 + $g['label_h'] < LabelStock::PAGE_H - 10.0, 'the last face clears the foot of the page');
+});
+
+$t->test('the code is sized to the face with a margin for the feed, and the stake stock is untouched',
+    function ($t): void {
+    // The two symbol sizes a tag URL comes to: version 3 (29 modules) when
+    // upper case, version 4 (33) when not; each plus the four-module quiet
+    // zone a side.
+    foreach ([37, 41] as $extent) {
+        $box = LabelStock::symbolBox(LabelStock::AVERY_00757, $extent);
+        $g = LabelStock::geometry(LabelStock::AVERY_00757);
+
+        $t->ok($box['side'] < $g['print_h'], 'the symbol is shorter than the face');
+        $t->ok(\abs(($box['y'] + $box['side'] + $box['y']) - $g['print_h']) < 0.01, 'and centred on it');
+        $t->ok($box['y'] >= $g['edge'] - 0.001, 'the feed margin is kept above the quiet zone');
+        $t->ok($box['edge_y'] >= 3.0, 'over 3 mm of white above and below the ink, got ' . $box['edge_y']);
+        $t->ok($box['edge_x'] >= 3.0, 'and to the left');
+        $t->ok($box['x'] + $box['side'] <= LabelStock::STAKE_W, 'the whole symbol is on the stake\'s face');
+        $t->ok($box['module'] >= 0.35, 'the module stays well above the 0.25 mm print floor, got ' . $box['module']);
+        $t->ok(\abs($box['dark'] - ($extent - 8) * $box['module']) < 0.02, 'dark is the symbol proper');
+    }
+
+    // The polyester stock has a face taller than the stake, so Section 2.3's
+    // arithmetic still applies to it unchanged: 24 mm, 0.7 mm in.
+    $stake = LabelStock::symbolBox(LabelStock::AVERY_60517, 37);
+    $t->same(24.0, $stake['side']);
+    $t->same(0.7, $stake['x']);
+    $t->same(0.7, $stake['y']);
+    $t->same(0.649, $stake['module']);
 });
 
 $t->test('positions march across then down, and wrap at the sheet',

@@ -199,6 +199,85 @@ $t->test('a region override beats the catalogue value, here as in the digest',
     }
 });
 
+$t->test('a min and a max are a window: two named ends, and the span between them',
+    function ($t) use ($row): void {
+    // Phase 17. "Days to maturity 70-85" is one fact -- the first fruit at
+    // 70 days and the last worth waiting for at 85 -- and drawn as two
+    // "Harvest" chips it read as two events with nothing between. Now the
+    // ends are named for what they are, each carries the whole window, and
+    // the grid is handed the span itself.
+    $entries = Calendar::build('2026-01-01', '2026-12-31', [$row()], [], [], null, [], []);
+    $byKind = [];
+    foreach ($entries as $entry) {
+        $byKind[$entry['kind']] = $entry;
+    }
+    $starts = $byKind[ReminderKind::FIRST_HARVEST_EXPECTED];
+    $ends = $byKind[ReminderKind::HARVEST_WINDOW_CLOSING];
+    $t->same('Test Plant harvest starts', $starts['title']);
+    $t->same('Harvest starts', $starts['label']);
+    $t->same('Test Plant harvest window ends', $ends['title']);
+    $t->same('Harvest ends', $ends['label']);
+    foreach ([$starts, $ends] as $entry) {
+        $t->contains('70 to 85', (string) $entry['detail'], 'the whole range is in the words');
+        $t->contains('10 May 2026 to 25 May 2026', (string) $entry['detail'], 'and both dates');
+        $t->contains('sowing on 1 Mar 2026', (string) $entry['detail'], 'and what they were counted from');
+    }
+
+    $windows = Calendar::harvestWindows([$row()], []);
+    $t->same(1, \count($windows));
+    $t->same('2026-05-10', $windows[0]['from'], 'the band starts on the "starts" chip');
+    $t->same('2026-05-25', $windows[0]['to'], 'and ends on the "ends" chip');
+
+    $open = Calendar::windowsOpenOn($windows, '2026-05-15');
+    $t->same(1, \count($open));
+    $t->same(6, $open[0]['day'], '15 May is the sixth day of a window that opened on the 10th');
+    $t->same(16, $open[0]['length'], 'of sixteen, both ends counted');
+    $t->same([], Calendar::windowsOpenOn($windows, '2026-05-26'), 'the day after is outside');
+    $t->same([], Calendar::windowsOpenOn($windows, '2026-05-09'), 'and so is the day before');
+
+    $dates = Calendar::datesInWindows($windows, '2026-05-01', '2026-05-31');
+    $t->same(16, \count($dates));
+    $t->ok(isset($dates['2026-05-10']) && isset($dates['2026-05-25']) && !isset($dates['2026-05-26']));
+    $t->same(1, $dates['2026-05-10']);
+    $t->same(['2026-05-25' => 1], Calendar::datesInWindows($windows, '2026-05-25', '2026-06-30'),
+        'clipped to the range asked for');
+
+    // A finished planting has no window left, exactly as it has no dates.
+    $t->same([], Calendar::harvestWindows([$row(['state' => PlantingState::ENDED])], []));
+    // A count that cannot start yet has no window yet.
+    $t->same([], Calendar::harvestWindows([$row(['dtm_counted_from' => 'transplant', 'in_ground_date' => null])], []));
+});
+
+$t->test('one figure is one date, and is said as one', function ($t) use ($row): void {
+    $one = Calendar::build('2026-01-01', '2026-12-31', [$row(['dtm_days_max' => null])], [], [], null, [], []);
+    $t->same(1, \count($one));
+    $t->same('Test Plant should be ready', $one[0]['title']);
+    $t->same('Harvest', $one[0]['label']);
+    $t->contains('one figure', (string) $one[0]['detail']);
+
+    // Two figures that are the same are one figure.
+    $same = Calendar::build('2026-01-01', '2026-12-31', [$row(['dtm_days_max' => 70])], [], [], null, [], []);
+    $t->same(1, \count($same));
+    $t->same([], Calendar::harvestWindows([$row(['dtm_days_max' => 70])], []), 'no span to draw');
+
+    // Only the far end known: still a date, still said as it was.
+    $late = Calendar::build('2026-01-01', '2026-12-31', [$row(['dtm_days_min' => null])], [], [], null, [], []);
+    $t->same(1, \count($late));
+    $t->same(ReminderKind::HARVEST_WINDOW_CLOSING, $late[0]['kind']);
+    $t->same('2026-05-25', $late[0]['date']);
+});
+
+$t->test('the window honours the region override, as the chips do', function ($t) use ($row, $plantTypeId): void {
+    $window = [
+        'plant_type_id' => $plantTypeId, 'season' => 'spring', 'window_start' => '04-01',
+        'window_end' => '05-15', 'method' => 'transplant', 'recommended' => 0, 'type' => 'Cherokee Purple',
+        'dtm_days_min_override' => 90, 'dtm_days_max_override' => 110, 'weeks_before_transplant_to_start' => 0,
+    ];
+    $windows = Calendar::harvestWindows([$row()], [$window]);
+    $t->same('2026-05-30', $windows[0]['from']);
+    $t->same('2026-06-19', $windows[0]['to']);
+});
+
 $t->test('hardening finishing is a date on the calendar', function ($t) use ($row): void {
     $planting = $row(['state' => PlantingState::HARDENING,
                       'hardening_started_at' => '2026-04-01', 'hardening_days' => 10]);
@@ -551,6 +630,33 @@ $t->test('a zone watering is one entry, not one per plant it reached',
     $gardenRows = $events->calendarGardenEvents((string) Clock::addDays($today, -1),
                                                 (string) Clock::addDays($today, 1));
     $t->ok(\count($gardenRows) >= 1, 'the garden side has one row per thing that happened');
+});
+
+$t->test('a day inside a harvest window wears the band, and the panel says how far along it is',
+    function ($t) use ($client, $db, $plantTypeId, $oneId): void {
+    $type = $db->one('SELECT dtm_days_min, dtm_days_max FROM `plant_type` WHERE id = :id', ['id' => $plantTypeId]);
+    if ($type === null || $type['dtm_days_min'] === null || $type['dtm_days_max'] === null
+        || (int) $type['dtm_days_max'] <= (int) $type['dtm_days_min']) {
+        $t->ok(true, 'this type has no window to draw');
+        return;
+    }
+    // Whichever end the type counts from, make both ends the same date so
+    // the arithmetic below holds either way.
+    $db->run('UPDATE `planting` SET `in_ground_date` = `start_date` WHERE `id` = :id', ['id' => $oneId]);
+    $start = (string) $db->value('SELECT `start_date` FROM `planting` WHERE `id` = :id', ['id' => $oneId]);
+    $from = (string) Clock::addDays($start, (int) $type['dtm_days_min']);
+    $second = (string) Clock::addDays($from, 1);
+
+    $inside = $client->get('/calendar', ['month' => \substr($second, 0, 7), 'day' => $second]);
+    $t->same(200, $inside->status);
+    $t->contains('cal-band', $inside->body, 'the band is drawn');
+    $t->contains('In the harvest window', $inside->body, 'the panel lists the open windows');
+    $t->contains('day 2 of', $inside->body, 'and where in the window the day is');
+
+    $before = (string) Clock::addDays($from, -1);
+    $outside = $client->get('/calendar', ['month' => \substr($before, 0, 7), 'day' => $before]);
+    $t->same(200, $outside->status);
+    $t->notContains('In the harvest window', $outside->body, 'the day before the window is outside it');
 });
 
 $t->test('a repeated action collapses in a cell instead of stacking',

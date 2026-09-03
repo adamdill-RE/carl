@@ -351,7 +351,7 @@ $t->test('transplant_window fires a week before the window opens, for a seedling
 });
 
 $t->test('first_harvest_expected fires a week out and again on the day',
-    function ($t) use ($client, $app, $db, $userId, $plantTypeId, $today, $fires): void {
+    function ($t) use ($client, $app, $db, $userId, $plantTypeId, $today, $fires, $regionId): void {
     // A plant whose days-to-maturity lands on a known date.
     $type = $db->one(
         'SELECT id, dtm_days_min, dtm_days_max, dtm_counted_from FROM `plant_type`'
@@ -363,7 +363,19 @@ $t->test('first_harvest_expected fires a week out and again on the day',
         return;
     }
 
-    $min = (int) $type['dtm_days_min'];
+    // The digest reads the region's override over the catalogue value
+    // (Phase 17), so the test has to as well, or a county with one moves
+    // every date below.
+    $override = $db->one(
+        'SELECT dtm_days_min_override, dtm_days_max_override FROM `plant_region`'
+        . ' WHERE region_id = :r AND plant_type_id = :t'
+        . ' AND (dtm_days_min_override IS NOT NULL OR dtm_days_max_override IS NOT NULL) LIMIT 1',
+        ['r' => $regionId, 't' => (int) $type['id']]
+    );
+    $min = (int) ($override['dtm_days_min_override'] ?? $type['dtm_days_min']);
+    $max = ($override['dtm_days_max_override'] ?? $type['dtm_days_max']) === null
+        ? null : (int) ($override['dtm_days_max_override'] ?? $type['dtm_days_max']);
+    $window = $max !== null && $max > $min;
     // Sown so that maturity falls on 2026-10-01.
     $sown = (string) Clock::addDays('2026-10-01', -$min);
     (new PlantingRepository($db, $userId))->insert([
@@ -377,14 +389,26 @@ $t->test('first_harvest_expected fires a week out and again on the day',
         'state_changed_at' => \gmdate('Y-m-d H:i:s'),
     ]);
 
-    $fires($t, $app, $db, $userId, '2026-09-24 12:00:00', 'should be ready in a week');
-    $fires($t, $app, $db, $userId, '2026-10-01 12:00:00', 'should be ready about now');
+    // A min and a max are a window (Phase 17): "harvest starts", with the
+    // whole span in the body. One figure is one date, said as it always was.
+    $fires($t, $app, $db, $userId, '2026-09-24 12:00:00',
+        $window ? 'harvest starts in a week' : 'should be ready in a week');
+    $fires($t, $app, $db, $userId, '2026-10-01 12:00:00',
+        $window ? 'harvest starts about now' : 'should be ready about now');
+
+    if ($window) {
+        $fires($t, $app, $db, $userId, '2026-10-01 12:00:00', 'the window runs 1 Oct 2026 to ');
+        // And the far end of the window is said too, a week out and on the day.
+        $end = (string) Clock::addDays($sown, $max);
+        $fires($t, $app, $db, $userId, (string) Clock::addDays($end, -7) . ' 12:00:00', 'harvest window ends in a week');
+        $fires($t, $app, $db, $userId, $end . ' 12:00:00', 'harvest window ends about now');
+    }
 });
 
 $t->test('harvest_window_closing fires a fortnight past the late date, but only if nothing was picked',
-    function ($t) use ($app, $db, $userId, $fires, $atUtc): void {
+    function ($t) use ($app, $db, $userId, $fires, $atUtc, $regionId): void {
     $planting = $db->one(
-        "SELECT p.id, p.start_date, pt.dtm_days_max FROM `planting` p"
+        "SELECT p.id, p.plant_type_id, p.start_date, pt.dtm_days_max FROM `planting` p"
         . ' JOIN `plant_type` pt ON pt.id = p.plant_type_id'
         . " WHERE p.user_id = :u AND p.label = 'Harvest Test' LIMIT 1",
         ['u' => $userId]
@@ -393,9 +417,14 @@ $t->test('harvest_window_closing fires a fortnight past the late date, but only 
         $t->ok(true, 'nothing to close');
         return;
     }
+    // The override wins here as it does in the rule (Phase 17).
+    $max = $db->value(
+        'SELECT dtm_days_max_override FROM `plant_region` WHERE region_id = :r AND plant_type_id = :t'
+        . ' AND dtm_days_max_override IS NOT NULL LIMIT 1',
+        ['r' => $regionId, 't' => (int) $planting['plant_type_id']]
+    ) ?? $planting['dtm_days_max'];
 
-    $closing = (string) Clock::addDays((string) $planting['start_date'],
-        (int) $planting['dtm_days_max'] + 14);
+    $closing = (string) Clock::addDays((string) $planting['start_date'], (int) $max + 14);
     $fires($t, $app, $db, $userId, $closing . ' 12:00:00', 'Nothing harvested yet');
 
     // Log a yield, and the reminder stops: it is about a plant that has

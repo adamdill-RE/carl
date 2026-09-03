@@ -942,6 +942,31 @@ openssl rand -hex 24
 Push, then **Deploy HEAD Commit**. There is no build and no restart; the next
 request picks the files up, because there is no OPcache on this host.
 
+### The Phase 17 deploy adds NO migration and NO cron, and asks for two things with a phone
+
+Nothing to run at `/setup`. Copy the files and the four changes are live:
+the photo viewer, the harvest windows, the re-sized 00757 code, and the push
+diagnostics. Two things to do with the phone and the printer afterwards:
+
+1. **Re-print the 00757 registration sheet** — plain paper, 100% — and hold
+   it against the film. It now draws the white face (the heavy outline), the
+   laminate's footprint round it (thin), the flap, and a small square where
+   the code's ink lands. The face outline must sit on the white; the square
+   must have white all round it. Avery's brochure says the white is 3/4 × 3-1/4
+   in and the 1-1/32 × 3-1/2 in on the box is the size *with* the laminate;
+   every sheet before this one was sized to the laminate.
+2. **Push, from the home-screen app, in this order.** Remove any earlier
+   Carl icon from the Home Screen first if notifications were ever refused
+   on it — iOS remembers a "Don't Allow" per icon. Then: Safari → Share →
+   Add to Home Screen → open Carl from that icon → sign in → Garden actions
+   → "Notify this phone" → Allow → "Send a test notification". The page
+   then says what Apple's push service answered. `201` and no notification
+   means the phone is silencing it: Settings → Notifications → Carl, and any
+   Focus mode. Anything else names the fault (`BadJwtToken`,
+   `VapidPkHashMismatch`, a 410) and the fix is in Phase 18 handoff §2.4.
+   The subscription list under the button says which phone subscribed from
+   where; **"iPhone, Safari" is the wrong place** and will never ring.
+
 ### The Phase 16 deploy adds TWO migrations, ONE cron job and ONE setup step
 
 Migration **026** (`api_token`), pure DDL, one table. Nothing reads it until

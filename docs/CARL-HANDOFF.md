@@ -266,6 +266,17 @@ mail outbox. The notification opens `/timers/{id}`, where the watering is
 either already logged or one button away. The page carries "Notify this
 phone"; the VAPID pair is made once at `/setup` and kept in `push_key`.
 
+*(Phase 17)* The same panel lists every phone that ever subscribed — the
+device and browser it subscribed from, which tells an iPhone's home-screen
+app from its Safari (only the first can be told anything), the push service,
+when a push was last accepted or why it stopped — and carries "Send a test
+notification": `POST /push/test` pushes to this phone now and prints what
+the push service answered, reason and all. It is the one third-party call on
+a request path in Carl, deliberately: capped at five phones with a ten-second
+socket, pressed by a person, and the answer is the diagnosis. A timer whose
+push failed and whose mail went records the push service's answer in
+`fire_error` and shows it on `/timers/{id}`.
+
 ### 4.8 View Garden
 Garden report: layout summary, all plants (living and culled) with state and
 days-since-start, garden events, photos, weather charts for the garden's
@@ -580,6 +591,15 @@ read the date-taken first if present), random filename under
 `$_POST`/`$_FILES` case that means `post_max_size` was exceeded and return a
 clear error. Thumbnails (320 px) generated at upload for lists.
 
+*(Phase 17)* A photo is never linked to as a bare file. Every thumbnail opens
+`/photos/{id}/view` — the picture, the plant or garden it belongs to as the
+way back, and previous/next through the same set the plant page shows —
+because in the home-screen app on an iPhone a bare JPEG is a screen with no
+chrome and no way out. `gallery.js` opens the same set in a full-screen
+`<dialog>` (swipe, arrow keys, Escape, a close button, the focus handed back
+to the thumbnail) where it runs; the page is what works without it. The two
+files still serve only through the ownership check above.
+
 ---
 
 ## 11. Watering recommendation (Phase 3)
@@ -637,8 +657,8 @@ Reminder kinds (computed, stored in `reminder`, deduplicated by unique key):
 | hardening_countdown | `hardening_started` + duration − today, daily while > 0; "transplant due" at 0 |
 | transplant_window | user has seedlings of a type whose region window opens in 7 days / today / closes in 7 days |
 | start_seeds_by | region window_start − weeks_before_transplant_to_start, 14 and 7 days out |
-| first_harvest_expected | anchor date + dtm_days_min, 7 days out and on the day |
-| harvest_window_closing | anchor + dtm_days_max + 14, if no `yielded` event yet |
+| first_harvest_expected | anchor date + dtm_days_min, 7 days out and on the day. Worded "harvest starts" where the research gives a min and a max, "should be ready" where it gives one figure (Phase 17) |
+| harvest_window_closing | anchor + dtm_days_max, 7 days out and on the day, "harvest window ends" (Phase 17); and anchor + dtm_days_max + 14, "nothing harvested yet", if no `yielded` event yet |
 | frost_watch | region first_frost_early − 14 days, then any NWS freeze/frost alert |
 | heat_watch | forecast Tmax ≥ 35 °C tomorrow and user has heat-sensitive plantings |
 | pest_scouting | pest_region active_start for categories the user grows (calendar; GDD v2) |
@@ -911,6 +931,11 @@ Three, and the third is a decision rather than a feature.
    `/calendar.pdf` is the same month, same filter, on paper:
    `Carl\Reports\CalendarSheet`, black on white and A4/Letter-safe like the
    field sheet, the grid and then every worked-out date on it in full.
+   From Phase 17 days to maturity is drawn as the window it is: "harvest
+   starts" and "harvest window ends" where the research gives two figures,
+   a band along every day between them, and "day 13 of 28" in the day
+   panel; the digest says the same two sentences, and both read the
+   county's override.
 
 3. **A pest and disease catalogue that ships with Carl.**
    `db/migrations/022_pest_reference.sql` is the argument and it is worth
@@ -965,6 +990,15 @@ specified them: the MCP server (§13.3, §7) and the watering timer (§4.7,
 hand (`docs/QR-TAGS-SPEC.md` §12.5). Two migrations, 026 and 027; one new
 cron, every minute; one setup step, the push key pair. See
 `docs/PHASE-17-HANDOFF.md`.
+
+### Phase 17 — four things found with the app in one hand
+
+The owner's list, with a phone and a label sheet: a photo that stranded the
+home-screen app (§10), days to maturity drawn and spoken as a window (§12,
+the calendar), the 00757 code sized to a face that Avery's brochure says is
+3/4 in tall and not 1-1/32 (`docs/QR-TAGS-SPEC.md` §12.9), and push
+diagnosed from the page rather than from a cron log (§4.7). No migration, no
+cron, no setup step. See `docs/PHASE-18-HANDOFF.md`.
 
 ---
 

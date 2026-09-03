@@ -314,6 +314,28 @@ final class GardenController extends Controller
         $subscriptions = new \Carl\Repo\PushSubscriptionRepository($this->app->db(), $this->userId());
         $pushKey = \Carl\Push\Vapid::existing($this->app->db());
 
+        // Every phone that ever asked, live or not, in words (Phase 17): the
+        // device and browser it subscribed from -- an iPhone's home-screen
+        // app and its Safari are told apart, and only the first can be told
+        // anything -- the push service, and when it last took a push or why
+        // it stopped. One statement for all of them; the live count is read
+        // off the same rows.
+        $zone = $this->app->clock()->zone($this->user()->tz());
+        $local = static fn (?string $utc): ?string => $utc === null ? null
+            : (new \DateTimeImmutable($utc, new \DateTimeZone('UTC')))->setTimezone($zone)->format('j M H:i');
+        $pushSubscriptions = [];
+        $pushCount = 0;
+        foreach ($subscriptions->all() as $row) {
+            $pushCount += $row['failed_at'] === null ? 1 : 0;
+            $pushSubscriptions[] = $row + [
+                'device'          => \Carl\Repo\PushSubscriptionRepository::deviceName((string) $row['user_agent']),
+                'service'         => \Carl\Repo\PushSubscriptionRepository::serviceName((string) $row['endpoint']),
+                'created_local'   => $local((string) $row['created_at']),
+                'last_used_local' => $local($row['last_used_at']),
+                'failed_local'    => $local($row['failed_at']),
+            ];
+        }
+
         return $this->render('gardens/actions', [
             'garden' => $garden,
             'rows'   => $this->gardens()->rows($gardenId),
@@ -326,7 +348,8 @@ final class GardenController extends Controller
             'timers'         => $timers->running($gardenId),
             'finishedTimers' => $timers->recentlyFinished($gardenId),
             'pushKey'        => $pushKey === null ? null : $pushKey['public'],
-            'pushCount'      => \count($subscriptions->live()),
+            'pushCount'      => $pushCount,
+            'pushSubscriptions' => $pushSubscriptions,
             'timerMinutes'   => \max(1, \min(720, (int) ($request->query('minutes') ?? '30'))),
             'timerZone'      => (int) ($request->query('zone') ?? '0'),
             'timerMax'       => $this->app->config()->int('timers.max_minutes', 720),

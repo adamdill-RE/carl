@@ -943,6 +943,59 @@ counts appear on the tag screens, which were making those reads anyway.
 
 ---
 
+### 12.9 The 00757 face is 3/4 in tall, and the code is sized to it (Phase 17)
+
+Every listing for Avery 00757 -- Amazon, Staples, Avery's own product page --
+says "1-1/32 x 3-1/2 in", and §1.3, §5.3 and sixteen phases of `LabelStock`
+read that as the printable label. Avery's Easy Align brochure (GEN-0816-06,
+2015) is the one document that says what it actually is: **"LABEL SIZE 3/4 x
+3-1/4 in"** and **"LABEL SIZE WITH CLEAR LAMINATE 1-1/32 x 3-1/2 in"**. The
+white face is 19.05 x 82.55 mm; the 26.19 x 88.9 mm figure is the clear
+border the flap seals to, and the sheet is die-cut to that.
+
+So the §2.3 arithmetic did not apply to this stock at all. A symbol sized to
+the 25.4 mm stake face is 18.8 mm of ink, on a face 19.05 mm tall: exact on a
+perfect feed and over the top or the bottom edge on every real one, which is
+what the owner reported in Phase 17 ("just outside the upper and lower
+boundary for the most part, and a few labels shift"). The shift is the
+inkjet feeding slick film; the overrun was the arithmetic.
+
+What changed:
+
+- `LabelStock` carries **two rectangles per stock**: the die (the laminate's
+  footprint, which `diePosition()` returns and the registration sheet draws)
+  and the face (the white, which `position()` returns and is all that may
+  carry ink). The face is centred on the die, marked `[derived]`; the two
+  sizes are `[published]` from the brochure.
+- **`LabelStock::symbolBox()` sizes the code to the face**, not to the stake:
+  the face's height less a per-stock `edge` each side, capped at §2.3's 24 mm
+  where the face is tall enough for that (60517 is unchanged to the
+  millimetre). The 00757 edge is 1.75 mm, which is the sixteenth of an inch
+  the owner saw labels land high or low of each other and a little over.
+  The symbol is centred on the stake's 25.4 mm width rather than pushed to
+  the left edge, so a label applied a little off-centre still has the whole
+  code on the front.
+- On 00757 that comes to a **15.55 mm symbol, 12.5 mm of ink, 0.379 mm
+  modules** (version 4, the lower-case URL the live site encodes) or 0.42 mm
+  (version 3, upper case), with 3.3 mm of white above and below the ink and
+  6.4 mm to its left. 0.38 mm is 1.5x ISO 18004's practical print floor and
+  §2.3's own figure for a phone -- 0.05 mm per pixel at 15 cm -- makes it
+  seven pixels per module. §1.7's scan test is still the acceptance
+  criterion; the print screen now shows the label's own module size rather
+  than the stake's.
+- **The registration sheet draws where the ink will land**: a small square
+  inside every face, so "does the code clear the edge" is answered on plain
+  paper. It also draws the die footprint thin and the face heavy, and its
+  instructions name the three numbers to correct (pitch, top margin, side
+  margin) and which each symptom points at.
+- The write-on band on a blank label, which the old geometry never actually
+  drew on either stock (its guard compared against a 24 mm symbol on a 25 mm
+  face and always lost), is drawn on 00757 now, inside the feed margin.
+
+§2.3's levers still stand, and the first of them -- a shorter URL, which
+buys version 3 and 0.42 mm modules on this stock -- is the one to reach for
+if 0.38 mm proves marginal in the field.
+
 ## 13. What was built beyond the spec, and what was left
 
 ### 13.1 Beyond

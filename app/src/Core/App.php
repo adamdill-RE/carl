@@ -78,6 +78,33 @@ final class App
         return $this->outbox ??= new \Carl\Mail\Outbox($this);
     }
 
+    /** @var callable|null */
+    private static $pushTransport = null;
+
+    /**
+     * How a push reaches a push service (Phase 17). Null is the real thing:
+     * curl, inside Push\WebPush. The suite installs a function that records
+     * the request instead, and both the timer cron and the "send a test
+     * notification" button read it from here, so neither can quietly go
+     * live in a test and the two cannot drift apart.
+     *
+     * STATIC, DELIBERATELY. The test client builds a fresh App for every
+     * request it sends (tests/Client.php), so an override held on one
+     * instance never reaches the request that needs it -- the first version
+     * of this pushed to web.push.apple.com for real from inside the suite,
+     * and Apple answered 400 BadDeviceToken. Process-wide is what "the suite
+     * installs a transport" has to mean here.
+     */
+    public function pushTransport(): ?callable
+    {
+        return self::$pushTransport;
+    }
+
+    public function setPushTransport(?callable $transport): void
+    {
+        self::$pushTransport = $transport;
+    }
+
     /**
      * The analysis queue (Phase 5 handoff Section 3.1). Pages queue a
      * request; only the drain cron calls the API, for the same reason mail

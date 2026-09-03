@@ -299,7 +299,10 @@ $hasChart = ($series['plant']['dates'] ?? []) !== [];
   <h2>Photos</h2>
   <div class="photos">
 <?php foreach ($photos as $photo): ?>
-    <a href="<?= $e($app->url('photos/' . $photo['id'])) ?>">
+    <a href="<?= $e($app->url('photos/' . $photo['id'] . '/view')) ?>"
+       data-full="<?= $e($app->url('photos/' . $photo['id'])) ?>"
+       data-caption="<?= $e(\Carl\Support\Units::longDate((string) $photo['taken_on'])
+           . ((string) ($photo['caption'] ?? '') !== '' ? ' -- ' . $photo['caption'] : '')) ?>">
       <img src="<?= $e($app->url('photos/' . $photo['id'] . '/thumb')) ?>" alt="" loading="lazy">
     </a>
 <?php endforeach; ?>
@@ -312,4 +315,7 @@ $hasChart = ($series['plant']['dates'] ?? []) !== [];
 <?php if ($hasChart): ?>
 <script src="<?= $e($app->asset('assets/vendor/chart.umd.js')) ?>" defer></script>
 <script src="<?= $e($app->asset('assets/js/charts.js')) ?>" defer></script>
+<?php endif; ?>
+<?php if ($photos !== []): ?>
+<script src="<?= $e($app->asset('assets/js/gallery.js')) ?>" defer></script>
 <?php endif; ?>

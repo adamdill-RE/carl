@@ -384,7 +384,10 @@ $hasChart = ($series['plant']['dates'] ?? []) !== [];
   <h2>Photos</h2>
   <div class="photos">
 <?php foreach ($photos as $photo): ?>
-    <a href="<?= $e($app->url('photos/' . $photo['id'])) ?>"
+    <a href="<?= $e($app->url('photos/' . $photo['id'] . '/view')) ?>"
+       data-full="<?= $e($app->url('photos/' . $photo['id'])) ?>"
+       data-caption="<?= $e(\Carl\Support\Units::longDate((string) $photo['taken_on'])
+           . ((string) ($photo['caption'] ?? '') !== '' ? ' -- ' . $photo['caption'] : '')) ?>"
        title="<?= $e($U::longDate((string) $photo['taken_on'])) ?>">
       <img src="<?= $e($app->url('photos/' . $photo['id'] . '/thumb')) ?>" alt="" loading="lazy">
     </a>
@@ -403,3 +406,6 @@ $hasChart = ($series['plant']['dates'] ?? []) !== [];
 <?php /* For the stake grid's "tick the next N" and its count. Every
        behaviour in it is an enhancement; the grid posts without it. */ ?>
 <script src="<?= $e($app->asset('assets/js/forms.js')) ?>" defer></script>
+<?php if ($photos !== []): ?>
+<script src="<?= $e($app->asset('assets/js/gallery.js')) ?>" defer></script>
+<?php endif; ?>

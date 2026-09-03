@@ -164,6 +164,9 @@ final class Routes
         // it carries the CSRF token like every other POST.
         $r->post('/push/subscribe', PushController::class, 'subscribe');
         $r->post('/push/unsubscribe', PushController::class, 'unsubscribe');
+        // A push, now, and what the push service said (Phase 17): the one
+        // third-party call on a request path, and PushController says why.
+        $r->post('/push/test', PushController::class, 'test');
 
         // -- Lists ----------------------------------------------------------
         $r->get('/lists', ListController::class, 'index');
@@ -300,6 +303,10 @@ final class Routes
         $r->post('/photos', PhotoController::class, 'upload');
         $r->get('/photos/{id:\d+}', PhotoController::class, 'show');
         $r->get('/photos/{id:\d+}/thumb', PhotoController::class, 'thumb');
+        // The photo large, on a page with a way back and a way along (Phase
+        // 17). The home-screen app has no browser chrome, so a link straight
+        // to the JPEG was a screen with no way out of it.
+        $r->get('/photos/{id:\d+}/view', PhotoController::class, 'view');
 
         // -- Research card (loaded into a plant form) -----------------------
         $r->get('/research/{id:\d+}', PlantController::class, 'researchCard');

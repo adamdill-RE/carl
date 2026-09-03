@@ -64,6 +64,13 @@
   --carl-info:          #1c4d76;  /* oklch(38.5% 0.080 245) */
   --carl-info-soft:     #e2edf6;  /* oklch(93.5% 0.020 245) */
 
+  /* ---- The harvest window (Phase 17) --------------------------------------
+     The band the calendar draws between the early and late ends of days to
+     maturity. The warn amber, by value: ripe is amber, and a fourth hue on
+     the grid would be one too many. A name of its own so it can move
+     without moving the notices. */
+  --carl-harvest:       #7a5600;  /* = --carl-warn */
+
   /* ---- Research confidence (handoff §9.1) -------------------------------
      Three tiers of epistemic confidence, NOT three status levels. They now
      hold their own values rather than aliasing primary/warn/text-muted, so
@@ -128,6 +135,14 @@
   --carl-radius:     8px;
   --carl-radius-lg: 12px;
   --carl-shadow:    0 1px 2px rgba(25, 29, 25, .10);
+
+  /* ---- The photo viewer (Phase 17) ---------------------------------------
+     A photograph is looked at on black in both palettes, the way every
+     photo app does it: the ground must not compete with the picture, and a
+     white page round a garden photo in sunlight is a page you squint at.
+     ink is the chrome on that ground -- the close and the arrows. */
+  --carl-photo-ground:  #0e100e;
+  --carl-photo-ink:     #f4f3ee;
 
   /* Gloved thumbs in a garden. Do not go below 44px. */
   --carl-touch: 44px;

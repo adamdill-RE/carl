@@ -48,6 +48,9 @@
     --carl-info:          #79b8e8;
     --carl-info-soft:     #182935;
 
+    /* ---- The harvest window ---- */
+    --carl-harvest:       #e3b25c;  /* = --carl-warn */
+
     /* ---- Research confidence ---- */
     --carl-verified:      #7fc492;
     --carl-approx:        #e0b263;
@@ -70,6 +73,11 @@
        omission was an oversight. */
     --carl-qr-ink:        #000000;
     --carl-qr-paper:      #ffffff;
+
+    /* The photo viewer is black in both palettes; repeated so nobody
+       reads the omission as an oversight. */
+    --carl-photo-ground:  #0e100e;
+    --carl-photo-ink:     #f4f3ee;
 
     --carl-shadow: 0 1px 2px rgba(0, 0, 0, .45);
   }

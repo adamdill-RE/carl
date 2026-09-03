@@ -711,11 +711,28 @@ $t->test('a photo uploads, is re-encoded, and is served only to its owner',
     $t->contains('private', $served->headers()['Cache-Control']);
     $t->same(200, $client->get('/photos/' . $photoId . '/thumb')->status);
 
+    // The photo's own page (Phase 17): the picture large, with a way back and
+    // a way along, because the home-screen app on an iPhone has no browser
+    // chrome and a link straight to the JPEG left people stuck on it.
+    $viewer = $client->get('/photos/' . $photoId . '/view');
+    $t->same(200, $viewer->status);
+    $t->contains('photos/' . $photoId . '"', $viewer->body, 'the full-size image is on it');
+    $t->contains('Back to', $viewer->body, 'and the way back');
+    $t->contains('Photo 1 of 1', $viewer->body);
+    $t->contains('gallery.js', $viewer->body);
+
+    $plantPage = $client->get('/plants/' . $plantIds['sow']);
+    $t->contains('photos/' . $photoId . '/view', $plantPage->body,
+        'the thumbnail links to the page, not the raw file');
+    $t->contains('data-full="', $plantPage->body, 'and carries the full-size URL for the in-page viewer');
+    $t->contains('gallery.js', $plantPage->body);
+
     // Another account gets a 404, exactly as for a row that does not exist.
     $client->forgetCookies();
     $client->post('/login', ['username' => 'bob' . \substr($alice['username'], 5),
                              'password' => 'another good long passphrase']);
     $t->same(404, $client->get('/photos/' . $photoId)->status);
+    $t->same(404, $client->get('/photos/' . $photoId . '/view')->status);
 
     // Back to Alice for the smoke test below.
     $client->forgetCookies();
@@ -855,6 +872,7 @@ $t->test('every GET route a user can reach returns 200',
         '/gardens/{id:\d+}/end-season'    => (string) $garden['id'],
         '/photos/{id:\d+}'                => (string) $photoId,
         '/photos/{id:\d+}/thumb'          => (string) $photoId,
+        '/photos/{id:\d+}/view'           => (string) $photoId,
         '/research/{id:\d+}'              => (string) $plantTypeId,
         '/api/plant/{id:\d+}/series'      => (string) $plantIds['sow'],
         '/api/garden/{id:\d+}/series'     => (string) $garden['id'],

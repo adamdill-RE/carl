@@ -30,6 +30,8 @@
  * @var array{plant_ids:list<int>,wide:bool} $filter
  * @var bool $hasRegion @var string $today
  * @var string|null $day @var list<array<string,mixed>> $onDay
+ * @var array<string,int> $inWindow the grid dates inside a harvest window
+ * @var list<array<string,mixed>> $onDayWindows the windows open on the picked day
  */
 $e = $view->e(...);
 $U = Carl\Support\Units::class;
@@ -39,6 +41,8 @@ $pageTitle = 'Calendar';
 $selected = \array_flip($filter['plant_ids']);
 $day = $day ?? null;
 $onDay = $onDay ?? [];
+$inWindow = $inWindow ?? [];
+$onDayWindows = $onDayWindows ?? [];
 
 /**
  * The query string that carries the current filter onto another month.
@@ -141,9 +145,17 @@ $carry = static function (string $toMonth) use ($filter): array {
         if (!$cell['in_month']) { $classes .= ' cal-outside'; }
         if ($cell['date'] === $today) { $classes .= ' cal-today'; }
         if ($cell['date'] === $day) { $classes .= ' cal-picked'; }
+        if (isset($inWindow[$cell['date']])) { $classes .= ' cal-window'; }
         $dayUrl = $app->url('calendar', $carry($month) + ['day' => $cell['date']]) . '#day';
 ?>
         <td class="<?= $e($classes) ?>">
+<?php /* A harvest window is open on this day (Phase 17): a band along the
+       top of the cell, between the "starts" and "ends" chips, because a
+       window is a span and two chips with nothing between read as two
+       events. Which plant, and how far along, is the day panel's. */ ?>
+<?php if (isset($inWindow[$cell['date']])): ?>
+          <span class="cal-band"><span class="sr-only">Harvest window open</span></span>
+<?php endif; ?>
           <span class="cal-num"><?= $e((int) \substr($cell['date'], 8, 2)) ?></span>
 <?php foreach ($rolled as $group): $entry = $group['entry']; ?>
           <a class="cal-chip <?= $entry['projected'] ? 'cal-ahead' : 'cal-done' ?>"
@@ -162,7 +174,9 @@ $carry = static function (string $toMonth) use ($filter): array {
   <p class="tiny muted flush">
     <span class="cal-chip cal-done">logged</span> happened.
     <span class="cal-chip cal-ahead">ahead</span> is worked out from days to maturity,
-    a hardening duration, or your county's windows. Tap any entry for what it means.
+    a hardening duration, or your county's windows.
+    <span class="cal-band-key" aria-hidden="true"></span> a harvest window is open: the days between
+    the early and late ends of days to maturity. Tap any day for what it means.
   </p>
 </section>
 
@@ -176,8 +190,9 @@ $carry = static function (string $toMonth) use ($filter): array {
   <h2 class="flush"><?= $e($U::longDate($day)) ?>
     <span class="muted small"><?= $e($U::relativeDays(Carl\Support\Clock::daysBetween($today, $day))) ?></span>
   </h2>
-<?php if ($onDay === []): ?>
+<?php if ($onDay === [] && $onDayWindows === []): ?>
   <p class="muted gap-sm flush">Nothing logged or worked out for this day.</p>
+<?php elseif ($onDay === []): ?>
 <?php else: ?>
   <ul class="list guidance gap-sm">
 <?php foreach ($onDay as $entry): ?>
@@ -196,6 +211,33 @@ $carry = static function (string $toMonth) use ($filter): array {
           <a href="<?= $e($app->url('log/' . (int) $entry['planting_id'])) ?>">Log it</a>
         </div>
 <?php endif; ?>
+      </div>
+    </li>
+<?php endforeach; ?>
+  </ul>
+<?php endif; ?>
+<?php if ($onDayWindows !== []): ?>
+<?php /* The windows this day sits inside (Phase 17): not dated entries but
+       spans, so they are their own list -- with where in the window the
+       day is, because "day 13 of 28" is the answer to "should I be
+       picking yet". */ ?>
+  <h3>In the harvest window</h3>
+  <ul class="list guidance">
+<?php foreach ($onDayWindows as $window): ?>
+    <li>
+      <div class="grow">
+        <span class="topic kind-first_harvest_expected">Harvest</span>
+        <span class="tiny muted">day <?= $e($window['day']) ?> of <?= $e($window['length']) ?></span><br>
+        <strong><?= $e($window['name']) ?></strong>
+        <div class="small muted">
+          <?= $e($U::longDate((string) $window['from'])) ?> to <?= $e($U::longDate((string) $window['to'])) ?>:
+          <?= $e($window['min']) ?> to <?= $e($window['max']) ?> days from <?= $e($window['counted']) ?>.
+        </div>
+        <div class="tiny gap-xs">
+          <a href="<?= $e($app->url('plants/' . (int) $window['planting_id'])) ?>">Open the plant</a>
+          &middot;
+          <a href="<?= $e($app->url('log/' . (int) $window['planting_id'])) ?>">Log it</a>
+        </div>
       </div>
     </li>
 <?php endforeach; ?>

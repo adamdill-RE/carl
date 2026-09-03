@@ -562,21 +562,25 @@ final class PlantController extends Controller
             }
         }
 
+        // A window where the research gives two different figures (Phase
+        // 17), one date where it gives one: the same reading the calendar
+        // and the digest make of the same two columns.
+        $window = \is_string($anchor) && $min !== null && $max !== null && (int) $max > (int) $min;
         if (\is_string($anchor) && $min !== null) {
             $date = Clock::addDays($anchor, (int) $min);
             if ($date !== null) {
                 $out[] = [
-                    'label' => 'First harvest expected',
+                    'label' => $window ? 'Harvest window opens' : 'Harvest expected',
                     'date'  => $date,
                     'days'  => Clock::daysBetween($today, $date),
                 ];
             }
         }
-        if (\is_string($anchor) && $max !== null) {
+        if (\is_string($anchor) && $max !== null && ($window || $min === null)) {
             $date = Clock::addDays($anchor, (int) $max);
             if ($date !== null) {
                 $out[] = [
-                    'label' => 'Harvest window closes around',
+                    'label' => $window ? 'Harvest window ends' : 'Harvest window closes around',
                     'date'  => $date,
                     'days'  => Clock::daysBetween($today, $date),
                 ];
