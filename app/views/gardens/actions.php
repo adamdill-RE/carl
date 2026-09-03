@@ -11,6 +11,7 @@
  * @var list<string> $actions
  * @var list<array<string,mixed>> $timers @var list<array<string,mixed>> $finishedTimers
  * @var string|null $pushKey @var int $pushCount @var int $timerMinutes @var int $timerZone @var int $timerMax
+ * @var list<array<string,mixed>> $pushSubscriptions every phone that asked, live or not, in words
  */
 $e = $view->e(...);
 $E = Carl\Domain\EventType::class;
@@ -180,6 +181,7 @@ $pageTitle = 'Garden actions';
   <div class="push-setup" data-key="<?= $e($pushKey ?? '') ?>"
        data-subscribe="<?= $e($app->url('push/subscribe')) ?>"
        data-unsubscribe="<?= $e($app->url('push/unsubscribe')) ?>"
+       data-test="<?= $e($app->url('push/test')) ?>"
        data-sw="<?= $e($app->url('sw.js')) ?>" data-csrf="<?= $e($csrf) ?>">
     <h3>When it finishes</h3>
 <?php if ($pushKey === null): ?>
@@ -198,11 +200,43 @@ $pageTitle = 'Garden actions';
     <p class="push-controls" hidden>
       <button type="button" class="btn btn-secondary btn-small push-enable">Notify this phone</button>
       <button type="button" class="btn btn-secondary btn-small push-disable" hidden>Stop notifying this phone</button>
+      <button type="button" class="btn btn-secondary btn-small push-test" hidden>Send a test notification</button>
     </p>
+    <p class="small push-result" hidden></p>
+<?php /* Every phone that asked (Phase 17), in words. "iPhone, Safari" is
+       the diagnosis nine times in ten: a subscription made in Safari
+       rather than in the home-screen app is one that will never ring. */ ?>
+<?php if ($pushSubscriptions !== []): ?>
+    <ul class="list small push-list">
+<?php foreach ($pushSubscriptions as $sub): ?>
+      <li>
+        <div class="grow">
+          <?= $e($sub['device']) ?>, through <?= $e($sub['service']) ?>
+          <span class="hint">
+            Subscribed <?= $e($sub['created_local']) ?>.
+<?php if ($sub['failed_at'] !== null): ?>
+            Stopped <?= $e($sub['failed_local']) ?> (<?= $e($sub['fail_reason']) ?>): tap
+            &ldquo;Notify this phone&rdquo; on it again.
+<?php elseif ($sub['last_used_at'] !== null): ?>
+            Last push accepted <?= $e($sub['last_used_local']) ?>.
+<?php else: ?>
+            Nothing pushed to it yet.
+<?php endif; ?>
+          </span>
+        </div>
+      </li>
+<?php endforeach; ?>
+    </ul>
+<?php endif; ?>
     <p class="small muted push-note">
-      On an iPhone, add Carl to the Home Screen first (Share, then Add to Home Screen) and
-      open it from there: Safari only allows notifications from a home-screen app. Without
-      one, the email still goes.
+      On an iPhone: add Carl to the Home Screen (Share, then Add to Home Screen), open it from
+      that icon, sign in there, and tap &ldquo;Notify this phone&rdquo; &mdash; Safari itself
+      cannot be told, only the home-screen app can, and the phone asks once. Then
+      &ldquo;Send a test notification&rdquo; says what Apple&rsquo;s push service answered,
+      and the notification should follow within seconds. If the service said yes and nothing
+      showed, look under Settings, Notifications, Carl, and at any Focus mode. A phone listed
+      above as &ldquo;Safari&rdquo; rather than &ldquo;home-screen app&rdquo; subscribed from
+      the wrong place. Without a phone, the email still goes.
     </p>
 <?php endif; ?>
   </div>

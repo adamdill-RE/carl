@@ -96,6 +96,95 @@ final class PushSubscriptionRepository extends Repository
         );
     }
 
+    /** The live row for one endpoint, or null: the phone asking about itself. */
+    public function findLiveByEndpoint(string $endpoint): ?array
+    {
+        $rows = $this->where('`endpoint_hash` = :hash AND `failed_at` IS NULL',
+            ['hash' => \hash('sha256', $endpoint)], '`id`', 1);
+        return $rows[0] ?? null;
+    }
+
+    /**
+     * Which push service an endpoint belongs to, by name where the name is
+     * known: what the actions page and the timer's row say instead of a URL
+     * (Phase 17).
+     */
+    public static function serviceName(string $endpoint): string
+    {
+        $host = \strtolower((string) (\parse_url($endpoint, \PHP_URL_HOST) ?? ''));
+        if ($host === '') {
+            return 'the push service';
+        }
+        if (\str_ends_with($host, 'push.apple.com')) {
+            return 'Apple (' . $host . ')';
+        }
+        if (\str_ends_with($host, 'googleapis.com')) {
+            return 'Google (' . $host . ')';
+        }
+        if (\str_ends_with($host, 'mozilla.com')) {
+            return 'Mozilla (' . $host . ')';
+        }
+        if (\str_ends_with($host, 'notify.windows.com')) {
+            return 'Microsoft (' . $host . ')';
+        }
+        return $host;
+    }
+
+    /**
+     * The device and browser a subscription was made from, as a person would
+     * name them, read off the user agent the browser sent when it subscribed.
+     *
+     * The one that matters most is the one Apple hides in plain sight: a
+     * home-screen web app on an iPhone sends a user agent WITHOUT the
+     * "Safari/" token, so "iPhone, home-screen app" and "iPhone, Safari" are
+     * told apart here -- and only the first of those can be told anything
+     * (Phase 17). A subscription that says Safari is a subscription that will
+     * never ring.
+     */
+    public static function deviceName(string $userAgent): string
+    {
+        $ua = $userAgent;
+        $device = 'a browser';
+        if (\str_contains($ua, 'iPhone')) {
+            $device = 'iPhone';
+        } elseif (\str_contains($ua, 'iPad')) {
+            $device = 'iPad';
+        } elseif (\str_contains($ua, 'Android')) {
+            $device = 'Android';
+        } elseif (\str_contains($ua, 'CrOS')) {
+            $device = 'Chromebook';
+        } elseif (\str_contains($ua, 'Macintosh')) {
+            // An iPad asking for the desktop site says Macintosh; the touch
+            // points would tell, and a user agent does not carry them.
+            $device = 'Mac';
+        } elseif (\str_contains($ua, 'Windows')) {
+            $device = 'Windows PC';
+        } elseif (\str_contains($ua, 'Linux')) {
+            $device = 'Linux';
+        }
+
+        $browser = 'unknown browser';
+        if (\str_contains($ua, 'CriOS')) {
+            $browser = 'Chrome';
+        } elseif (\str_contains($ua, 'FxiOS')) {
+            $browser = 'Firefox';
+        } elseif (\str_contains($ua, 'EdgiOS') || \str_contains($ua, 'Edg/')) {
+            $browser = 'Edge';
+        } elseif (\str_contains($ua, 'Firefox/')) {
+            $browser = 'Firefox';
+        } elseif (\str_contains($ua, 'Chrome/')) {
+            $browser = 'Chrome';
+        } elseif (\str_contains($ua, 'Safari/')) {
+            $browser = 'Safari';
+        } elseif (($device === 'iPhone' || $device === 'iPad') && \str_contains($ua, 'AppleWebKit')) {
+            $browser = 'home-screen app';
+        } elseif ($ua === '') {
+            $browser = 'no user agent';
+        }
+
+        return $device . ', ' . $browser;
+    }
+
     /** @return array{live:int,failed:int} for /status */
     public static function health(Database $db): array
     {

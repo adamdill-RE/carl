@@ -95,7 +95,10 @@ foreach ($photos as $photo) {
 <?php if (isset($photosByEvent[$eventId])): ?>
     <div class="photos gap-xs">
 <?php foreach ($photosByEvent[$eventId] as $photo): ?>
-      <a href="<?= $e($app->url('photos/' . $photo['id'])) ?>">
+      <a href="<?= $e($app->url('photos/' . $photo['id'] . '/view')) ?>"
+         data-full="<?= $e($app->url('photos/' . $photo['id'])) ?>"
+         data-caption="<?= $e(\Carl\Support\Units::longDate((string) $photo['taken_on'])
+             . ((string) ($photo['caption'] ?? '') !== '' ? ' -- ' . $photo['caption'] : '')) ?>">
         <img src="<?= $e($app->url('photos/' . $photo['id'] . '/thumb')) ?>" alt="" loading="lazy">
       </a>
 <?php endforeach; ?>

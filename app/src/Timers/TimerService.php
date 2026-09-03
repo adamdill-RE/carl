@@ -52,10 +52,18 @@ final class TimerService
     /** @var list<string> */
     private array $log = [];
 
+    /**
+     * What went wrong on the push side of the last notify(), when the mail
+     * went instead: "web.push.apple.com: HTTP 403 BadJwtToken". Kept on the
+     * timer's row (Phase 17), because "you were told by email" with no word
+     * about why the phone was not is the diagnosis nobody can make.
+     */
+    private ?string $pushProblem = null;
+
     public function __construct(private App $app, ?callable $transport = null)
     {
         $this->db = $app->db();
-        $this->transport = $transport;
+        $this->transport = $transport ?? $app->pushTransport();
     }
 
     /** @return list<string> */
@@ -150,6 +158,13 @@ final class TimerService
                 } elseif ($via === 'email') {
                     $summary['emailed']++;
                 }
+                // The phone was tried and said no: not a failure of the
+                // timer -- the mail went -- but the one fact the landing
+                // page needs, so it rides on the row.
+                if ($via !== 'push' && $this->pushProblem !== null) {
+                    $error = ($error === null ? '' : $error . '; ') . $this->pushProblem
+                        . ($via === 'email' ? ' -- emailed instead' : '');
+                }
             } catch (Throwable $e) {
                 $error = ($error === null ? '' : $error . '; ') . 'notify: ' . $e->getMessage();
                 $summary['failures']++;
@@ -211,29 +226,23 @@ final class TimerService
         $userId = (int) $timer['user_id'];
         $subscriptions = new PushSubscriptionRepository($this->db, $userId);
         $pushed = 0;
+        $this->pushProblem = null;
 
         $pair = Vapid::existing($this->db);
         $live = $pair === null ? [] : $subscriptions->live();
         if ($live !== []) {
-            $push = new WebPush(
-                $pair,
-                $this->app->config()->string('push.subject', 'mailto:carl@reshiftmanager.com'),
-                $this->app->config()->int('push.ttl', 3600),
-                $this->transport,
-            );
+            $problems = [];
             $payload = $this->pushPayload($timer, $eventId);
-            foreach ($live as $subscription) {
-                $result = $push->send($subscription, $payload, 'carl-timer');
-                if ($result['ok']) {
+            foreach ($this->sendTo($pair, $live, $payload, 'carl-timer', $subscriptions) as $outcome) {
+                if ($outcome['ok']) {
                     $pushed++;
-                    $subscriptions->touch((int) $subscription['id']);
                     continue;
                 }
-                $this->note('  push to ' . Vapid::origin((string) $subscription['endpoint']) . ' failed: '
-                    . ($result['error'] ?? 'HTTP ' . $result['status']));
-                if ($result['gone']) {
-                    $subscriptions->markFailed((int) $subscription['id'], 'gone: HTTP ' . $result['status']);
-                }
+                $this->note('  push to ' . $outcome['service'] . ' failed: ' . $outcome['error']);
+                $problems[] = $outcome['service'] . ': ' . $outcome['error'];
+            }
+            if ($pushed === 0 && $problems !== []) {
+                $this->pushProblem = 'push: ' . \implode('; ', $problems);
             }
         }
         if ($pushed > 0) {
@@ -250,6 +259,82 @@ final class TimerService
             $subject, $text, $html, [], 'timer:' . (int) $timer['id']
         );
         return 'email';
+    }
+
+    /**
+     * One payload to a set of subscriptions, with the bookkeeping every
+     * caller wants: a subscription that took it is touched, one the service
+     * says is gone is marked so nothing tries it again, and each answer comes
+     * back with the service's name and its reason.
+     *
+     * @param array{public:string,private:string} $pair
+     * @param list<array<string,mixed>> $subscriptions rows of push_subscription
+     * @return list<array{id:int,service:string,ok:bool,status:int,gone:bool,error:?string}>
+     */
+    private function sendTo(array $pair, array $subscriptions, string $payload, string $topic,
+                            PushSubscriptionRepository $repository, ?int $timeoutSeconds = null): array
+    {
+        $push = new WebPush(
+            $pair,
+            $this->app->config()->string('push.subject', 'mailto:carl@reshiftmanager.com'),
+            $this->app->config()->int('push.ttl', 3600),
+            $this->transport,
+            $timeoutSeconds === null ? null : new \Carl\Core\HttpClient('CarlTheGardenHelper/1.0 (web push)', $timeoutSeconds),
+        );
+
+        $out = [];
+        foreach ($subscriptions as $subscription) {
+            $result = $push->send($subscription, $payload, $topic);
+            if ($result['ok']) {
+                $repository->touch((int) $subscription['id']);
+            } elseif ($result['gone']) {
+                $repository->markFailed((int) $subscription['id'], 'gone: HTTP ' . $result['status']);
+            }
+            $out[] = [
+                'id'      => (int) $subscription['id'],
+                'service' => PushSubscriptionRepository::serviceName((string) $subscription['endpoint']),
+                'ok'      => $result['ok'],
+                'status'  => $result['status'],
+                'gone'    => $result['gone'],
+                'error'   => $result['error'],
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * "Send a test notification" (Phase 17): one push, now, to the phones
+     * given, and what each push service said about it. This is the ONE push
+     * that happens on a request rather than from the cron, and it is a
+     * deliberate diagnostic pressed by a person: the service's answer is the
+     * diagnosis, and a minute's wait for the cron would put that answer on a
+     * timer row instead of on the screen in front of them. Bounded: the
+     * caller caps how many phones, and the socket timeout is short.
+     *
+     * @param list<array<string,mixed>> $subscriptions rows of push_subscription
+     * @param string $navigate the absolute URL the notification opens
+     * @return list<array{id:int,service:string,ok:bool,status:int,gone:bool,error:?string}>
+     * @throws \RuntimeException when the install has no push key pair yet
+     */
+    public function testPush(int $userId, array $subscriptions, string $navigate, string $localTime): array
+    {
+        $pair = Vapid::existing($this->db);
+        if ($pair === null) {
+            throw new \RuntimeException('Push notifications are not set up on this install yet.');
+        }
+        $encoded = \json_encode([
+            'web_push'     => 8030,
+            'notification' => [
+                'title'    => 'Carl can reach this phone',
+                'body'     => 'Test sent at ' . $localTime . '. A finished timer will arrive like this.',
+                'navigate' => $navigate,
+                'tag'      => 'carl-test',
+                'lang'     => 'en',
+            ],
+        ], \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE);
+
+        return $this->sendTo($pair, $subscriptions, $encoded === false ? '{}' : $encoded, 'carl-test',
+            new PushSubscriptionRepository($this->db, $userId), 10);
     }
 
     // -- What the phone shows -------------------------------------------------

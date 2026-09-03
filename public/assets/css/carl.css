@@ -752,3 +752,79 @@ a.cal-chip:hover, a.cal-chip:focus-visible { text-decoration: underline; }
 .tag-next-count { width: 3.5em; padding: 2px 4px; min-height: 0; font-size: 12px; }
 /* The codes on one plant in the directory: wrap, and read as a row of tags. */
 .tag-codes { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 2px; font-size: 13px; }
+
+/* ---------- Photos, large (Phase 17) ---------- */
+
+/*
+ * The photo page: the picture as wide as the column and no taller than most
+ * of the screen, so the way back and the way along are never below the
+ * fold. Both nav controls keep their room whether or not there is a
+ * neighbour, so "Next" does not jump across the page on the first photo.
+ */
+.photo-view { margin: 0 0 12px; }
+.photo-view img {
+  display: block; width: 100%; height: auto; max-height: 72vh;
+  object-fit: contain; border-radius: var(--carl-radius);
+  background: var(--carl-photo-ground);
+}
+.photo-view figcaption { margin-top: 6px; font-size: 13px; color: var(--carl-text-muted); }
+.photo-nav { display: flex; gap: 10px; }
+.photo-nav .btn { flex: 1 1 0; }
+.photo-nav-off { visibility: hidden; }
+
+/*
+ * The in-page viewer: a <dialog> that gallery.js builds on the first tap.
+ * Full screen, on the photo ground, with the controls inset from the
+ * iPhone's notch and home bar (the viewport is viewport-fit=cover, so
+ * env() is real there). The buttons are 44px targets in the viewer's own
+ * ink on its own ground, opaque, because a translucent control over a
+ * bright photo is a control you cannot find.
+ */
+dialog.lightbox {
+  position: fixed; inset: 0; margin: 0; padding: 0; border: 0;
+  width: 100vw; height: 100vh; max-width: 100vw; max-height: 100vh;
+  background: var(--carl-photo-ground); color: var(--carl-photo-ink);
+}
+dialog.lightbox::backdrop { background: var(--carl-photo-ground); }
+.lightbox figure {
+  position: absolute; inset: 0; margin: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.lightbox img { max-width: 100vw; max-height: 100vh; object-fit: contain; }
+.lightbox figcaption {
+  position: absolute; left: 0; right: 0;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  padding: 0 64px; text-align: center; font-size: 13px; opacity: .85;
+}
+.lightbox button {
+  position: absolute; min-width: var(--carl-touch); min-height: var(--carl-touch);
+  padding: 0 10px; font: inherit; font-size: 26px; line-height: 1; cursor: pointer;
+  color: var(--carl-photo-ink); background: var(--carl-photo-ground);
+  border: 1px solid var(--carl-photo-ink); border-radius: 22px;
+}
+.lightbox button[hidden] { display: none; }
+.lightbox-close { top: calc(10px + env(safe-area-inset-top)); right: calc(10px + env(safe-area-inset-right)); }
+.lightbox-prev  { left: calc(8px + env(safe-area-inset-left)); top: 50%; transform: translateY(-50%); }
+.lightbox-next  { right: calc(8px + env(safe-area-inset-right)); top: 50%; transform: translateY(-50%); }
+.lightbox-count {
+  position: absolute; margin: 0; left: calc(14px + env(safe-area-inset-left));
+  top: calc(20px + env(safe-area-inset-top)); font-size: 13px; opacity: .85;
+}
+
+/* ---------- The harvest window on the calendar (Phase 17) ---------- */
+
+/*
+ * A window is a span, and two chips with nothing between them read as two
+ * events. So every day between "Harvest starts" and "Harvest ends" wears a
+ * band along the top of its cell. Dashed rather than solid so it is a
+ * pattern and not only a colour -- it survives a greyscale print and a
+ * reader who cannot see amber -- and it sits under the day number, where
+ * today's outline still draws over it. The key in the legend is the same
+ * band, so the reader learns it from the one place they will look.
+ */
+.cal-cell { position: relative; }
+.cal-band, .cal-band-key {
+  background-image: repeating-linear-gradient(90deg, var(--carl-harvest) 0 6px, transparent 6px 9px);
+}
+.cal-band { position: absolute; left: 0; right: 0; top: 0; height: 4px; }
+.cal-band-key { display: inline-block; width: 27px; height: 4px; vertical-align: middle; }

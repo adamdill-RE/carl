@@ -66,7 +66,72 @@ final class PhotoController extends Controller
             'id'       => $photoId,
             'thumb'    => $this->app->url('photos/' . $photoId . '/thumb'),
             'url'      => $this->app->url('photos/' . $photoId),
+            'view'     => $this->app->url('photos/' . $photoId . '/view'),
             'taken_on' => $takenOn,
+        ]);
+    }
+
+    /**
+     * The photo, large, on a page of Carl's own (Phase 17).
+     *
+     * Every thumbnail used to link straight to the JPEG. In Safari that is
+     * fine -- the back button is right there -- and in the app on an iPhone's
+     * home screen it is a full-screen photograph with no browser chrome at
+     * all: no back, no forward, no address bar, and the only way out is to
+     * kill the app. So the thumbnail now opens THIS page, which has the
+     * photo, the way back to the plant or the garden it belongs to, and the
+     * way along to the photos beside it. gallery.js turns the same links
+     * into an in-page viewer where it can; this is what works everywhere,
+     * script or no script.
+     *
+     * The set a photo belongs to is its planting's photos, or its garden's,
+     * in the order the plant page shows them: previous and next mean what
+     * they mean on that page.
+     */
+    public function view(Request $request, array $params): Response
+    {
+        $photo = $this->photos()->findOrFail((int) $params['id']);
+
+        $set = [$photo];
+        $back = ['url' => $this->app->url(''), 'label' => 'the menu'];
+
+        if ($photo['planting_id'] !== null) {
+            $plantingId = (int) $photo['planting_id'];
+            $set = $this->photos()->forPlanting($plantingId);
+            $planting = $this->plantings()->findWithDetail($plantingId);
+            $label = \trim((string) ($planting['label'] ?? ''));
+            $name = $planting === null ? 'the plant'
+                : ($label !== '' ? $label
+                    : \trim((string) ($planting['category'] ?? '') . ' ' . (string) ($planting['type'] ?? '')));
+            $back = ['url' => $this->app->url('plants/' . $plantingId), 'label' => $name];
+        } elseif ($photo['garden_id'] !== null) {
+            $gardenId = (int) $photo['garden_id'];
+            $set = $this->photos()->forGarden($gardenId);
+            $garden = $this->gardens()->find($gardenId);
+            $back = ['url'   => $this->app->url('gardens/' . $gardenId),
+                     'label' => (string) ($garden['name'] ?? 'the garden')];
+        }
+
+        $position = 0;
+        foreach ($set as $i => $row) {
+            if ((int) $row['id'] === (int) $photo['id']) {
+                $position = $i;
+                break;
+            }
+        }
+        if ($set === []) {
+            $set = [$photo];
+            $position = 0;
+        }
+
+        return $this->render('photos/view', [
+            'photo'     => $photo,
+            'position'  => $position + 1,
+            'count'     => \count($set),
+            'prev'      => $set[$position - 1] ?? null,
+            'next'      => $set[$position + 1] ?? null,
+            'back'      => $back,
+            'pageTitle' => 'Photo',
         ]);
     }
 

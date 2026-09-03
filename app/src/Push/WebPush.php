@@ -30,15 +30,16 @@ final class WebPush
     /** RFC 8188: one record, larger than any payload this sends. */
     private const RECORD_SIZE = 4096;
 
-    /** @var callable(string,string,list<string>):array{status:int,error:?string} */
+    /** @var callable(string,string,list<string>):array{status:int,error:?string,body?:string} */
     private $transport;
 
     /**
      * @param array{public:string,private:string} $vapid the install's pair
      * @param string $subject who to write to about a misbehaving push:
      *        a mailto: or an https URL (Apple refuses anything else)
-     * @param callable|null $transport (url, body, headers) => {status, error};
-     *        null is curl through HttpClient
+     * @param callable|null $transport (url, body, headers) => {status, error,
+     *        body}; null is curl through HttpClient. The body is what the
+     *        push service said, which is the diagnosis when it said no.
      */
     public function __construct(
         private array $vapid,
@@ -50,7 +51,7 @@ final class WebPush
         $http ??= new HttpClient('CarlTheGardenHelper/1.0 (web push)', 15);
         $this->transport = $transport ?? static function (string $url, string $body, array $headers) use ($http): array {
             $result = $http->postRaw($url, $body, $headers);
-            return ['status' => $result->status, 'error' => $result->error];
+            return ['status' => $result->status, 'error' => $result->error, 'body' => $result->body];
         };
     }
 
@@ -90,12 +91,56 @@ final class WebPush
         $gone = $status === 404 || $status === 410;
         $ok = $status >= 200 && $status < 300;
 
+        // The service's own reason, when it gave one (Phase 17). "HTTP 403"
+        // says nothing; Apple's {"reason":"BadJwtToken"} says everything,
+        // and it goes on the timer's row and the test button's answer.
+        $reason = $ok ? '' : self::reason((string) ($result['body'] ?? ''));
+        $error = $ok ? null : \trim((string) ($result['error'] ?? ('HTTP ' . $status)));
+        if ($error !== null && $reason !== '' && !\str_contains($error, $reason)) {
+            $error .= ' ' . $reason;
+        }
+
         return [
             'ok'     => $ok,
             'status' => $status,
             'gone'   => $gone,
-            'error'  => $ok ? null : ($result['error'] ?? ('HTTP ' . $status)),
+            'error'  => $error,
         ];
+    }
+
+    /**
+     * What a push service's error body amounts to, in one short line.
+     *
+     * Apple: {"reason":"BadJwtToken"}. Google: {"error":{"message":...}}.
+     * Mozilla: {"errno":102,"message":...}. Anything else: its text, without
+     * markup, cut short.
+     */
+    public static function reason(string $body): string
+    {
+        $body = \trim($body);
+        if ($body === '') {
+            return '';
+        }
+        $decoded = \json_decode($body, true);
+        if (\is_array($decoded)) {
+            foreach (['reason', 'message'] as $key) {
+                if (isset($decoded[$key]) && \is_scalar($decoded[$key])) {
+                    return \substr((string) $decoded[$key], 0, 120);
+                }
+            }
+            if (isset($decoded['error'])) {
+                $error = $decoded['error'];
+                if (\is_array($error) && isset($error['message']) && \is_scalar($error['message'])) {
+                    return \substr((string) $error['message'], 0, 120);
+                }
+                if (\is_scalar($error)) {
+                    return \substr((string) $error, 0, 120);
+                }
+            }
+            return '';
+        }
+        $text = \trim((string) \preg_replace('/\s+/', ' ', \strip_tags($body)));
+        return \substr($text, 0, 120);
     }
 
     /**

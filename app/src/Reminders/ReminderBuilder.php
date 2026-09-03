@@ -10,6 +10,7 @@ use Carl\Domain\PlantingState;
 use Carl\Domain\ReminderKind;
 use Carl\Planting\Succession;
 use Carl\Support\Clock;
+use Carl\Support\Units;
 use Carl\Weather\AlertPoller;
 
 /**
@@ -79,8 +80,8 @@ final class ReminderBuilder
                 $this->hardeningCountdown($userId, $today, $data),
                 $this->transplantWindow($userId, $today, $user, $data),
                 $this->startSeedsBy($userId, $today, $user, $data),
-                $this->firstHarvestExpected($userId, $today, $data),
-                $this->harvestWindowClosing($userId, $today, $data),
+                $this->firstHarvestExpected($userId, $today, $user, $data),
+                $this->harvestWindowClosing($userId, $today, $user, $data),
                 $this->frostWatch($userId, $today, $user, $data),
                 $this->heatWatch($userId, $today, $user, $data),
                 $this->pestScouting($userId, $today, $user, $data),
@@ -491,19 +492,26 @@ final class ReminderBuilder
     /**
      * first_harvest_expected: anchor + dtm_days_min, 7 days out and on the day.
      *
+     * Where the research gives two different figures the harvest is a
+     * WINDOW, and this is its opening: "harvest starts", with the whole span
+     * in the body (Phase 17). One figure is one date and is said as it
+     * always was. `Planting\Calendar::harvestEntries()` reads the same two
+     * columns the same way, so the chip and the reminder agree.
+     *
+     * @param array<string,mixed> $user
      * @param array<string,mixed> $data
      * @return list<array<string,mixed>>
      */
-    private function firstHarvestExpected(int $userId, string $today, array $data): array
+    private function firstHarvestExpected(int $userId, string $today, array $user, array $data): array
     {
         $out = [];
         foreach ($data['plantings'][$userId] ?? [] as $planting) {
             $anchor = self::dtmAnchor($planting);
-            $min = $planting['dtm_days_min'];
+            [$min, $max] = self::dtmRange($planting, $user, $data);
             if ($anchor === null || $min === null) {
                 continue;
             }
-            $date = Clock::addDays($anchor, (int) $min);
+            $date = Clock::addDays($anchor, $min);
             if ($date === null) {
                 continue;
             }
@@ -513,11 +521,26 @@ final class ReminderBuilder
             }
 
             $name = self::name($planting);
+            $counted = self::countedFrom((string) ($planting['dtm_counted_from'] ?? 'seed'), $anchor);
+            $end = $max === null || $max <= $min ? null : Clock::addDays($anchor, $max);
+
+            if ($end !== null) {
+                $out[] = self::make($planting, ReminderKind::FIRST_HARVEST_EXPECTED, $today,
+                    $days === 0
+                        ? $name . ' harvest starts about now'
+                        : $name . ' harvest starts in a week',
+                    'Days to maturity ' . $min . ' to ' . $max . ' from ' . $counted . ': the window runs '
+                    . Units::longDate($date) . ' to ' . Units::longDate($end)
+                    . '. A guide, not a promise -- go and look.'
+                );
+                continue;
+            }
+
             $out[] = self::make($planting, ReminderKind::FIRST_HARVEST_EXPECTED, $today,
                 $days === 0
                     ? $name . ' should be ready about now'
                     : $name . ' should be ready in a week',
-                'Counted ' . $min . ' days from ' . $anchor . '. Days to maturity is a guide, not a '
+                'Counted ' . $min . ' days from ' . $counted . '. Days to maturity is a guide, not a '
                 . 'promise -- go and look.'
             );
         }
@@ -525,30 +548,56 @@ final class ReminderBuilder
     }
 
     /**
-     * harvest_window_closing: anchor + dtm_days_max + 14, if nothing has been
-     * harvested from it yet.
+     * harvest_window_closing, two sayings of one kind:
      *
+     *  - anchor + dtm_days_max, 7 days out and on the day: "harvest window
+     *    ends", where the research gives a window at all (Phase 17). Said
+     *    whether or not anything has been picked: the far end of the range
+     *    is when what is left stops being worth waiting for.
+     *  - anchor + dtm_days_max + 14, if nothing has been harvested from it
+     *    yet: the nudge, unchanged since Phase 3.
+     *
+     * Two due dates, so the unique key keeps them apart.
+     *
+     * @param array<string,mixed> $user
      * @param array<string,mixed> $data
      * @return list<array<string,mixed>>
      */
-    private function harvestWindowClosing(int $userId, string $today, array $data): array
+    private function harvestWindowClosing(int $userId, string $today, array $user, array $data): array
     {
         $out = [];
         foreach ($data['plantings'][$userId] ?? [] as $planting) {
-            if ((int) ($planting['has_yielded'] ?? 0) === 1) {
-                continue;
-            }
             $anchor = self::dtmAnchor($planting);
-            $max = $planting['dtm_days_max'];
+            [$min, $max] = self::dtmRange($planting, $user, $data);
             if ($anchor === null || $max === null) {
                 continue;
             }
-            $date = Clock::addDays($anchor, (int) $max + 14);
+            $name = self::name($planting);
+            $counted = self::countedFrom((string) ($planting['dtm_counted_from'] ?? 'seed'), $anchor);
+
+            $end = Clock::addDays($anchor, $max);
+            if ($end !== null && $min !== null && $max > $min) {
+                $days = Clock::daysBetween($today, $end);
+                if ($days === 7 || $days === 0) {
+                    $out[] = self::make($planting, ReminderKind::HARVEST_WINDOW_CLOSING, $today,
+                        $days === 0
+                            ? $name . ' harvest window ends about now'
+                            : $name . ' harvest window ends in a week',
+                        'Days to maturity ' . $min . ' to ' . $max . ' from ' . $counted . ': the window runs '
+                        . Units::longDate((string) Clock::addDays($anchor, $min)) . ' to ' . Units::longDate($end)
+                        . '. Anything still coming after this is a bonus, and anything not picked is '
+                        . 'worth logging as a yield or a cull.'
+                    );
+                }
+            }
+
+            if ((int) ($planting['has_yielded'] ?? 0) === 1) {
+                continue;
+            }
+            $date = Clock::addDays($anchor, $max + 14);
             if ($date === null || $date !== $today) {
                 continue;
             }
-
-            $name = self::name($planting);
             $out[] = self::make($planting, ReminderKind::HARVEST_WINDOW_CLOSING, $today,
                 'Nothing harvested yet from ' . $name,
                 'It passed its expected window two weeks ago (' . $max . ' days from ' . $anchor
@@ -1074,6 +1123,56 @@ final class ReminderBuilder
             ? $planting['in_ground_date']
             : $planting['start_date'];
         return \is_string($anchor) ? $anchor : null;
+    }
+
+    /**
+     * Days to maturity, both ends, with the region's override winning: the
+     * reading `Planting\Calendar::dtm()` makes of the same columns.
+     *
+     * Until Phase 17 the two harvest rules read the catalogue value only, so
+     * in a county whose research overrode it the digest and the calendar
+     * disagreed about the date of the same harvest -- the one thing the
+     * calendar's docblock promises never happens. The succession rule had
+     * applied the override all along; now all three do.
+     *
+     * @param array<string,mixed> $planting
+     * @param array<string,mixed> $user
+     * @param array<string,mixed> $data
+     * @return array{0:?int,1:?int} min, max
+     */
+    private static function dtmRange(array $planting, array $user, array $data): array
+    {
+        $regionId = (int) ($user['region_id'] ?? 0);
+        $typeId = (int) $planting['plant_type_id'];
+        $windows = $data['windowsByType'][$regionId][$typeId] ?? [];
+
+        $out = [];
+        foreach (['min', 'max'] as $end) {
+            $value = null;
+            foreach ($windows as $window) {
+                $override = $window['dtm_days_' . $end . '_override'] ?? null;
+                if ($override !== null) {
+                    $value = (int) $override;
+                    break;
+                }
+            }
+            if ($value === null) {
+                $global = $planting['dtm_days_' . $end] ?? null;
+                $value = $global === null ? null : (int) $global;
+            }
+            $out[] = $value;
+        }
+        return [$out[0], $out[1]];
+    }
+
+    /**
+     * "sowing on 1 May 2026", or "transplanting on 15 June 2026": what a
+     * days-to-maturity count runs from, in the words the calendar and the
+     * digest both use (Phase 17).
+     */
+    public static function countedFrom(string $countedFrom, string $anchor): string
+    {
+        return ($countedFrom === 'transplant' ? 'transplanting on ' : 'sowing on ') . Units::longDate($anchor);
     }
 
     /**

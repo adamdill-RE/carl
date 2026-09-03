@@ -885,14 +885,32 @@ final class TagController extends Controller
         );
     }
 
-    /** @return array{uppercase:bool,sample:string,mode:string,version:int,size:int,module_mm:float,headroom:int} */
+    /**
+     * What a tag encodes, and what that comes to on the user's own label
+     * stock: the symbol's side, its module and how much white is left
+     * round the ink (Phase 17; LabelStock::symbolBox). The stake figure is
+     * the spec's; the label figure is the one that prints.
+     *
+     * @return array{uppercase:bool,sample:string,mode:string,version:int,size:int,module_mm:float,headroom:int,
+     *               stock:string,label_mm:float,label_module_mm:float,label_dark_mm:float,label_edge_mm:float}
+     */
     private function encoding(): array
     {
-        return TagUrl::describe(
+        $described = TagUrl::describe(
             $this->app->config()->string('tags.origin'),
             $this->app->basePath(),
             $this->uppercase()
         );
+        $stock = $this->userStock();
+        $box = LabelStock::symbolBox($stock, $described['size'] + 2 * TagUrl::QUIET_MODULES);
+
+        return $described + [
+            'stock'           => LabelStock::name($stock),
+            'label_mm'        => $box['side'],
+            'label_module_mm' => $box['module'],
+            'label_dark_mm'   => $box['dark'],
+            'label_edge_mm'   => \min($box['edge_x'], $box['edge_y']),
+        ];
     }
 
     private function svgFor(string $code): string

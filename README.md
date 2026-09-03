@@ -13,7 +13,7 @@ weather that actually happened.
 | Document | Authority over |
 | --- | --- |
 | [`docs/CARL-HANDOFF.md`](docs/CARL-HANDOFF.md) | Scope. What Carl is, the screens, the data model, the phasing. |
-| [`docs/PHASE-17-HANDOFF.md`](docs/PHASE-17-HANDOFF.md) | What to build next, and the facts each phase measured that the original scope could only assume. Always the highest-numbered one. The earlier phase handoffs are kept as they were written, and each one's §4 (what must not regress) and §7 (where the bodies are buried) stay in force unless a later phase withdraws an entry by number. |
+| [`docs/PHASE-18-HANDOFF.md`](docs/PHASE-18-HANDOFF.md) | What to build next, and the facts each phase measured that the original scope could only assume. Always the highest-numbered one. The earlier phase handoffs are kept as they were written, and each one's §4 (what must not regress) and §7 (where the bodies are buried) stay in force unless a later phase withdraws an entry by number. |
 | [`docs/hosting.md`](docs/hosting.md) | Every platform constraint. Overrides the handoff where they conflict. |
 | [`docs/weather.md`](docs/weather.md) | Weather ingestion. Overrides the handoff where they conflict. |
 | [`docs/deploy.md`](docs/deploy.md) | The runbook, and §0 is every measurement taken on the live host. |
@@ -246,6 +246,35 @@ And, from Phase 14:
   (Phase 16, from a real sheet in hand): each Avery 00757 label has its clear
   flap beside it, not below, and the registration sheet now draws the flap
   and the fold so the layout can be checked against the film.
+
+And, from Phase 17, four things the owner asked for with the app in one
+hand and a label sheet in the other:
+
+- **A photo opens on a page of Carl's own, and in a viewer**, not as a bare
+  JPEG. In the home-screen app on an iPhone the bare JPEG was a screen with
+  no way out — Safari strips its chrome from a standalone app. Now a
+  thumbnail opens `/photos/{id}/view`, with the way back and previous/next
+  through the plant's photos, and `gallery.js` turns the same links into a
+  full-screen viewer with swipe, arrows and Escape that closes back into the
+  page it came from.
+- **Days to maturity is a window, and the calendar draws it as one.** "18 to
+  45 days" was two unlabelled "Harvest" chips; it is now "harvest starts"
+  and "harvest window ends", each carrying the whole span in its words, with
+  a band along the top of every day between them and "day 13 of 28" in the
+  day panel. The digest says the same — "starts", "window ends", and the
+  two-week nudge as before — and reads the county's override where the
+  calendar always did.
+- **The 00757 code is sized to the label's white face**, which Avery's own
+  brochure gives as 3/4 × 3-1/4 in; the 1-1/32 × 3-1/2 in on every listing
+  is the size *with* the laminate, and sixteen phases had sized the code to
+  that. The registration sheet now draws the face, the laminate footprint,
+  the flap and a square where the ink lands.
+- **Push, diagnosed from the page.** "Send a test notification" pushes now
+  and prints what Apple's push service answered; every phone that ever
+  subscribed is listed with what it subscribed from — "iPhone, home-screen
+  app" against "iPhone, Safari", which is the fault nine times in ten — and
+  a timer that fell back to email says on its own page why the phone was
+  not reached.
 
 `public/assets/css/tokens.css` is still the only file that names a colour —
 including the two QR tokens, which are marked contrast-critical and must not

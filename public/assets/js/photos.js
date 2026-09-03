@@ -152,7 +152,9 @@
       clearError();
 
       var link = document.createElement('a');
-      link.href = data.url;
+      // The viewer page, not the raw file: it has a way back, which the
+      // home-screen app on an iPhone otherwise lacks (Phase 17).
+      link.href = data.view || data.url;
       link.target = '_blank';
       link.rel = 'noopener';
       var image = document.createElement('img');

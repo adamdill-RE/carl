@@ -9,6 +9,7 @@ use Carl\Domain\PlantingState;
 use Carl\Domain\ReminderKind;
 use Carl\Reminders\ReminderBuilder;
 use Carl\Support\Clock;
+use Carl\Support\Units;
 
 /**
  * The garden's dated facts, on a grid (Phase 9).
@@ -306,39 +307,186 @@ final class Calendar
             $min = self::dtm($planting, $overrides[$typeId] ?? [], 'min');
             $max = self::dtm($planting, $overrides[$typeId] ?? [], 'max');
 
-            if ($min !== null) {
-                $date = Clock::addDays($anchor, $min);
-                if ($date !== null) {
-                    $out[] = [
-                        'date'        => $date,
-                        'kind'        => ReminderKind::FIRST_HARVEST_EXPECTED,
-                        'label'       => 'Harvest',
-                        'title'       => $name . ' should be ready',
-                        'detail'      => 'Counted ' . $min . ' days from ' . $anchor
-                            . '. Days to maturity is a guide, not a promise.',
-                        'planting_id' => $plantingId,
-                        'projected'   => true,
-                    ];
-                }
-            }
-
-            if ($max !== null) {
-                $date = Clock::addDays($anchor, $max);
-                if ($date !== null) {
-                    $out[] = [
-                        'date'        => $date,
-                        'kind'        => ReminderKind::HARVEST_WINDOW_CLOSING,
-                        'label'       => 'Harvest',
-                        'title'       => $name . ': end of the expected window',
-                        'detail'      => 'Counted ' . $max . ' days from ' . $anchor . '.',
-                        'planting_id' => $plantingId,
-                        'projected'   => true,
-                    ];
-                }
+            $counted = (string) ($planting['dtm_counted_from'] ?? 'seed');
+            foreach (self::harvestEntries($name, $anchor, $counted, $min, $max) as $entry) {
+                $out[] = $entry + ['planting_id' => $plantingId, 'projected' => true];
             }
         }
 
         return $out;
+    }
+
+    /**
+     * The harvest as the research states it: a WINDOW, from the early end of
+     * days to maturity to the late end (Phase 17).
+     *
+     * "Days to maturity 18-45" is not two facts, it is one: the first
+     * radishes come at 18 days and the last worth pulling at 45, and every
+     * day between is a day to go and look. Drawn as two unlabelled "Harvest"
+     * chips -- which is what this did before -- the calendar read as two
+     * separate events with nothing between them. So the two ends are named
+     * for what they are, each carries the whole window in its words, and
+     * `harvestWindows()` gives the grid the span itself to draw.
+     *
+     * A single figure, or two that are the same, is still one date and is
+     * said as one: "should be ready", the way it always was, with a sentence
+     * saying why there is no window.
+     *
+     * @param string $countedFrom `dtm_counted_from`: seed or transplant
+     * @return list<array{date:string,kind:string,label:string,title:string,detail:string}>
+     */
+    public static function harvestEntries(string $name, string $anchor, string $countedFrom, ?int $min, ?int $max): array
+    {
+        $from = $min === null ? null : Clock::addDays($anchor, $min);
+        $to = $max === null ? null : Clock::addDays($anchor, $max);
+        $counted = self::countedFrom($countedFrom, $anchor);
+
+        if ($from !== null && $to !== null && $max > $min) {
+            $span = 'Days to maturity ' . $min . ' to ' . $max . ' from ' . $counted . ': the window runs '
+                . Units::longDate($from) . ' to ' . Units::longDate($to) . '.';
+            return [
+                [
+                    'date'   => $from,
+                    'kind'   => ReminderKind::FIRST_HARVEST_EXPECTED,
+                    'label'  => 'Harvest starts',
+                    'title'  => $name . ' harvest starts',
+                    'detail' => $span . ' A guide, not a promise -- go and look.',
+                ],
+                [
+                    'date'   => $to,
+                    'kind'   => ReminderKind::HARVEST_WINDOW_CLOSING,
+                    'label'  => 'Harvest ends',
+                    'title'  => $name . ' harvest window ends',
+                    'detail' => $span . ' Anything still coming after this is a bonus, and anything not '
+                        . 'picked is worth logging as a yield or a cull.',
+                ],
+            ];
+        }
+
+        if ($from !== null) {
+            return [[
+                'date'   => $from,
+                'kind'   => ReminderKind::FIRST_HARVEST_EXPECTED,
+                'label'  => 'Harvest',
+                'title'  => $name . ' should be ready',
+                'detail' => 'Counted ' . $min . ' days from ' . $counted . '. The research gives one figure, so '
+                    . 'there is no window to draw. Days to maturity is a guide, not a promise.',
+            ]];
+        }
+
+        if ($to !== null) {
+            return [[
+                'date'   => $to,
+                'kind'   => ReminderKind::HARVEST_WINDOW_CLOSING,
+                'label'  => 'Harvest',
+                'title'  => $name . ': end of the expected window',
+                'detail' => 'Counted ' . $max . ' days from ' . $counted . '.',
+            ]];
+        }
+
+        return [];
+    }
+
+    /**
+     * Every living planting's harvest window -- only where the research gives
+     * two different figures, because one figure is a date and not a span --
+     * for the band the grid draws and the list the day panel shows.
+     *
+     * Same anchor, same overrides, same arithmetic as the two entries above,
+     * so the band starts on the "starts" chip and ends on the "ends" chip.
+     *
+     * @param list<array<string,mixed>> $plantings
+     * @param list<array<string,mixed>> $windows
+     * @return list<array{planting_id:int,name:string,from:string,to:string,min:int,max:int,anchor:string,counted:string}>
+     */
+    public static function harvestWindows(array $plantings, array $windows): array
+    {
+        $overrides = self::overridesByType($windows);
+        $out = [];
+        foreach ($plantings as $planting) {
+            if ((string) $planting['state'] === PlantingState::ENDED) {
+                continue;
+            }
+            $anchor = ReminderBuilder::dtmAnchor($planting);
+            if ($anchor === null) {
+                continue;
+            }
+            $typeId = (int) $planting['plant_type_id'];
+            $min = self::dtm($planting, $overrides[$typeId] ?? [], 'min');
+            $max = self::dtm($planting, $overrides[$typeId] ?? [], 'max');
+            if ($min === null || $max === null || $max <= $min) {
+                continue;
+            }
+            $from = Clock::addDays($anchor, $min);
+            $to = Clock::addDays($anchor, $max);
+            if ($from === null || $to === null) {
+                continue;
+            }
+            $out[] = [
+                'planting_id' => (int) $planting['id'],
+                'name'        => self::name($planting),
+                'from'        => $from,
+                'to'          => $to,
+                'min'         => $min,
+                'max'         => $max,
+                'anchor'      => $anchor,
+                'counted'     => self::countedFrom((string) ($planting['dtm_counted_from'] ?? 'seed'), $anchor),
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * The dates in [$from, $to] that fall inside at least one window, with
+     * how many: what the grid reads to draw its band.
+     *
+     * @param list<array{from:string,to:string}> $windows
+     * @return array<string,int> date => windows open that day
+     */
+    public static function datesInWindows(array $windows, string $from, string $to): array
+    {
+        $out = [];
+        foreach ($windows as $window) {
+            $cursor = \max((string) $window['from'], $from);
+            $last = \min((string) $window['to'], $to);
+            while ($cursor <= $last) {
+                $out[$cursor] = ($out[$cursor] ?? 0) + 1;
+                $next = Clock::addDays($cursor, 1);
+                if ($next === null) {
+                    break;
+                }
+                $cursor = $next;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * The windows open on one day, each with where in itself that day is:
+     * "day 13 of 28".
+     *
+     * @param list<array<string,mixed>> $windows
+     * @return list<array<string,mixed>> the window rows plus `day` and `length`
+     */
+    public static function windowsOpenOn(array $windows, string $date): array
+    {
+        $out = [];
+        foreach ($windows as $window) {
+            if ($date < (string) $window['from'] || $date > (string) $window['to']) {
+                continue;
+            }
+            $out[] = $window + [
+                'day'    => (int) Clock::daysBetween((string) $window['from'], $date) + 1,
+                'length' => (int) Clock::daysBetween((string) $window['from'], (string) $window['to']) + 1,
+            ];
+        }
+        return $out;
+    }
+
+    /** "sowing on 1 May 2026", or "transplanting on 15 June 2026": the digest's own words for it. */
+    public static function countedFrom(string $countedFrom, string $anchor): string
+    {
+        return ReminderBuilder::countedFrom($countedFrom, $anchor);
     }
 
     /**
