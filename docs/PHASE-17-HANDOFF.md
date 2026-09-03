@@ -68,7 +68,9 @@ layout and a `flap_w`; the registration sheet draws the flap and the fold.
 its full stop (§3.2 there), and the menu drawer closes when keyboard focus
 leaves it (§3.5 there).
 
-Pull request: branch `claude/qr-mint-label-template-nk01ys`, one commit.
+Pull request: `adamdill-RE/carl#22`, branch
+`claude/qr-mint-label-template-nk01ys`, two commits, merged 2026-09-02. The
+second commit is §2.4: the suite was green on the wrong PHP.
 
 ---
 
@@ -191,6 +193,32 @@ name a position.
 on the box really is 00767, the display name in `LabelStock` is one string
 to change, and the geometry is the same sheet.
 
+### 2.4 The suite passed on PHP 8.4 and failed on PHP 8.2, and the host is 8.2
+
+The first push of this phase was red on both database jobs in CI and green
+here, on the same code and the same suite, for one reason: the machine this
+phase was built on runs PHP 8.4 and the host runs 8.2.33, which is also
+what CI pins (hosting §10). `openssl_pkey_new(['ec' => ['x' => …, 'y' =>
+…]])` returns a key object on both; on 8.2 OpenSSL then refuses to use it
+("Don't know how to get public key from this private key"), and every
+ECDH derivation and every VAPID verification failed there while the RFC
+vector matched byte for byte on 8.4.
+
+`Push\Vapid` now builds both halves as DER wrapped in PEM — RFC 5480
+SubjectPublicKeyInfo for the public key, RFC 5915 ECPrivateKey for the
+private one — which is a few fixed bytes around the point and the scalar
+and is read by every OpenSSL. The only `openssl_pkey_new()` left is the
+one that generates a fresh key from a curve name, which is fine
+everywhere. The vector still reproduces exactly.
+
+The lesson is the Phase 15 handoff's §8 addition, read literally: **a
+failure that only happens under a setting the development environment
+does not share survives every test that runs in the development
+environment.** PHP's minor version is such a setting. Until a session can
+run 8.2 locally, the first push of anything touching `openssl_*`,
+`mb_*` or date handling should be treated as the test, and CI's verdict as
+the one that counts.
+
 ---
 
 ## 3. Phase 17 — what is left
@@ -244,7 +272,7 @@ nothing in the bearer design precludes it.
 
 ## 4. What must not regress
 
-Everything in `PHASE-16-HANDOFF.md` §4 still applies. Phase 16 adds nine.
+Everything in `PHASE-16-HANDOFF.md` §4 still applies. Phase 16 adds ten.
 
 1. **The MCP endpoint never opens a stream and never sets a cookie.** A
    GET is 405; a response has `Content-Type: application/json` and no
@@ -275,6 +303,10 @@ Everything in `PHASE-16-HANDOFF.md` §4 still applies. Phase 16 adds nine.
 9. **`LabelStock` 00757 is one column of ten with `flap_w` equal to
    `label_w`**, pinned in `21_tags_test.php`. "Correcting" it back to two
    columns prints five codes into the flaps.
+10. **EC keys are built as PEM, never from raw coordinates.** §2.4. An
+    `openssl_pkey_new(['ec' => [...]])` with `x` and `y` in it passes the
+    suite on PHP 8.4 and fails on the host's 8.2, and CI is the only place
+    that will say so.
 
 ---
 
@@ -335,7 +367,7 @@ put in front of Claude Design:
 
 ## 7. Where the bodies are buried
 
-Everything in `PHASE-16-HANDOFF.md` §7 still applies. Phase 16 adds eight.
+Everything in `PHASE-16-HANDOFF.md` §7 still applies. Phase 16 adds nine.
 
 - **`Client::send()` now clears every `HTTP_*` key in `$_SERVER` between
   requests** except the user agent and the host. Before Phase 16 nothing
@@ -360,6 +392,10 @@ Everything in `PHASE-16-HANDOFF.md` §7 still applies. Phase 16 adds eight.
 - **The push `Topic` header is `carl-timer` for every timer**, so a phone
   that was off for an hour gets the latest, not all six. If two timers end
   a minute apart and the phone was on, it gets both; if it was off, one.
+- **`Vapid::derToRaw()` and the PEM builders assume P-256.** The SPKI
+  prefix and the ECPrivateKey parameters both carry the prime256v1 OID as
+  fixed bytes. A different curve is a different constant, and nothing
+  checks the curve of a point it is handed beyond its length.
 - **The screenshot user.** The three screens were looked at in a browser at
   380 px, light and dark, against `php -S … dev-router.php` and a user made
   by a throwaway script, as §8 asks; that is how the two-buttons-at-once
