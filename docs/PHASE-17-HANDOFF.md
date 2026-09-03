@@ -321,10 +321,16 @@ deploy.
 1. **Apply migrations 026 and 027** at `/setup?key=` straight after the
    file copy. The garden actions page and the main menu are 500 until 027
    runs. The same press generates the push key pair; the flash says so.
-2. **Add the per-minute cron entry** from `deploy.md` §7. Then open
-   `/status?key=`: `TIMERS` should say `push key present` and, after the
-   first timer finishes, a `last fired` time. `overdue` above zero means
-   the entry is not there.
+2. ~~**Add the per-minute cron entry** from `deploy.md` §7.~~ **Done
+   2026-09-02.** The cPanel cron table now matches §7's seven rows exactly:
+   the per-minute timer job is in, the hourly `analysis_run.php` at minute
+   40 is in (it had been missing since Phase 5, so the Recommendations
+   queue had never drained), and the two stale rows every handoff since
+   Phase 4 asked to delete — the `15 6` duplicate weather sync and the
+   `17 8` spike-3 `--verbose` job — are gone. `carl-app/var/cron-test.log`
+   can go too. After the deploy, open `/status?key=`: `TIMERS` should say
+   `push key present` and, after the first timer finishes, a `last fired`
+   time. `overdue` above zero means the timer entry has stopped running.
 3. **Comment `setup_key` back out.**
 4. **Print the 00757 registration sheet** — mint one sheet, open its
    registration test, plain paper, 100% — and hold it against the film. The
