@@ -323,7 +323,7 @@
       return [line('et0', 'ET₀', colours.et0, [5, 4])];
     }
     if (layer.key === 'balance') {
-      return [line('balance', 'Rain minus ET₀', colours.water, [2, 3])];
+      return [line('balance', 'Rain + watering − ET₀', colours.water, [2, 3])];
     }
     if (layer.key === 'gdd') {
       return [line('gdd', 'GDD to date', colours.et0)];

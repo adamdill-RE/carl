@@ -456,7 +456,10 @@ $t->test('inactivity nudges once, and then stops until something is logged',
         ['id' => $idleId]
     );
 
-    // A planting with one event, ten days ago.
+    // A planting with one event, ten days ago -- written ten days ago too.
+    // Since Phase 18 the day an entry was WRITTEN counts as activity, so the
+    // fixture dates its created_at rather than leaving it at the wall clock,
+    // which would make a ten-day-old sowing look logged this morning.
     $typeId = (int) $db->value('SELECT id FROM `plant_type` ORDER BY id LIMIT 1');
     $plantingId = (new PlantingRepository($db, $idleId))->insert([
         'plant_type_id'    => $typeId,
@@ -468,8 +471,12 @@ $t->test('inactivity nudges once, and then stops until something is logged',
         'state_changed_at' => \gmdate('Y-m-d H:i:s'),
     ]);
     $db->run(
+        "UPDATE `planting` SET `created_at` = '2026-06-05 12:00:00' WHERE `id` = :p",
+        ['p' => $plantingId]
+    );
+    $db->run(
         'INSERT INTO `plant_event` (user_id, planting_id, event_type, event_date, recorded_at, created_at)'
-        . " VALUES (:u, :p, 'direct_sown', '2026-06-05', UTC_TIMESTAMP(), UTC_TIMESTAMP())",
+        . " VALUES (:u, :p, 'direct_sown', '2026-06-05', '2026-06-05 12:00:00', '2026-06-05 12:00:00')",
         ['u' => $idleId, 'p' => $plantingId]
     );
 
@@ -674,4 +681,122 @@ $t->test('twenty users cost about as many statements as one',
     // measured 0.81 ms round trip is most of a second of pure latency
     // (Phase 3 handoff Section 1.4).
     $t->ok($spent <= 10, 'the builder spent ' . $spent . ' statements on 20 users');
+});
+
+$t->group('Phase 18: the nudge sees every kind of entry, and the heat is in the gardener\'s unit');
+
+$t->test('a watering logged against a garden zone is activity, even with nothing in the rows',
+    function ($t) use ($db, $makeUser, $suffix, $atUtc): void {
+    // The Phase 18 report: "you haven't updated" emails to somebody who
+    // watered the beds every evening. Zone watering writes a garden_event
+    // and fans out to plant_event only where the zone's rows hold living
+    // plants -- and the nudge read plant_event alone.
+    $waterer = $makeUser('zoner' . $suffix, 'UTC');
+    $typeId = (int) $db->value('SELECT id FROM `plant_type` ORDER BY id LIMIT 1');
+    $db->run(
+        'INSERT INTO `garden` (user_id, name, row_count, created_at, updated_at)'
+        . " VALUES (:u, 'Zoned bed', 1, '2026-05-01 12:00:00', '2026-05-01 12:00:00')",
+        ['u' => $waterer['id']]
+    );
+    $gardenId = $db->insertId();
+    $plantingId = (new PlantingRepository($db, $waterer['id']))->insert([
+        'plant_type_id'    => $typeId,
+        'start_method'     => 'direct_sow',
+        'start_date'       => '2026-05-25',
+        'quantity_initial' => 1,
+        'quantity_live'    => 1,
+        'state'            => 'planted',
+        'state_changed_at' => \gmdate('Y-m-d H:i:s'),
+    ]);
+    $db->run("UPDATE `planting` SET `created_at` = '2026-05-25 12:00:00' WHERE `id` = :p",
+        ['p' => $plantingId]);
+    $db->run(
+        'INSERT INTO `plant_event` (user_id, planting_id, event_type, event_date, recorded_at, created_at)'
+        . " VALUES (:u, :p, 'direct_sown', '2026-05-25', '2026-05-25 12:00:00', '2026-05-25 12:00:00')",
+        ['u' => $waterer['id'], 'p' => $plantingId]
+    );
+    // Three weeks of nothing on the plant; the beds watered two days ago.
+    $db->run(
+        'INSERT INTO `garden_event` (user_id, garden_id, event_type, event_date, recorded_at,'
+        . ' duration_min, created_at)'
+        . " VALUES (:u, :g, 'watered', '2026-06-13', '2026-06-13 19:00:00', 20, '2026-06-13 19:00:00')",
+        ['u' => $waterer['id'], 'g' => $gardenId]
+    );
+
+    (new Digest($atUtc('2026-06-15 12:00:00')))->run($waterer['id'], true);
+    $t->same(0, (int) $db->value(
+        'SELECT COUNT(*) FROM `reminder` WHERE `user_id` = :id AND `kind` = :k',
+        ['id' => $waterer['id'], 'k' => ReminderKind::INACTIVITY], 0
+    ), 'a garden watering two days ago is not "nothing logged"');
+});
+
+$t->test('an old event written today is activity today', function ($t) use ($db, $makeUser, $suffix, $atUtc): void {
+    // Logging last week's sowing this morning is somebody keeping the record.
+    $keeper = $makeUser('keeper' . $suffix, 'UTC');
+    $typeId = (int) $db->value('SELECT id FROM `plant_type` ORDER BY id LIMIT 1');
+    $plantingId = (new PlantingRepository($db, $keeper['id']))->insert([
+        'plant_type_id'    => $typeId,
+        'start_method'     => 'direct_sow',
+        'start_date'       => '2026-05-25',
+        'quantity_initial' => 1,
+        'quantity_live'    => 1,
+        'state'            => 'planted',
+        'state_changed_at' => \gmdate('Y-m-d H:i:s'),
+    ]);
+    $db->run("UPDATE `planting` SET `created_at` = '2026-05-25 12:00:00' WHERE `id` = :p",
+        ['p' => $plantingId]);
+    $db->run(
+        'INSERT INTO `plant_event` (user_id, planting_id, event_type, event_date, recorded_at, created_at)'
+        . " VALUES (:u, :p, 'direct_sown', '2026-05-25', '2026-06-14 08:00:00', '2026-06-14 08:00:00')",
+        ['u' => $keeper['id'], 'p' => $plantingId]
+    );
+
+    (new Digest($atUtc('2026-06-15 12:00:00')))->run($keeper['id'], true);
+    $t->same(0, (int) $db->value(
+        'SELECT COUNT(*) FROM `reminder` WHERE `user_id` = :id AND `kind` = :k',
+        ['id' => $keeper['id'], 'k' => ReminderKind::INACTIVITY], 0
+    ), 'the day it was written counts, not only the day it is about');
+});
+
+$t->test('the heat watch says the temperature the way the gardener reads it',
+    function ($t) use ($app, $db, $userId, $atUtc): void {
+    // "Heat tomorrow: 35 C forecast" in a Fahrenheit household reads as a
+    // mild day. The column is Celsius (weather.md Section 6.3); the title
+    // is not.
+    $locationId = (int) $db->value('SELECT weather_location_id FROM `user` WHERE id = :id',
+        ['id' => $userId]);
+    $t->ok($locationId > 0, 'the digest tester has a weather location');
+    $typeId = (int) ($db->value(
+        'SELECT id FROM `plant_type` WHERE heat_tolerant = 0 ORDER BY id LIMIT 1'
+    ) ?? 0);
+    $t->ok($typeId > 0, 'the research has a type that is not heat tolerant');
+
+    $gardenId = (int) (new \Carl\Repo\GardenRepository($db, $userId))->activeGardens()[0]['id'];
+    (new PlantingRepository($db, $userId))->insert([
+        'plant_type_id'    => $typeId,
+        'garden_id'        => $gardenId,
+        'start_method'     => 'direct_sow',
+        'start_date'       => '2026-07-01',
+        'in_ground_date'   => '2026-07-01',
+        'quantity_initial' => 1,
+        'quantity_live'    => 1,
+        'state'            => 'planted',
+        'state_changed_at' => \gmdate('Y-m-d H:i:s'),
+    ]);
+    $db->run(
+        'INSERT INTO `weather_forecast` (location_id, forecast_date, issued_at, temp_max_c, temp_min_c,'
+        . ' precip_mm, et0_mm) VALUES (:l, :d, UTC_TIMESTAMP(), 36.0, 24.0, 0, 6.0)'
+        . ' ON DUPLICATE KEY UPDATE `temp_max_c` = 36.0',
+        ['l' => $locationId, 'd' => '2026-07-21']
+    );
+
+    $t->same('us', $app->config()->string('units', 'us'), 'the suite runs in the US units the owner reads');
+    (new Digest($atUtc('2026-07-20 12:00:00')))->run($userId, true);
+
+    $title = (string) $db->value(
+        'SELECT title FROM `reminder` WHERE `user_id` = :id AND `kind` = :k AND `due_date` = :d',
+        ['id' => $userId, 'k' => ReminderKind::HEAT_WATCH, 'd' => '2026-07-20']
+    );
+    $t->same("Heat tomorrow: 97\u{00B0}F forecast", $title);
+    $t->notContains(' C forecast', $title);
 });

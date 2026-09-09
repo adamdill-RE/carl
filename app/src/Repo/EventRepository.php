@@ -6,6 +6,7 @@ namespace Carl\Repo;
 
 use Carl\Domain\EventType;
 use Carl\Domain\PlantingState;
+use Carl\Weather\IrrigationLedger;
 
 /**
  * The append-only event log (handoff Sections 4.4, 4.7, 5.3).
@@ -71,7 +72,55 @@ final class EventRepository extends Repository
         // write rather than only on the ones that look like transitions.
         $this->plantings->recomputeState($plantingId);
 
+        if (IrrigationLedger::affectsBalance($eventType)) {
+            $this->invalidateWatering($eventDate, null, $plantingId);
+        }
+
         return $eventId;
+    }
+
+    /**
+     * A watering or a mulch moves the checkbook from its date on, so every
+     * stored recommendation row AFTER that date is wrong the moment the
+     * event exists (Phase 18). This deletes them. WateringModel::resume()
+     * walks forward from the newest row still standing, so the next run --
+     * the controller's refresh on this same request, or tonight's cron --
+     * rebuilds exactly the span this event touches and nothing more.
+     *
+     * Before this, the walk resumed from the newest row and never looked
+     * back: last night's watering, logged this morning, was stepped over
+     * and never counted, and the reason text kept saying the bed was dry.
+     *
+     * An event dated today deletes nothing. Today's row is the balance at
+     * the START of today (handoff Section 11), and tonight's run is the one
+     * that counts a watering done today.
+     */
+    private function invalidateWatering(string $eventDate, ?int $gardenId, ?int $plantingId): void
+    {
+        if ($gardenId !== null) {
+            $this->db->run(
+                'DELETE FROM `watering_recommendation`'
+                . ' WHERE `user_id` = :user_id AND `garden_id` = :garden_id AND `for_date` > :for_date',
+                ['user_id' => $this->userId, 'garden_id' => $gardenId, 'for_date' => $eventDate]
+            );
+            return;
+        }
+        if ($plantingId === null) {
+            return;
+        }
+        // The planting's place, whichever kind it is. `garden_id = NULL` is
+        // never true, so a container planting deletes only container rows.
+        $this->db->run(
+            'DELETE FROM `watering_recommendation`'
+            . ' WHERE `user_id` = :user_id AND `for_date` > :for_date AND ('
+            . '   `garden_id` = (SELECT p1.garden_id FROM `planting` p1'
+            . '                  WHERE p1.id = :planting_a AND p1.user_id = :user_a)'
+            . '   OR `container_id` = (SELECT p2.container_id FROM `planting` p2'
+            . '                        WHERE p2.id = :planting_b AND p2.user_id = :user_b))',
+            ['user_id' => $this->userId, 'for_date' => $eventDate,
+             'planting_a' => $plantingId, 'user_a' => $this->userId,
+             'planting_b' => $plantingId, 'user_b' => $this->userId]
+        );
     }
 
     /**
@@ -526,6 +575,10 @@ final class EventRepository extends Repository
         $fanout = 0;
         if ($fanOutToPlants) {
             $fanout = $this->fanOut($eventId, $gardenId, $eventType, $eventDate, $rowIds, $columns);
+        }
+
+        if (IrrigationLedger::affectsBalance($eventType)) {
+            $this->invalidateWatering($eventDate, $gardenId, null);
         }
 
         return ['event_id' => $eventId, 'fanout' => $fanout];

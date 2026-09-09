@@ -725,7 +725,8 @@ $t->test('the weather series costs the same planting the same before and after a
         new EventRepository($db, $owner['id'], $plantings),
         new GardenRepository($db, $owner['id']),
         new Carl\Repo\WeatherRepository($db),
-        $app->units()
+        $app->units(),
+        new Carl\Weather\IrrigationLedger($db)
     );
     $locationId = (int) $db->value(
         'SELECT weather_location_id FROM `user` WHERE id = :id', ['id' => $owner['id']]
@@ -748,7 +749,8 @@ $t->test('the weather series costs the same planting the same before and after a
     $series->forPlanting($id, $locationId, $today);
     $split = $db->statementCount() - $before;
 
-    $t->same(3, $unsplit, 'one for the planting, one for the weather, one for the events');
+    $t->same(4, $unsplit,
+        'one for the planting, one for the weather, one for the events, one for the water put down');
     $t->same($unsplit, $split,
         'after the split it cost ' . $split . ' statements; before, ' . $unsplit);
 });

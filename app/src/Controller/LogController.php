@@ -147,6 +147,7 @@ final class LogController extends Controller
 
         $eventId = $this->events()->record($plantingId, $eventType, $eventDate, $data);
         $this->afterRecord($request, $eventType, $plantingId, $eventId, $eventDate, $data);
+        $this->refreshWatering($eventType);
 
         $this->flash(EventType::label($eventType) . ' recorded for '
             . $planting['category'] . ' ' . $planting['type'] . '.');
@@ -416,6 +417,8 @@ final class LogController extends Controller
             $this->afterRecord($request, $eventType, $plantingId, $eventId, $eventDate, $data);
             $movedWhole++;
         }
+        // Once for the batch, not once per plant: the walk is per place.
+        $this->refreshWatering($eventType);
 
         $said = [];
         if ($movedWhole > 0) {

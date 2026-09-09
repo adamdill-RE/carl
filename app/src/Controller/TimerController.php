@@ -136,6 +136,7 @@ final class TimerController extends Controller
             $zoneId !== null,
         );
         $timers->markLogged($id, $result['event_id']);
+        $this->refreshWatering(EventType::WATERED);
 
         $message = 'Watering recorded';
         if ($result['fanout'] > 0) {

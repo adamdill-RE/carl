@@ -448,6 +448,7 @@ final class GardenController extends Controller
         if ($photoIds !== []) {
             $this->photos()->attachToGardenEvent($photoIds, $result['event_id']);
         }
+        $this->refreshWatering($eventType);
 
         $message = EventType::label($eventType) . ' recorded';
         if ($result['fanout'] > 0) {

@@ -80,7 +80,7 @@ final class Digest
                     'failures' => 0, 'log' => $this->log];
         }
 
-        $built = (new ReminderBuilder($this->db))->build($due, $todayByUser);
+        $built = (new ReminderBuilder($this->db, $this->app->units()))->build($due, $todayByUser);
 
         $stored = 0;
         $queued = 0;

@@ -215,6 +215,7 @@ final class TagController extends Controller
         }
 
         $this->events()->record($plantingId, $eventType, $this->today());
+        $this->refreshWatering($eventType);
 
         $this->flash(\Carl\Domain\EventType::label($eventType) . ' recorded for '
             . self::plantName($tag) . '.');

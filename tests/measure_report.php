@@ -63,7 +63,8 @@ $photos = new Photos(
 );
 $builder = new PdfBuilder($photos, $app->units(), new Tokens($app->publicPath() . '/assets/css/tokens.css'));
 $series = new Series(
-    $plantings, $events, new GardenRepository($db, $userId), new WeatherRepository($db), $app->units()
+    $plantings, $events, new GardenRepository($db, $userId), new WeatherRepository($db), $app->units(),
+    new Carl\Weather\IrrigationLedger($db)
 );
 
 $locationId = $db->value('SELECT weather_location_id FROM `user` WHERE id = :id', ['id' => $userId]);

@@ -153,7 +153,8 @@ $plantingId = $plantings->insert([
     'state_changed_at' => \gmdate('Y-m-d H:i:s'),
 ]);
 
-$series = new Series($plantings, $events, $gardens, $weather, $units);
+$series = new Series($plantings, $events, $gardens, $weather, $units,
+    new Carl\Weather\IrrigationLedger($db));
 
 /** The document as the browser sees it. */
 $document = static function () use ($series, $plantingId, $locationId, $today): array {
@@ -360,7 +361,8 @@ $t->test('the whole document is still one statement for weather and one for even
     $doc = $series->forPlanting($plantingId, $locationId, $today);
     $spent = $db->statementCount() - $before;
 
-    $t->same(3, $spent, 'one for the planting, one for the weather, one for the events');
+    $t->same(4, $spent,
+        'one for the planting, one for the weather, one for the events, one for the water put down');
     $t->ok(\count($doc['plant']['dates']) > 25,
         'over a spine of ' . \count($doc['plant']['dates']) . ' days');
 });

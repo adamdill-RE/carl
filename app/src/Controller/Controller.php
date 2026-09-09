@@ -135,6 +135,19 @@ abstract class Controller
     }
 
     /**
+     * After a watering or a mulch is logged: bring the stored rows the event
+     * invalidated back up to date, on this request (Phase 18). Anything
+     * else logged is a no-op here. Not render -- a write -- and never a
+     * fetch: the model reads only what the cron already stored.
+     */
+    protected function refreshWatering(string $eventType): void
+    {
+        if (\Carl\Weather\IrrigationLedger::affectsBalance($eventType)) {
+            (new \Carl\Weather\WateringModel($this->app))->refresh($this->userId());
+        }
+    }
+
+    /**
      * QR plant tags (docs/QR-TAGS-SPEC.md).
      *
      * Four controllers reach for this now -- the tag screens, the plant page,
@@ -162,6 +175,7 @@ abstract class Controller
             $this->gardens(),
             $this->weather(),
             $this->app->units(),
+            new \Carl\Weather\IrrigationLedger($this->app->db()),
         );
     }
 
