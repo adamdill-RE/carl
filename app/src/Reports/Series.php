@@ -13,6 +13,7 @@ use Carl\Repo\WeatherRepository;
 use Carl\Support\Attribution;
 use Carl\Support\Clock;
 use Carl\Support\Units;
+use Carl\Weather\IrrigationLedger;
 
 /**
  * The data behind a report: the weather over a subject's covered dates, and
@@ -65,6 +66,7 @@ final class Series
         private GardenRepository $gardens,
         private WeatherRepository $weather,
         private Units $units,
+        private IrrigationLedger $irrigation,
     ) {
     }
 
@@ -102,6 +104,9 @@ final class Series
         );
 
         $markers = $this->events->seriesMarkers((int) $planting['id']);  // 1 statement, user-scoped
+        $watered = $from > $to ? [] : $this->irrigation->forPlanting(     // 1 statement
+            $this->plantings->userId(), (int) $planting['id'], $from, $to
+        );
 
         return $this->assemble(
             [
@@ -123,7 +128,8 @@ final class Series
             $to,
             $clamped,
             $locationId,
-            $markers
+            $markers,
+            $watered
         );
     }
 
@@ -154,6 +160,9 @@ final class Series
         );
 
         $markers = $this->events->gardenSeriesMarkers($gardenId);       // 1 statement, user-scoped
+        $watered = $from > $to ? [] : $this->irrigation->forGarden(       // 1 statement
+            $this->gardens->userId(), $gardenId, $from, $to
+        );
 
         return $this->assemble(
             [
@@ -168,7 +177,8 @@ final class Series
             $to,
             $clamped,
             $locationId,
-            $markers
+            $markers,
+            $watered
         );
     }
 
@@ -180,8 +190,16 @@ final class Series
      * would answer the same two questions the rows in hand answer -- and the
      * plant page used to spend them (series + gapCount + sourceModels).
      *
+     * The watering is the ledger's, per day (Phase 18): what the gardener
+     * put down, by the zone's emitters or the method's rate, in the same
+     * arithmetic the nightly checkbook uses. It goes into the balance,
+     * because a "water balance" that left out every watering was rain minus
+     * ET0 wearing the wrong name -- and it is the number a person checks
+     * against the emitter figures they typed onto the zone.
+     *
      * @param array<string,mixed> $subject
      * @param list<array<string,mixed>> $markers
+     * @param list<array<string,mixed>> $watered  ledger rows, see IrrigationLedger
      * @return array<string,mixed>
      */
     private function assemble(
@@ -191,10 +209,12 @@ final class Series
         bool $clamped,
         ?int $locationId,
         array $markers,
+        array $watered,
     ): array {
         $rows = $locationId === null || $from > $to
             ? []
             : $this->weather->series($locationId, $from, $to);          // 1 statement
+        $irrigation = IrrigationLedger::byDate($watered);
 
         $days = [];
         $models = [];
@@ -205,6 +225,7 @@ final class Series
         // units would round every day before adding it up.
         $rainMm = 0.0;
         $et0Mm = 0.0;
+        $wateredMm = 0.0;
         $hottestC = null;
         $coldestC = null;
 
@@ -218,6 +239,8 @@ final class Series
 
             $rainMm += (float) ($row['precip_mm'] ?? 0);
             $et0Mm += (float) ($row['et0_mm'] ?? 0);
+            $appliedMm = $irrigation[(string) $row['obs_date']]['mm'] ?? 0.0;
+            $wateredMm += $appliedMm;
             if ($row['temp_max_c'] !== null && ($hottestC === null || (float) $row['temp_max_c'] > $hottestC)) {
                 $hottestC = (float) $row['temp_max_c'];
             }
@@ -231,7 +254,12 @@ final class Series
                 'temp_min'    => $this->units->temperatureValue($row['temp_min_c'], 1),
                 'rain'        => $this->units->rainValue($row['precip_mm'], 3),
                 'et0'         => $this->units->rainValue($row['et0_mm'], 3),
-                'balance'     => $this->units->rainValue($row['water_balance_mm'], 3),
+                'watered'     => $this->units->rainValue($appliedMm, 3),
+                // Rain plus watering, minus ET0. Null stays null: a day the
+                // archive has no balance for is not made whole by a hose.
+                'balance'     => $row['water_balance_mm'] === null
+                    ? null
+                    : $this->units->rainValue((float) $row['water_balance_mm'] + $appliedMm, 3),
                 'code'        => $row['weather_code'] === null ? null : (int) $row['weather_code'],
                 'provisional' => $isProvisional,
             ];
@@ -263,7 +291,8 @@ final class Series
             'totals' => [
                 'rain'        => $this->units->rain($rainMm),
                 'et0'         => $this->units->rain($et0Mm),
-                'balance'     => $this->units->rain($rainMm - $et0Mm),
+                'watered'     => $this->units->rain($wateredMm),
+                'balance'     => $this->units->rain($rainMm + $wateredMm - $et0Mm),
                 'temp_range'  => $this->units->temperatureRange($hottestC, $coldestC),
             ],
             'days'        => $days,
@@ -368,6 +397,7 @@ final class Series
             'temp_min'         => [],
             'rain'             => [],
             'et0'              => [],
+            'watered'          => [],
             'balance'          => [],
             'gdd'              => [],
             'provisional'      => [],
@@ -405,6 +435,7 @@ final class Series
             $out['temp_min'][]    = $day === null ? null : $day['temp_min'];
             $out['rain'][]        = $day === null ? null : $day['rain'];
             $out['et0'][]         = $day === null ? null : $day['et0'];
+            $out['watered'][]     = $day === null ? null : $day['watered'];
             $out['balance'][]     = $day === null ? null : $day['balance'];
             $out['provisional'][] = $day !== null && $day['provisional'] === true;
 

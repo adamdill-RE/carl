@@ -100,7 +100,16 @@ final class MenuController extends Controller
         }
         $timers = (new \Carl\Repo\TimerRepository($this->app->db(), $this->userId()))->running();
 
+        // What was logged TODAY under each place (Phase 18). The stored row
+        // is the balance at the start of the day and cannot carry this
+        // morning's watering; without a line saying it was heard, "Water
+        // today" an hour after the hose went away reads as a model that
+        // ignores the log. One statement, only when there is a row to sit
+        // under.
+        $loggedToday = $watering === [] ? [] : $this->loggedToday($today);
+
         return $this->render('menu', [
+            'loggedToday'   => $loggedToday,
             'weather'       => $weather,
             'watering'      => $watering,
             'items'         => $items,
@@ -119,6 +128,32 @@ final class MenuController extends Controller
             'timers'        => $timers,
             'timerZone'     => $this->app->clock()->zone($user->tz()),
         ]);
+    }
+
+    /**
+     * "45 min on Drip east, about 0.3 in" per place key, from the ledger.
+     *
+     * @return array<string,array{lines:list<string>,depth:string}>
+     */
+    private function loggedToday(string $today): array
+    {
+        $ledger = new \Carl\Weather\IrrigationLedger($this->app->db());
+        $units = $this->app->units();
+        $out = [];
+        foreach ($ledger->loggedOn($this->userId(), $today) as $placeKey => $rows) {
+            $lines = [];
+            $mm = 0.0;
+            foreach (\Carl\Weather\IrrigationLedger::byDate($rows) as $day) {
+                $mm += $day['mm'];
+            }
+            foreach ($rows as $row) {
+                $depth = \Carl\Weather\IrrigationLedger::depthOf($row);
+                $minutes = (int) ($row['duration_min'] ?? 0);
+                $lines[] = ($minutes > 0 ? $minutes . ' min on ' : 'watered, no duration, ') . $depth['label'];
+            }
+            $out[$placeKey] = ['lines' => $lines, 'depth' => $units->rain($mm)];
+        }
+        return $out;
     }
 
     public function dismiss(Request $request): Response

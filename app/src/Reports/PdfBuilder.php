@@ -312,7 +312,9 @@ final class PdfBuilder
                 'Days covered' => (string) $range['days_held'],
                 'Total rain'   => $series['totals']['rain'],
                 'Total ET0'    => $series['totals']['et0'],
-                'Water balance' => $series['totals']['balance'] . '  (rain minus evapotranspiration)',
+                'Watering logged' => $series['totals']['watered'],
+                'Water balance' => $series['totals']['balance']
+                    . '  (rain plus watering, minus evapotranspiration)',
                 'Hottest / coldest' => $series['totals']['temp_range'],
             ]);
         }

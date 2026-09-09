@@ -354,7 +354,8 @@ final class Tools
 
         if ($plantId !== null || $gardenId !== null) {
             $series = new Series($this->plantings(), $this->events(), $this->gardens(),
-                $this->weatherRepo(), $this->app->units());
+                $this->weatherRepo(), $this->app->units(),
+                new \Carl\Weather\IrrigationLedger($this->app->db()));
             return $plantId !== null
                 ? $series->forPlanting($plantId, $locationId, $this->today)
                 : $series->forGarden((int) $gardenId, $locationId, $this->today);

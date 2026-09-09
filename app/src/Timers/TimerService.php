@@ -17,6 +17,7 @@ use Carl\Repo\GardenRepository;
 use Carl\Repo\PlantingRepository;
 use Carl\Repo\PushSubscriptionRepository;
 use Carl\Repo\TimerRepository;
+use Carl\Weather\WateringModel;
 use Throwable;
 
 /**
@@ -211,6 +212,11 @@ final class TimerService
             $zoneId,
             $zoneId !== null,
         );
+
+        // A timer that logs itself is a watering logged today: it moves
+        // nothing until tonight's run, but the same refresh the form does
+        // keeps the two paths identical (Phase 18).
+        (new WateringModel($this->app))->refresh($userId);
 
         return $result['event_id'];
     }

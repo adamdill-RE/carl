@@ -47,8 +47,17 @@ final class ReminderBuilder
     /** The biofix a pest row falls back to when the dataset leaves it empty. */
     private const GDD_DEFAULT_BIOFIX = '01-01';
 
-    public function __construct(private Database $db)
+    /** The gardener's display units, for the one title that prints a number. */
+    private Units $units;
+
+    /**
+     * @param Units|null $units how a temperature is written; the config's
+     *        system (config/app.php 'units'). Null is the US default, so
+     *        the tests and the older callers need not know.
+     */
+    public function __construct(private Database $db, ?Units $units = null)
     {
+        $this->units = $units ?? new Units();
     }
 
     /**
@@ -236,10 +245,37 @@ final class ReminderBuilder
         }
 
         // 8. Last activity per user, for the inactivity nudge.
+        //
+        //    EVERY kind of entry counts, not only a plant event (Phase 18).
+        //    Until Phase 18 this read plant_event alone, and a watering
+        //    logged against a garden zone -- which is how most watering is
+        //    logged -- writes a garden_event and fans out to plant_event
+        //    only where the zone's rows hold living plants. A gardener who
+        //    watered the beds every evening and had nothing in a row yet was
+        //    told they had logged nothing. So: plant events, garden events,
+        //    photographs and new plantings, and the LATER of the entry's own
+        //    date and the day it was written, because logging today an event
+        //    that happened last week is activity today. One statement.
+        //    Four IN lists, each with its own placeholders: with emulation
+        //    off a name cannot be bound twice in one statement (hosting 7).
         $activityParams = $params;
+        $inGardenEvents = self::inClause($userIds, 'ge', $activityParams);
+        $inPhotos = self::inClause($userIds, 'ph', $activityParams);
+        $inPlantings = self::inClause($userIds, 'pl', $activityParams);
         $activity = $this->db->all(
-            'SELECT `user_id`, MAX(`event_date`) AS last_date FROM `plant_event`'
-            . ' WHERE `user_id` ' . $in . ' GROUP BY `user_id`',
+            'SELECT `user_id`, MAX(`last_date`) AS last_date FROM ('
+            . '   SELECT `user_id`, MAX(GREATEST(`event_date`, DATE(`created_at`))) AS last_date'
+            . '     FROM `plant_event` WHERE `user_id` ' . $in . ' GROUP BY `user_id`'
+            . ' UNION ALL'
+            . '   SELECT `user_id`, MAX(GREATEST(`event_date`, DATE(`created_at`)))'
+            . '     FROM `garden_event` WHERE `user_id` ' . $inGardenEvents . ' GROUP BY `user_id`'
+            . ' UNION ALL'
+            . '   SELECT `user_id`, MAX(GREATEST(`taken_on`, DATE(`created_at`)))'
+            . '     FROM `photo` WHERE `user_id` ' . $inPhotos . ' GROUP BY `user_id`'
+            . ' UNION ALL'
+            . '   SELECT `user_id`, MAX(DATE(`created_at`))'
+            . '     FROM `planting` WHERE `user_id` ' . $inPlantings . ' GROUP BY `user_id`'
+            . ' ) latest GROUP BY `user_id`',
             $activityParams
         );
         $lastActivity = [];
@@ -688,7 +724,9 @@ final class ReminderBuilder
             'subject_key' => '-',
             'kind'        => ReminderKind::HEAT_WATCH,
             'due_date'    => $today,
-            'title'       => 'Heat tomorrow: ' . \round($tmax) . ' C forecast',
+            // In the gardener's unit, not the column's: "35 C" in a
+            // Fahrenheit household reads as a mild day (Phase 18).
+            'title'       => 'Heat tomorrow: ' . $this->units->temperature($tmax) . ' forecast',
             'body'        => 'Shade cloth and a deep watering before the heat, not during it. '
                 . 'Not marked heat tolerant in your garden: ' . \implode(', ', \array_slice($names, 0, 8))
                 . (\count($names) > 8 ? ' and others' : '') . '.',

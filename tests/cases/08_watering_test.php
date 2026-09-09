@@ -513,6 +513,81 @@ $t->test('a zone that knows its emitters is counted by them, and says how long t
     $t->contains('about 0.4 in/h', $page);
 });
 
+$t->test('a watering logged after its day\'s row exists is counted from that day on',
+    function ($t) use ($client, $db, $app, $userId, $gardenId, $today, $placeKey): void {
+    // Phase 18. Until now the walk resumed from the newest stored row and
+    // never looked back, so a watering logged for a day already computed --
+    // last night's, logged this morning -- was stepped over for good. The
+    // test above had to DELETE rows by hand to see the emitters counted.
+    $zone = $db->one('SELECT * FROM `water_zone` WHERE garden_id = :g AND name = :n',
+        ['g' => $gardenId, 'n' => 'Zone B']);
+    $t->ok($zone !== null, 'Zone B is still there');
+
+    // Everything through today is stored. Log half an hour three days ago.
+    (new WateringModel($app))->run($userId);
+    $threeDaysAgo = (string) Clock::addDays($today, -3);
+    $twoDaysAgo = (string) Clock::addDays($today, -2);
+    $runsBefore = (int) $db->value(
+        "SELECT COUNT(*) FROM `weather_sync_run` WHERE kind = 'recommend'", [], 0);
+
+    $client->post('/gardens/' . $gardenId . '/actions', [
+        'event_type' => EventType::WATERED, 'water_zone_id' => (string) $zone['id'],
+        'duration_min' => '30', 'event_date' => $threeDaysAgo,
+    ]);
+
+    // No hand-delete, no cron: the request refreshed the rows it invalidated.
+    $dayAfter = $db->one(
+        'SELECT * FROM `watering_recommendation` WHERE place_key = :k AND for_date = :d',
+        ['k' => $placeKey, 'd' => $twoDaysAgo]
+    );
+    $t->ok($dayAfter !== null, 'the day after the watering has a row again');
+    // 10.186 mm/h gross for half an hour, 80 per cent of it: 4.07 mm.
+    $t->same(4.07, (float) $dayAfter['irrigation_mm'],
+        'and it carries the watering, by the zone\'s emitters');
+    $t->contains('you watered about 4 mm', (string) $dayAfter['reason_text']);
+
+    $todayRow = $db->one(
+        'SELECT * FROM `watering_recommendation` WHERE place_key = :k AND for_date = :d',
+        ['k' => $placeKey, 'd' => $today]
+    );
+    $t->ok($todayRow !== null, 'the walk came all the way back to today');
+    $t->same($runsBefore, (int) $db->value(
+        "SELECT COUNT(*) FROM `weather_sync_run` WHERE kind = 'recommend'", [], 0),
+        'a refresh on a request leaves no run row: one per logged watering would bury the nightly one');
+});
+
+$t->test('a watering logged for today moves nothing until tonight, and the menu says it was heard',
+    function ($t) use ($client, $db, $gardenId, $today, $placeKey): void {
+    $zone = $db->one('SELECT * FROM `water_zone` WHERE garden_id = :g AND name = :n',
+        ['g' => $gardenId, 'n' => 'Zone B']);
+    $before = $db->one(
+        'SELECT irrigation_mm, deficit_mm, computed_at FROM `watering_recommendation`'
+        . ' WHERE place_key = :k AND for_date = :d',
+        ['k' => $placeKey, 'd' => $today]
+    );
+
+    $client->post('/gardens/' . $gardenId . '/actions', [
+        'event_type' => EventType::WATERED, 'water_zone_id' => (string) $zone['id'],
+        'duration_min' => '20', 'event_date' => $today,
+    ]);
+
+    // Today's row is the balance at the START of today (handoff Section
+    // 11): a watering done today belongs to tonight's arithmetic.
+    $after = $db->one(
+        'SELECT irrigation_mm, deficit_mm, computed_at FROM `watering_recommendation`'
+        . ' WHERE place_key = :k AND for_date = :d',
+        ['k' => $placeKey, 'd' => $today]
+    );
+    $t->same((float) $before['irrigation_mm'], (float) $after['irrigation_mm']);
+    $t->same((float) $before['deficit_mm'], (float) $after['deficit_mm']);
+
+    // But the page says so, under the sentence, in the gardener's units.
+    $page = $client->get('/')->body;
+    $t->contains('Logged today: 20 min on Zone B', $page);
+    $t->contains('Counted from tomorrow', $page);
+    $t->contains(' in)', $page, 'the depth is in inches for a US account');
+});
+
 $t->test('an implausible emitter figure is refused rather than stored', function ($t) use ($client, $db, $gardenId, $gardens): void {
     $row = $gardens->rows($gardenId)[0];
     foreach ([

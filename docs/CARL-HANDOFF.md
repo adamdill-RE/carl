@@ -641,6 +641,23 @@ Model (FAO-56 checkbook, simplified for gardeners):
 - Reason text is one sentence with the numbers ("Deficit 27 mm after 4 dry
   days; 20 % chance of rain tomorrow").
 - Containers: always evaluated as their own "garden" with the container TAW.
+- *(Phase 18)* **One ledger for what was put down.** `Carl\Weather\
+  IrrigationLedger` is the only reader of logged waterings as depths: one
+  statement per subject (garden, container, or one plant), the zone's
+  emitter figures, the method's rate and the garden's row spacing riding
+  along on the row; zone waterings add up and hand waterings on a day count
+  once at the deepest. The model, the plant and garden reports (§13.1) and
+  the MOTD all read it, so they cannot disagree about a watering.
+- *(Phase 18)* **A watering logged for a day already computed is counted.**
+  Writing a `watered` or `mulched` event deletes the stored rows after its
+  date (`EventRepository::invalidateWatering()`), and the request that
+  logged it walks them forward again (`WateringModel::refresh()`, on the
+  write, never on a page, leaving no run row). Before this the nightly walk
+  resumed from the newest row and never looked back, so last night's
+  watering logged this morning was stepped over for good. An event dated
+  today invalidates nothing — today's row is the balance at the START of
+  today — so the MOTD prints "Logged today: 45 min on Zone B (about 0.3
+  in). Counted from tomorrow." under the sentence instead.
 
 ---
 
@@ -660,10 +677,10 @@ Reminder kinds (computed, stored in `reminder`, deduplicated by unique key):
 | first_harvest_expected | anchor date + dtm_days_min, 7 days out and on the day. Worded "harvest starts" where the research gives a min and a max, "should be ready" where it gives one figure (Phase 17) |
 | harvest_window_closing | anchor + dtm_days_max, 7 days out and on the day, "harvest window ends" (Phase 17); and anchor + dtm_days_max + 14, "nothing harvested yet", if no `yielded` event yet |
 | frost_watch | region first_frost_early − 14 days, then any NWS freeze/frost alert |
-| heat_watch | forecast Tmax ≥ 35 °C tomorrow and user has heat-sensitive plantings |
+| heat_watch | forecast Tmax ≥ 35 °C tomorrow and user has heat-sensitive plantings; the title prints the figure in the account's display unit (95 °F), never the column's (Phase 18) |
 | pest_scouting | pest_region active_start for categories the user grows (calendar; GDD v2) |
 | watering | today's tier is water or likely |
-| inactivity | no events in 7 days (one nudge, then silent until activity resumes) |
+| inactivity | nothing written in 7 days (one nudge, then silent until activity resumes). *(Phase 18)* Every kind of entry counts — plant events, garden events such as a zone watering, photographs, new plantings — and the LATER of the entry's own date and the day it was written, so logging last week's sowing this morning is activity this morning. Until Phase 18 only `plant_event` rows counted, and a zone watering with nothing living in the zone's rows fans out to none |
 | research_diff | a planting's dates fall outside the research window (once) |
 
 Email: plain-text first with a simple HTML twin; subject "Carl: N items for
@@ -710,7 +727,18 @@ Both write to `email_outbox` first; the cron sends with bounded retries.
 
 ### 13.1 Plant and garden reports (Phase 4, reworked Phase 13)
 Server-rendered HTML; charts drawn with Chart.js from a JSON endpoint
-(`/api/plant/<id>/series`), one statement for weather + one for events.
+(`/api/plant/<id>/series`), one statement for weather + one for events + one
+for the water put down (Phase 18, `IrrigationLedger`, §11).
+
+*(Phase 18)* **The water balance includes the watering.** Every day carries
+`watered` — the depth the ledger says reached the root zone that day, by
+the zone's emitter figures or the method's rate — and `balance` is rain plus
+watering, minus ET0; the totals carry `watered` and the same balance, and
+the pages, the PDF and the chart's line say so in words. Until Phase 18 the
+balance was `water_balance_mm` alone (rain − ET0, weather.md §6) with every
+logged watering left out, which is the one number a gardener checks against
+the emitters typed onto the zone. The CSV export's `water_balance_mm` is
+unchanged: it is the archive's own column and is documented as such.
 
 **The subject of the chart is the plant, not the weather** (weather.md §7.3).
 The document carries a `plant` block: height, diameter, harvest weight, harvest
@@ -999,6 +1027,17 @@ the calendar), the 00757 code sized to a face that Avery's brochure says is
 3/4 in tall and not 1-1/32 (`docs/QR-TAGS-SPEC.md` §12.9), and push
 diagnosed from the page rather than from a cron log (§4.7). No migration, no
 cron, no setup step. See `docs/PHASE-18-HANDOFF.md`.
+
+### Phase 18 — three bugs from the inbox
+
+The owner's three sentences: a temperature in Celsius in a household that
+reads Fahrenheit (the heat-watch title, §12); "you haven't updated" mails to
+somebody watering every evening, because only `plant_event` rows counted as
+activity (§12, inactivity); and a net water that ignored the watering — the
+reports' balance was rain minus ET0 (§13.1), and a watering logged for a day
+whose row already existed was never counted by the checkbook (§11). One new
+class (`IrrigationLedger`), no migration, no cron, no setup step. See
+`docs/PHASE-19-HANDOFF.md`.
 
 ---
 

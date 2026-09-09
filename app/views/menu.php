@@ -16,6 +16,7 @@
  * @var bool $researched @var bool $dismissed @var string $forecastHash
  * @var array{living:int,plantings:int,gardens:int,events:int} $counts
  * @var array<int,list<array{zone_id:int,zone_name:string,minutes:int}>> $timerOptions
+ * @var array<string,array{lines:list<string>,depth:string}> $loggedToday
  * @var list<array<string,mixed>> $timers @var DateTimeZone $timerZone
  */
 $e = $view->e(...);
@@ -109,6 +110,13 @@ $hasWeather = $weather['recent'] !== [] || $weather['forecast'] !== [];
         <span class="topic tier-<?= $e($place['tier']) ?>"><?= $e($place['tier']) ?></span><br>
         <strong><?= $e($place['place_name']) ?></strong>
         <div class="small"><?= $e($place['reason_text']) ?></div>
+<?php /* Logged today, under the sentence it is not in (Phase 18): the row
+        is the balance at the start of the day, so this morning's watering
+        shows here now and in tonight's arithmetic. */ ?>
+<?php if (isset($loggedToday[(string) $place['place_key']])): ?>
+        <div class="small muted">Logged today: <?= $e(\implode('; ', $loggedToday[(string) $place['place_key']]['lines'])) ?>
+          (about <?= $e($loggedToday[(string) $place['place_key']]['depth']) ?>). Counted from tomorrow.</div>
+<?php endif; ?>
 <?php /* The one-tap timer (Phase 16): the minutes the sentence just named,
         as a button. Each is a whole form -- a timer is a write -- with
         "log it when done" on, because the person pressing it is about to

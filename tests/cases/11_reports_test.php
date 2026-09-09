@@ -36,6 +36,7 @@ use Carl\Repo\WeatherRepository;
 use Carl\Support\Attribution;
 use Carl\Support\Clock;
 use Carl\Tests\Client;
+use Carl\Weather\IrrigationLedger;
 
 $root = $app->root();
 $db = $app->db();
@@ -276,7 +277,8 @@ $t->test('a plant older than the chart window is clamped, and the document says 
     $plantings = new PlantingRepository($db, $owner['id']);
     $events = new EventRepository($db, $owner['id'], $plantings);
     $gardens = new GardenRepository($db, $owner['id']);
-    $series = new Series($plantings, $events, $gardens, new WeatherRepository($db), $app->units());
+    $series = new Series($plantings, $events, $gardens, new WeatherRepository($db), $app->units(),
+        new IrrigationLedger($db));
 
     $ancient = $plantings->insert([
         'plant_type_id' => $plantTypeId,
@@ -317,7 +319,7 @@ $t->test('two hundred days and forty events cost what two days and one event cos
     $events = new EventRepository($db, $owner['id'], $plantings);
     $gardens = new GardenRepository($db, $owner['id']);
     $weather = new WeatherRepository($db);
-    $series = new Series($plantings, $events, $gardens, $weather, $app->units());
+    $series = new Series($plantings, $events, $gardens, $weather, $app->units(), new IrrigationLedger($db));
 
     $gardenId = (int) $gardens->activeGardens()[0]['id'];
 
@@ -359,7 +361,8 @@ $t->test('two hundred days and forty events cost what two days and one event cos
     $t->ok(\count($doc['events']) === 40, 'the big plant really has forty events');
     $t->same($cheap, $dear,
         'a 200-day plant with 40 events cost ' . $dear . ' statements; a 2-day one cost ' . $cheap);
-    $t->same(3, $dear, 'one for the planting, one for the weather, one for the events');
+    $t->same(4, $dear,
+        'one for the planting, one for the weather, one for the events, one for the water put down');
 });
 
 $t->test('the plant page itself does not pay per day either',
@@ -432,6 +435,72 @@ $t->test('a garden series carries the garden own actions, not the fanned-out cop
     $t->same(1, \count($doc['events']), 'one action logged, one marker');
     $t->same('Two bales, north end', $doc['events'][0]['note']);
     $t->ok(\count($doc['days']) > 0, 'and the weather over the garden covered dates');
+});
+
+$t->test('the water balance counts what was logged, by the zone\'s own figures',
+    function ($t) use ($client, $db, $owner, $login, $today, $suffix, $plantTypeId): void {
+    // Phase 18. "Water balance" was rain minus ET0 with every watering left
+    // out -- the one number a gardener checks against the emitter figures
+    // they typed onto the zone, and the one that was wrong.
+    $login($owner);
+    $gardens = new GardenRepository($db, $owner['id']);
+    // The outdoor bed, not the Indoor Garden activeGardens() sorts first: a
+    // zone wants rows, and a checkbook wants a plant in the ground.
+    $gardenId = (int) $gardens->where('`name` = :n', ['n' => 'Report Bed' . $suffix])[0]['id'];
+    $row = $gardens->rows($gardenId)[0];
+    $client->post('/plants', [
+        'start_method' => 'direct_sow', 'plant_type_id' => (string) $plantTypeId,
+        'quantity_initial' => '3', 'start_date' => (string) Clock::addDays($today, -10),
+        'garden_id' => (string) $gardenId, 'garden_row_id' => (string) $row['id'],
+    ]);
+    $plantingId = (int) (new PlantingRepository($db, $owner['id']))->where('', [], '`id` DESC', 1)[0]['id'];
+
+    // Half a gallon every foot, lines two feet apart, four fifths reaching
+    // the roots: an hour is 8.15 mm net (08_watering_test.php).
+    $client->post('/gardens/' . $gardenId . '/zones', [
+        'zone_name' => 'Report drip', 'water_method_new' => 'Drip line',
+        'zone_rows' => [(string) $row['id']],
+        'emitter_flow' => '0.5', 'emitter_spacing' => '12', 'line_spacing' => '24',
+        'efficiency_pct' => '80',
+    ]);
+    $zoneId = (int) ($db->value(
+        'SELECT id FROM `water_zone` WHERE garden_id = :g AND name = :n',
+        ['g' => $gardenId, 'n' => 'Report drip']
+    ) ?? 0);
+    $t->ok($zoneId > 0, 'the zone was created');
+
+    $wateredOn = (string) Clock::addDays($today, -3);
+    $client->post('/gardens/' . $gardenId . '/actions', [
+        'event_type' => EventType::WATERED, 'water_zone_id' => (string) $zoneId,
+        'duration_min' => '60', 'event_date' => $wateredOn,
+    ]);
+
+    $doc = \json_decode($client->get('/api/garden/' . $gardenId . '/series')->collect(), true);
+    $t->same('0.32 in', $doc['totals']['watered'], '8.15 mm, in the gardener\'s units');
+
+    $day = null;
+    foreach ($doc['days'] as $candidate) {
+        if ($candidate['date'] === $wateredOn) {
+            $day = $candidate;
+        }
+    }
+    $t->ok($day !== null, 'the watered day is on the weather spine');
+    $t->same(0.321, $day['watered'], 'and carries the depth the emitters put down');
+    if ($day['balance'] !== null) {
+        $t->ok(\abs(($day['rain'] - $day['et0'] + $day['watered']) - $day['balance']) < 0.003,
+            'the balance is rain plus watering, minus ET0: ' . $day['balance']);
+    }
+
+    $page = $client->get('/gardens/' . $gardenId)->body;
+    $t->contains('Watering logged', $page);
+    $t->contains('rain plus watering, minus evapotranspiration', $page);
+    $t->notContains('rain minus evapotranspiration', $page);
+
+    // The plant in the zone's row was reached by the same watering, through
+    // the derived row the fan-out wrote -- and counted once.
+    $plant = \json_decode($client->get('/api/plant/' . $plantingId . '/series')->collect(), true);
+    $t->same('0.32 in', $plant['totals']['watered'], 'the zone watering reached the plant');
+    $t->contains('rain plus watering', $client->get('/plants/' . $plantingId)->body);
 });
 
 $t->group('The PDF (handoff Section 13.2)');

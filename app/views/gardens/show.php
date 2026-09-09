@@ -246,8 +246,10 @@ $hasChart = ($series['plant']['dates'] ?? []) !== [];
       <tr><th>Days covered</th><td><?= $e($range['days_held']) ?></td></tr>
       <tr><th>Total rain</th><td><?= $e($series['totals']['rain']) ?></td></tr>
       <tr><th>Total ET&#8320;</th><td><?= $e($series['totals']['et0']) ?></td></tr>
+      <tr><th>Watering logged</th><td><?= $e($series['totals']['watered']) ?>
+        <span class="muted small">what the zones and the hose put down, by their figures</span></td></tr>
       <tr><th>Water balance</th><td><?= $e($series['totals']['balance']) ?>
-        <span class="muted small">rain minus evapotranspiration</span></td></tr>
+        <span class="muted small">rain plus watering, minus evapotranspiration</span></td></tr>
       <tr><th>Hottest / coldest</th><td><?= $e($series['totals']['temp_range']) ?></td></tr>
     </tbody>
   </table>

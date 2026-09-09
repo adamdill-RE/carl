@@ -942,6 +942,17 @@ openssl rand -hex 24
 Push, then **Deploy HEAD Commit**. There is no build and no restart; the next
 request picks the files up, because there is no OPcache on this host.
 
+### The Phase 18 deploy adds NO migration and NO cron
+
+Nothing to run at `/setup`. Copy the files and the three fixes are live: the
+heat-watch title in °F, the inactivity nudge counting every kind of entry,
+and the water balance counting what was logged. The stored recommendation
+rows are not rebuilt by the deploy: the first watering logged for a past day
+rebuilds that garden's rows from that day, and the nightly run does the rest.
+One thing to check afterwards: log a zone watering for *yesterday* and open
+the main menu — the garden's sentence should say "you watered about … mm"
+without waiting for the cron.
+
 ### The Phase 17 deploy adds NO migration and NO cron, and asks for two things with a phone
 
 Nothing to run at `/setup`. Copy the files and the four changes are live:

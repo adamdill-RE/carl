@@ -11,7 +11,6 @@ use Carl\Domain\EventType;
 use Carl\Domain\KcCurve;
 use Carl\Domain\PlantingState;
 use Carl\Domain\SoilType;
-use Carl\Domain\WaterMethod;
 use Carl\Support\Clock;
 use Throwable;
 
@@ -77,9 +76,12 @@ final class WateringModel
     }
 
     /**
+     * @param bool $recordRun write the weather_sync_run row the nightly job
+     *        leaves for /status. A refresh from a request path (below) does
+     *        not: one line per logged watering would bury the nightly one.
      * @return array{places:int,rows:int,failures:int,log:list<string>}
      */
-    public function run(?int $onlyUserId = null): array
+    public function run(?int $onlyUserId = null, bool $recordRun = true): array
     {
         $startedAt = $this->app->clock()->utcStamp();
         $places = $this->places($onlyUserId);
@@ -98,10 +100,41 @@ final class WateringModel
             }
         }
 
-        $this->recordRun($startedAt, \count($places), $rows, $failures);
+        if ($recordRun) {
+            $this->recordRun($startedAt, \count($places), $rows, $failures);
+        }
 
         return ['places' => \count($places), 'rows' => $rows, 'failures' => $failures,
                 'log' => $this->log];
+    }
+
+    /**
+     * Bring one user's stored rows up to date after a watering or a mulch
+     * was logged (Phase 18).
+     *
+     * The rows are computed nightly and NEVER at render (handoff Section
+     * 11), and that still holds: this runs on the write, not on the page.
+     * What it fixes is a watering logged for a day whose row already
+     * existed -- last night's, logged this morning -- which the nightly walk
+     * used to step over, because it resumes from the newest row and never
+     * looks back. EventRepository deletes the rows the event invalidates
+     * (everything after its date), and this walks them forward again from
+     * the row that still stands, in the same recursion, on a handful of
+     * statements. A watering logged for today invalidates nothing: today's
+     * row is the balance at the START of today, and tonight's run is the one
+     * that counts it.
+     *
+     * Never throws. The write already happened; a recommendation that
+     * cannot be refreshed now is refreshed tonight, and nothing about a
+     * logged watering should fail because of it.
+     */
+    public function refresh(int $userId): void
+    {
+        try {
+            $this->run($userId, false);
+        } catch (Throwable) {
+            // The nightly run repeats the walk from whatever is stored.
+        }
     }
 
     /**
@@ -181,7 +214,9 @@ final class WateringModel
         $weather = $this->weatherByDate($locationId, (string) Clock::addDays($startDate, -1), $today);
         $forecast = $this->forecastByDate($locationId, $today);
         $zones = $this->zonesFor($place);
-        $irrigation = $this->irrigationByDate($place, $zones, (string) Clock::addDays($startDate, -1), $today);
+        $irrigation = IrrigationLedger::byDate(
+            $this->ledgerRows($place, (string) Clock::addDays($startDate, -1), $today)
+        );
         $mulchedUntil = $this->mulchedUntil($place);
         $refill = $this->refillOptions($place, $zones);
 
@@ -518,121 +553,24 @@ final class WateringModel
     }
 
     /**
-     * Irrigation depth per day for this place.
-     *
-     * The double-counting trap (Phase 3 handoff Section 4.2): watering a
-     * garden zone writes one `garden_event` AND a derived `plant_event` for
-     * every living plant in the zone's rows, each carrying
-     * source_garden_event_id. Adding both would multiply one watering by the
-     * number of plants in the bed.
-     *
-     * So the garden events are read directly -- each is one application --
-     * and only plant events with no source_garden_event_id are considered
-     * alongside them. Of those, the deepest on a day counts once: watering
-     * six plants in a bed by hand is one irrigation of the bed, not six.
+     * Every watering logged against this place in the window, in the one
+     * shape IrrigationLedger reads. The double-counting rule -- a zone
+     * watering is one application of the bed, not one per plant it reached
+     * -- and the zone-before-method rule both live on the ledger now, so the
+     * plant page and the garden page count a watering exactly as this does.
      *
      * @param array<string,mixed> $place
-     * @param array<int,array<string,mixed>> $zones this garden's zones by id, from zonesFor()
-     * @return array<string,array{mm:float,basis:?string,basis_kind:?string}> keyed by event_date
+     * @return list<array<string,mixed>>
      */
-    private function irrigationByDate(array $place, array $zones, string $from, string $to): array
+    private function ledgerRows(array $place, string $from, string $to): array
     {
-        $out = [];
+        $ledger = new IrrigationLedger($this->db);
+        $userId = (int) $place['user_id'];
+        $placeId = (int) $place['place_id'];
 
-        if ($place['kind'] === 'garden') {
-            // A zone watering usually names the zone rather than a method,
-            // because the zone already knows its own -- and the zone's method
-            // is where a drip line's flow rate lives (handoff Section 11). So
-            // the event's method wins if it has one, and the zone's is the
-            // fallback rather than the generic assumption.
-            //
-            // Above both, from Phase 14: the zone's own emitter figures. A
-            // zone that says "0.5 gph every 12 inches" knows its depth to a
-            // decimal, which neither a method name nor a typed mm/h does,
-            // and it is the figure the gardener entered for exactly this.
-            $gardenEvents = $this->db->all(
-                'SELECT ge.event_date, ge.duration_min, ge.water_zone_id,'
-                . ' COALESCE(l.name, zl.name) AS method_name,'
-                . ' COALESCE(l.attr_1, zl.attr_1) AS flow_rate'
-                . ' FROM `garden_event` ge'
-                . ' LEFT JOIN `user_list_item` l ON l.id = ge.ref_list_item_id'
-                . ' LEFT JOIN `water_zone` z ON z.id = ge.water_zone_id'
-                . ' LEFT JOIN `user_list_item` zl ON zl.id = z.water_method_id'
-                . ' WHERE ge.garden_id = :place_id AND ge.event_type = :watered'
-                . '   AND ge.event_date BETWEEN :from AND :to',
-                ['place_id' => (int) $place['place_id'], 'watered' => EventType::WATERED,
-                 'from' => $from, 'to' => $to]
-            );
-            $rowSpacing = DripLine::rowSpacingIn($place);
-
-            foreach ($gardenEvents as $event) {
-                $minutes = (int) ($event['duration_min'] ?? 0);
-                $zoneId = $event['water_zone_id'] === null ? null : (int) $event['water_zone_id'];
-                $depth = $zoneId !== null && isset($zones[$zoneId])
-                    ? DripLine::depth($minutes, $zones[$zoneId], $rowSpacing)
-                    : null;
-                $kind = 'zone';
-                if ($depth === null) {
-                    $kind = 'method';
-                    $depth = WaterMethod::depth(
-                        $minutes,
-                        $event['method_name'] === null ? null : (string) $event['method_name'],
-                        $event['flow_rate'] === null ? null : (string) $event['flow_rate'],
-                    );
-                }
-                $date = (string) $event['event_date'];
-                $out[$date]['mm'] = ($out[$date]['mm'] ?? 0.0) + $depth['mm'];
-                $out[$date]['basis'] ??= $depth['basis'];
-                $out[$date]['basis_kind'] ??= $kind;
-            }
-        }
-
-        $column = $place['kind'] === 'container' ? 'container_id' : 'garden_id';
-        $plantEvents = $this->db->all(
-            'SELECT e.event_date, e.duration_min,'
-            . ' COALESCE(l.name, dl.name) AS method_name,'
-            . ' COALESCE(l.attr_1, dl.attr_1) AS flow_rate'
-            . ' FROM `plant_event` e'
-            . ' JOIN `planting` p ON p.id = e.planting_id'
-            . ' LEFT JOIN `user_list_item` l ON l.id = e.ref_list_item_id'
-            // The planting's default water method, for a watering logged
-            // without naming one.
-            . ' LEFT JOIN `user_list_item` dl ON dl.id = p.default_water_method_id'
-            . ' WHERE p.`' . $column . '` = :place_id AND e.event_type = :watered'
-            . '   AND e.source_garden_event_id IS NULL'
-            . '   AND e.event_date BETWEEN :from AND :to',
-            ['place_id' => (int) $place['place_id'], 'watered' => EventType::WATERED,
-             'from' => $from, 'to' => $to]
-        );
-
-        $byDate = [];
-        foreach ($plantEvents as $event) {
-            $depth = WaterMethod::depth(
-                (int) ($event['duration_min'] ?? 0),
-                $event['method_name'] === null ? null : (string) $event['method_name'],
-                $event['flow_rate'] === null ? null : (string) $event['flow_rate'],
-            );
-            $date = (string) $event['event_date'];
-            if (!isset($byDate[$date]) || $depth['mm'] > $byDate[$date]['mm']) {
-                $byDate[$date] = $depth;
-            }
-        }
-
-        foreach ($byDate as $date => $depth) {
-            $out[$date]['mm'] = ($out[$date]['mm'] ?? 0.0) + $depth['mm'];
-            $out[$date]['basis'] ??= $depth['basis'];
-            $out[$date]['basis_kind'] ??= 'method';
-        }
-
-        foreach ($out as $date => $entry) {
-            $out[$date] = [
-                'mm'         => \round($entry['mm'], 2),
-                'basis'      => $entry['basis'] ?? null,
-                'basis_kind' => $entry['basis_kind'] ?? null,
-            ];
-        }
-
-        return $out;
+        return $place['kind'] === 'container'
+            ? $ledger->forContainer($userId, $placeId, $from, $to)
+            : $ledger->forGarden($userId, $placeId, $from, $to);
     }
 
     /**
